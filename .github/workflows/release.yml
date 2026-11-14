@@ -102,10 +102,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $assets = @(gh release view nightly --json assets --jq '.assets[].name' 2>$null)
-          if ($LASTEXITCODE -eq 0 -and $assets.Count -gt 0) {
+          $viewExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($viewExit -eq 0 -and $assets.Count -gt 0) {
             foreach ($asset in $assets) {
               if (-not [string]::IsNullOrWhiteSpace($asset)) {
                 gh release delete-asset nightly $asset.Trim() --yes
+                $global:LASTEXITCODE = 0
               }
             }
           }
