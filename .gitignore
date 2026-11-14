@@ -1,0 +1,10 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Rust / Tauri
+/target/
+/src-tauri/target/
+/src-tauri/gen/
