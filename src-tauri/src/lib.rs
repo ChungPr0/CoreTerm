@@ -18,8 +18,8 @@ use crate::ipc::commands::{
     key_list, key_set_default, port_forward_delete, port_forward_probe, port_forward_toggle,
     port_forward_upsert, session_connect, session_disconnect, session_reconnect,
     session_resize_pty, session_submit_host_key, session_submit_secret, session_write_stdin,
-    telemetry_set_local_config, window_close, window_minimize, window_set_launch_size,
-    window_toggle_maximize, AppState,
+    telemetry_set_local_config, window_close, window_minimize, window_present,
+    window_set_launch_size, window_toggle_maximize, AppState,
 };
 use crate::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
 use crate::os::JobObjectSupervisor;
@@ -62,9 +62,17 @@ pub fn run() {
                 .expect("Failed to initialize SQLite database and schema");
 
             let pty_manager = PtySessionManager::new(job_supervisor.clone());
+            pty_manager.prewarm_local_shell(120, 30);
 
             if let Some(main_win) = app.get_webview_window("main") {
                 crate::os::configure_main_window(&main_win);
+                let fallback_win = main_win.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                    if !fallback_win.is_visible().unwrap_or(false) {
+                        let _ = fallback_win.show();
+                    }
+                });
             }
 
             app.manage(AppState { db, pty_manager });
@@ -103,6 +111,7 @@ pub fn run() {
             clipboard_read_text,
             clipboard_write_text,
             window_set_launch_size,
+            window_present,
             window_minimize,
             window_toggle_maximize,
             window_close,

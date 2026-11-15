@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Clipboard,
   ClipboardCopy,
@@ -40,15 +40,58 @@ import {
   TerminalContextActions,
   TerminalViewport,
 } from "./components/TerminalViewport";
-import { HostModal } from "./components/HostModal";
-import { KeyVaultModal } from "./components/KeyVaultModal";
-import { AppSettingsValues, SettingsModal } from "./components/SettingsModal";
-import { AuthPromptModal } from "./components/AuthPromptModal";
-import { PortConflictModal } from "./components/PortConflictModal";
-import { CommandPalette } from "./components/CommandPalette";
-import { ContextMenu, ContextMenuEntry } from "./components/ContextMenu";
-import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
-import { GroupModal } from "./components/GroupModal";
+import type { AppSettingsValues } from "./components/SettingsModal";
+import type { ContextMenuEntry } from "./components/ContextMenu";
+
+const loadHostModal = () => import("./components/HostModal");
+const loadKeyVaultModal = () => import("./components/KeyVaultModal");
+const loadSettingsModal = () => import("./components/SettingsModal");
+const loadAuthPromptModal = () => import("./components/AuthPromptModal");
+const loadPortConflictModal = () => import("./components/PortConflictModal");
+const loadCommandPalette = () => import("./components/CommandPalette");
+const loadContextMenu = () => import("./components/ContextMenu");
+const loadConfirmDeleteModal = () => import("./components/ConfirmDeleteModal");
+const loadGroupModal = () => import("./components/GroupModal");
+
+const deferredModalLoaders = [
+  loadHostModal,
+  loadKeyVaultModal,
+  loadSettingsModal,
+  loadAuthPromptModal,
+  loadPortConflictModal,
+  loadCommandPalette,
+  loadContextMenu,
+  loadConfirmDeleteModal,
+  loadGroupModal,
+];
+
+const HostModal = lazy(() =>
+  loadHostModal().then((m) => ({ default: m.HostModal }))
+);
+const KeyVaultModal = lazy(() =>
+  loadKeyVaultModal().then((m) => ({ default: m.KeyVaultModal }))
+);
+const SettingsModal = lazy(() =>
+  loadSettingsModal().then((m) => ({ default: m.SettingsModal }))
+);
+const AuthPromptModal = lazy(() =>
+  loadAuthPromptModal().then((m) => ({ default: m.AuthPromptModal }))
+);
+const PortConflictModal = lazy(() =>
+  loadPortConflictModal().then((m) => ({ default: m.PortConflictModal }))
+);
+const CommandPalette = lazy(() =>
+  loadCommandPalette().then((m) => ({ default: m.CommandPalette }))
+);
+const ContextMenu = lazy(() =>
+  loadContextMenu().then((m) => ({ default: m.ContextMenu }))
+);
+const ConfirmDeleteModal = lazy(() =>
+  loadConfirmDeleteModal().then((m) => ({ default: m.ConfirmDeleteModal }))
+);
+const GroupModal = lazy(() =>
+  loadGroupModal().then((m) => ({ default: m.GroupModal }))
+);
 import { useI18n } from "./i18n";
 import { getEditableInput } from "./utils/editableTarget";
 import { formatLocalizedError } from "./utils/formatError";
@@ -234,11 +277,36 @@ export const App: React.FC = () => {
     items: ContextMenuEntry[];
   } | null>(null);
 
-  // Apply configured launch size, local telemetry preference, and check process elevation on startup
+  // Present main window after initial mount (resizing beforehand if custom launch size),
+  // configure local telemetry, check process elevation, and preload lazy modal chunks when idle
   useEffect(() => {
-    tauriApi
-      .windowSetLaunchSize(settings.launchCols, settings.launchRows)
-      .catch(() => {});
+    const hasCustomLaunchSize =
+      settings.launchCols !== 120 || settings.launchRows !== 30;
+    let cancelled = false;
+
+    const presentTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      tauriApi
+        .windowPresent(
+          hasCustomLaunchSize
+            ? { cols: settings.launchCols, rows: settings.launchRows }
+            : undefined
+        )
+        .then(() => {
+          if (!cancelled) {
+            focusActiveTerminal();
+          }
+        })
+        .catch(() => {});
+    }, 0);
+
+    const preloadTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      deferredModalLoaders.forEach((load) => {
+        void load().catch(() => {});
+      });
+    }, 150);
+
     tauriApi
       .telemetrySetLocalConfig(
         settings.showLocalTelemetry,
@@ -260,6 +328,12 @@ export const App: React.FC = () => {
         }
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(presentTimer);
+      window.clearTimeout(preloadTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1360,112 +1434,130 @@ export const App: React.FC = () => {
           onContextMenuSidebar={handleSidebarContextMenu}
         />
 
-        <HostModal
-          isOpen={isHostModalOpen}
-          editingHost={editingHost}
-          initialGroupName={hostModalInitialGroup}
-          existingGroups={existingGroups}
-          keysVersion={keysVersion}
-          onOpenKeyVault={() => setIsVaultOpen(true)}
-          onClose={() => setIsHostModalOpen(false)}
-          onSaved={handleHostSaved}
-        />
+        <Suspense fallback={null}>
+          {isHostModalOpen && (
+            <HostModal
+              isOpen={isHostModalOpen}
+              editingHost={editingHost}
+              initialGroupName={hostModalInitialGroup}
+              existingGroups={existingGroups}
+              keysVersion={keysVersion}
+              onOpenKeyVault={() => setIsVaultOpen(true)}
+              onClose={() => setIsHostModalOpen(false)}
+              onSaved={handleHostSaved}
+            />
+          )}
 
-        <KeyVaultModal
-          isOpen={isVaultOpen}
-          onClose={() => setIsVaultOpen(false)}
-          onKeysChanged={() => {
-            setKeysVersion((v) => v + 1);
-            void loadProfiles(searchQuery);
-          }}
-        />
+          {isVaultOpen && (
+            <KeyVaultModal
+              isOpen={isVaultOpen}
+              onClose={() => setIsVaultOpen(false)}
+              onKeysChanged={() => {
+                setKeysVersion((v) => v + 1);
+                void loadProfiles(searchQuery);
+              }}
+            />
+          )}
 
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          settings={settings}
-          onClose={() => setIsSettingsOpen(false)}
-          onSave={handleSaveSettings}
-        />
+          {isSettingsOpen && (
+            <SettingsModal
+              isOpen={isSettingsOpen}
+              settings={settings}
+              onClose={() => setIsSettingsOpen(false)}
+              onSave={handleSaveSettings}
+            />
+          )}
 
-        <AuthPromptModal
-          authPrompt={authPrompt}
-          hostKeyPrompt={hostKeyPrompt}
-          onCloseAuth={() => setAuthPrompt(null)}
-          onCloseHostKey={() => setHostKeyPrompt(null)}
-          onReconnectTab={handleReconnectTab}
-        />
+          {(authPrompt || hostKeyPrompt) && (
+            <AuthPromptModal
+              authPrompt={authPrompt}
+              hostKeyPrompt={hostKeyPrompt}
+              onCloseAuth={() => setAuthPrompt(null)}
+              onCloseHostKey={() => setHostKeyPrompt(null)}
+              onReconnectTab={handleReconnectTab}
+            />
+          )}
 
-        <PortConflictModal
-          conflicts={portConflicts}
-          onSkipAndConnect={() => {
-            const host = pendingConflictHost;
-            setPortConflicts([]);
-            setPendingConflictHost(null);
-            if (host) {
-              spawnHostTab(host, "AUTO_SHARE_OR_SKIP");
-            }
-          }}
-          onAbort={() => {
-            setPortConflicts([]);
-            setPendingConflictHost(null);
-          }}
-        />
+          {portConflicts.length > 0 && (
+            <PortConflictModal
+              conflicts={portConflicts}
+              onSkipAndConnect={() => {
+                const host = pendingConflictHost;
+                setPortConflicts([]);
+                setPendingConflictHost(null);
+                if (host) {
+                  spawnHostTab(host, "AUTO_SHARE_OR_SKIP");
+                }
+              }}
+              onAbort={() => {
+                setPortConflicts([]);
+                setPendingConflictHost(null);
+              }}
+            />
+          )}
 
-        <CommandPalette
-          isOpen={isPaletteOpen}
-          profiles={allProfiles}
-          onClose={() => setIsPaletteOpen(false)}
-          onSelectHost={handleConnectHost}
-        />
+          {isPaletteOpen && (
+            <CommandPalette
+              isOpen={isPaletteOpen}
+              profiles={allProfiles}
+              onClose={() => setIsPaletteOpen(false)}
+              onSelectHost={handleConnectHost}
+            />
+          )}
 
-        <ConfirmDeleteModal
-          isOpen={!!deletingHost}
-          title={t("host.delete_confirm")}
-          itemName={deletingHost?.alias ?? ""}
-          itemDetail={
-            deletingHost
-              ? `${deletingHost.username}@${deletingHost.host}:${deletingHost.port}`
-              : undefined
-          }
-          note={t("host.delete_warning")}
-          noteTone="neutral"
-          errorMessage={deleteHostError}
-          isDeleting={isDeletingHost}
-          onCancel={closeDeleteHostModal}
-          onConfirm={confirmDeleteHost}
-        />
+          {deletingHost && (
+            <ConfirmDeleteModal
+              isOpen={!!deletingHost}
+              title={t("host.delete_confirm")}
+              itemName={deletingHost.alias}
+              itemDetail={`${deletingHost.username}@${deletingHost.host}:${deletingHost.port}`}
+              note={t("host.delete_warning")}
+              noteTone="neutral"
+              errorMessage={deleteHostError}
+              isDeleting={isDeletingHost}
+              onCancel={closeDeleteHostModal}
+              onConfirm={confirmDeleteHost}
+            />
+          )}
 
-        <GroupModal
-          isOpen={isGroupModalOpen}
-          existingGroups={dbGroups}
-          isSubmitting={isCreatingGroup}
-          onClose={() => setIsGroupModalOpen(false)}
-          onCreateGroup={handleCreateGroup}
-        />
+          {isGroupModalOpen && (
+            <GroupModal
+              isOpen={isGroupModalOpen}
+              existingGroups={dbGroups}
+              isSubmitting={isCreatingGroup}
+              onClose={() => setIsGroupModalOpen(false)}
+              onCreateGroup={handleCreateGroup}
+            />
+          )}
 
-        <ConfirmDeleteModal
-          isOpen={!!deletingGroup}
-          title={t("group.delete_confirm", { name: deletingGroup ?? "" })}
-          itemName={deletingGroup ?? ""}
-          note={t("group.delete_warning")}
-          noteTone="neutral"
-          errorMessage={deleteGroupError}
-          isDeleting={isDeletingGroup}
-          onCancel={() => {
-            setDeletingGroup(null);
-            setDeleteGroupError(null);
-          }}
-          onConfirm={confirmDeleteGroup}
-        />
+          {deletingGroup && (
+            <ConfirmDeleteModal
+              isOpen={!!deletingGroup}
+              title={t("group.delete_confirm", { name: deletingGroup })}
+              itemName={deletingGroup}
+              note={t("group.delete_warning")}
+              noteTone="neutral"
+              errorMessage={deleteGroupError}
+              isDeleting={isDeletingGroup}
+              onCancel={() => {
+                setDeletingGroup(null);
+                setDeleteGroupError(null);
+              }}
+              onConfirm={confirmDeleteGroup}
+            />
+          )}
+        </Suspense>
       </div>
 
       {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={contextMenu.items}
-          onClose={() => setContextMenu(null)}
-        />
+        <Suspense fallback={null}>
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -14,9 +14,10 @@
       {
         "title": "CoreTerm",
         "width": 1034,
-        "height": 554,
+        "height": 558,
         "minWidth": 640,
         "minHeight": 380,
+        "visible": false,
         "decorations": false,
         "theme": "Dark",
         "backgroundColor": "#090d16",

@@ -32,6 +32,30 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const READ_BUF_SIZE: usize = 16 * 1024;
 const MAX_BATCH_SIZE: usize = 32 * 1024;
 const BATCH_WINDOW_MS: u64 = 10;
+const PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
+
+enum PrewarmSink {
+    Buffering(Vec<u8>),
+    Streaming(tokio::sync::mpsc::UnboundedSender<Vec<u8>>),
+    Closed,
+}
+
+struct AttachedTabTarget {
+    app: AppHandle,
+    tab_id: String,
+    on_output: Channel<Vec<u8>>,
+    batcher_handle: tauri::async_runtime::JoinHandle<()>,
+}
+
+struct PrewarmedLocalSession {
+    session: Arc<PtySession>,
+    pid: Option<u32>,
+    is_admin: bool,
+    initial_cols: u16,
+    initial_rows: u16,
+    sink: Arc<Mutex<PrewarmSink>>,
+    attached: Arc<Mutex<Option<AttachedTabTarget>>>,
+}
 
 enum PtyBackend {
     Direct {
@@ -47,7 +71,7 @@ enum PtyBackend {
 }
 
 pub struct PtySession {
-    pub tab_id: String,
+    tab_id: Mutex<String>,
     pub host_id: String,
     pub ssh_key_id: Option<String>,
     pub pid: Option<u32>,
@@ -58,6 +82,18 @@ pub struct PtySession {
 }
 
 impl PtySession {
+    fn tab_id(&self) -> String {
+        self.tab_id
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    fn set_tab_id(&self, next_tab_id: &str) {
+        if let Ok(mut g) = self.tab_id.lock() {
+            *g = next_tab_id.to_string();
+        }
+    }
     fn write_bytes(&self, data: &[u8]) -> AppResult<()> {
         match &self.backend {
             PtyBackend::Direct { writer, .. } => {
@@ -152,6 +188,8 @@ pub struct PtySessionManager {
     tunnel_registry: ActiveTunnelRegistry,
     telemetry_hub: TelemetryHub,
     job_supervisor: JobObjectSupervisor,
+    prewarmed_local: Arc<Mutex<Option<PrewarmedLocalSession>>>,
+    prewarm_cancelled: Arc<AtomicBool>,
 }
 
 impl PtySessionManager {
@@ -164,7 +202,270 @@ impl PtySessionManager {
             tunnel_registry: ActiveTunnelRegistry::new(),
             telemetry_hub: TelemetryHub::new(job_supervisor.clone()),
             job_supervisor,
+            prewarmed_local: Arc::new(Mutex::new(None)),
+            prewarm_cancelled: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn build_local_powershell_command() -> CommandBuilder {
+        let mut c = CommandBuilder::new("powershell.exe");
+        c.arg("-NoLogo");
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            c.cwd(home);
+        }
+        c.env("TERM", "xterm-256color");
+        c.env("COLORTERM", "truecolor");
+        c
+    }
+
+    /// Spawns the initial local PowerShell ConPTY in the background while WebView2 initializes.
+    pub fn prewarm_local_shell(&self, cols: u16, rows: u16) {
+        let initial_cols = cols.max(10);
+        let initial_rows = rows.max(2);
+        let is_admin = is_process_elevated();
+        let manager = self.clone();
+
+        let _ = std::thread::Builder::new()
+            .name("conpty-prewarm-local".to_string())
+            .spawn(move || {
+                if manager.prewarm_cancelled.load(Ordering::SeqCst) {
+                    return;
+                }
+
+                let pty_system = native_pty_system();
+                let Ok(pair) = pty_system.openpty(PtySize {
+                    rows: initial_rows,
+                    cols: initial_cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                }) else {
+                    return;
+                };
+
+                let cmd = Self::build_local_powershell_command();
+                let Ok(mut child) = pair.slave.spawn_command(cmd) else {
+                    return;
+                };
+                drop(pair.slave);
+
+                if manager.prewarm_cancelled.load(Ordering::SeqCst) {
+                    let _ = child.kill();
+                    return;
+                }
+
+                let pid = child.process_id();
+                if let Some(process_id) = pid {
+                    let _ = manager.job_supervisor.assign_pid(process_id);
+                }
+
+                let Ok(writer) = pair.master.take_writer() else {
+                    let _ = child.kill();
+                    return;
+                };
+                let Ok(mut reader) = pair.master.try_clone_reader() else {
+                    let _ = child.kill();
+                    return;
+                };
+
+                let session = Arc::new(PtySession {
+                    tab_id: Mutex::new("__prewarm__".to_string()),
+                    host_id: "local".to_string(),
+                    ssh_key_id: None,
+                    pid,
+                    is_admin,
+                    backend: PtyBackend::Direct {
+                        master: Mutex::new(pair.master),
+                        writer: Mutex::new(writer),
+                        child: Mutex::new(child),
+                    },
+                    pending_prompt_type: Mutex::new(None),
+                    manual_disconnect: AtomicBool::new(false),
+                });
+
+                let sink = Arc::new(Mutex::new(PrewarmSink::Buffering(Vec::with_capacity(4096))));
+                let attached: Arc<Mutex<Option<AttachedTabTarget>>> = Arc::new(Mutex::new(None));
+
+                let prewarmed = PrewarmedLocalSession {
+                    session: session.clone(),
+                    pid,
+                    is_admin,
+                    initial_cols,
+                    initial_rows,
+                    sink: sink.clone(),
+                    attached: attached.clone(),
+                };
+
+                if let Ok(mut guard) = manager.prewarmed_local.lock() {
+                    if manager.prewarm_cancelled.load(Ordering::SeqCst) {
+                        session.manual_disconnect.store(true, Ordering::SeqCst);
+                        session.terminate();
+                        return;
+                    }
+                    *guard = Some(prewarmed);
+                } else {
+                    session.manual_disconnect.store(true, Ordering::SeqCst);
+                    session.terminate();
+                    return;
+                }
+
+                let sessions_map = manager.sessions.clone();
+                let tunnel_reg = manager.tunnel_registry.clone();
+                let telemetry_hub = manager.telemetry_hub.clone();
+                let session_ref = session;
+
+                let _ = std::thread::Builder::new()
+                    .name("conpty-reader-prewarm".to_string())
+                    .spawn(move || {
+                        let mut buf = [0u8; READ_BUF_SIZE];
+                        loop {
+                            match reader.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    let slice = &buf[..n];
+                                    let Ok(mut guard) = sink.lock() else {
+                                        break;
+                                    };
+                                    match &mut *guard {
+                                        PrewarmSink::Buffering(buffered) => {
+                                            if buffered.len() < PREWARM_BUFFER_LIMIT {
+                                                let remaining =
+                                                    PREWARM_BUFFER_LIMIT - buffered.len();
+                                                buffered.extend_from_slice(
+                                                    &slice[..slice.len().min(remaining)],
+                                                );
+                                            }
+                                        }
+                                        PrewarmSink::Streaming(tx) => {
+                                            if tx.send(slice.to_vec()).is_err() {
+                                                break;
+                                            }
+                                        }
+                                        PrewarmSink::Closed => break,
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+
+                        if let Ok(mut guard) = sink.lock() {
+                            *guard = PrewarmSink::Closed;
+                        }
+
+                        let maybe_target = attached.lock().ok().and_then(|mut g| g.take());
+                        let exit_code = match &session_ref.backend {
+                            PtyBackend::Direct { child, .. } => child
+                                .lock()
+                                .ok()
+                                .and_then(|mut c| c.wait().ok())
+                                .map(|status| status.exit_code()),
+                            #[cfg(windows)]
+                            PtyBackend::Elevated { .. } => None,
+                        };
+
+                        if let Some(target) = maybe_target {
+                            let _ = tauri::async_runtime::block_on(target.batcher_handle);
+                            let was_manual = session_ref.manual_disconnect.load(Ordering::SeqCst);
+                            Self::finalize_reader_exit(
+                                &sessions_map,
+                                &tunnel_reg,
+                                &telemetry_hub,
+                                &target.app,
+                                &target.on_output,
+                                &session_ref,
+                                &target.tab_id,
+                                "local",
+                                was_manual,
+                                exit_code,
+                                None,
+                            );
+                        }
+                    });
+            });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_claim_prewarmed_local(
+        &self,
+        app: &AppHandle,
+        db: &Database,
+        tab_id: &str,
+        cols: u16,
+        rows: u16,
+        is_admin: bool,
+        on_output: &Channel<Vec<u8>>,
+    ) -> Option<SessionConnectAckDto> {
+        let taken = {
+            let mut guard = self.prewarmed_local.lock().ok()?;
+            self.prewarm_cancelled.store(true, Ordering::SeqCst);
+            guard.take()
+        }?;
+
+        if taken.is_admin != is_admin {
+            taken.session.manual_disconnect.store(true, Ordering::SeqCst);
+            taken.session.terminate();
+            return None;
+        }
+
+        let (tx, batcher_handle) = Self::spawn_output_batcher(on_output.clone());
+        if let Ok(mut attached_guard) = taken.attached.lock() {
+            *attached_guard = Some(AttachedTabTarget {
+                app: app.clone(),
+                tab_id: tab_id.to_string(),
+                on_output: on_output.clone(),
+                batcher_handle,
+            });
+        } else {
+            taken.session.manual_disconnect.store(true, Ordering::SeqCst);
+            taken.session.terminate();
+            return None;
+        }
+
+        let buffered = {
+            let Ok(mut sink_guard) = taken.sink.lock() else {
+                if let Ok(mut attached_guard) = taken.attached.lock() {
+                    attached_guard.take();
+                }
+                taken.session.manual_disconnect.store(true, Ordering::SeqCst);
+                taken.session.terminate();
+                return None;
+            };
+            if matches!(&*sink_guard, PrewarmSink::Closed) {
+                drop(sink_guard);
+                if let Ok(mut attached_guard) = taken.attached.lock() {
+                    attached_guard.take();
+                }
+                return None;
+            }
+            match std::mem::replace(&mut *sink_guard, PrewarmSink::Streaming(tx.clone())) {
+                PrewarmSink::Buffering(buf) => buf,
+                PrewarmSink::Streaming(_) | PrewarmSink::Closed => Vec::new(),
+            }
+        };
+
+        taken.session.set_tab_id(tab_id);
+        self.sessions
+            .insert(tab_id.to_string(), taken.session.clone());
+        Self::emit_status(app, tab_id, "local", "ONLINE", vec![], None);
+        self.telemetry_hub.register_tab(app, db, "local", tab_id);
+
+        if !buffered.is_empty() {
+            let _ = tx.send(buffered);
+        }
+
+        let target_cols = cols.max(10);
+        let target_rows = rows.max(2);
+        if target_cols != taken.initial_cols || target_rows != taken.initial_rows {
+            let _ = taken.session.resize(target_cols, target_rows);
+        }
+
+        Some(SessionConnectAckDto {
+            tab_id: tab_id.to_string(),
+            host_id: "local".to_string(),
+            pid: taken.pid,
+            cli_preview: "powershell.exe".to_string(),
+            status: "ONLINE".to_string(),
+            is_admin: taken.is_admin,
+        })
     }
 
     pub fn tunnel_registry(&self) -> &ActiveTunnelRegistry {
@@ -353,6 +654,20 @@ impl PtySessionManager {
             return self.connect_elevated_local(app, db, tab_id, host_id, cols, rows, on_output);
         }
 
+        if is_local {
+            if let Some(ack) = self.try_claim_prewarmed_local(
+                app,
+                db,
+                &tab_id,
+                cols,
+                rows,
+                is_admin,
+                &on_output,
+            ) {
+                return Ok(ack);
+            }
+        }
+
         let mut active_forwards = Vec::new();
         let mut cli_preview = "powershell.exe".to_string();
         let mut ssh_key_id = None;
@@ -438,22 +753,17 @@ impl PtySessionManager {
             .openpty(pty_size)
             .map_err(|e| AppError::Pty(format!("Failed to open Windows ConPTY: {e}")))?;
 
-        let mut cmd = if is_local {
-            let mut c = CommandBuilder::new("powershell.exe");
-            c.arg("-NoLogo");
-            if let Ok(home) = std::env::var("USERPROFILE") {
-                c.cwd(home);
-            }
-            c
+        let cmd = if is_local {
+            Self::build_local_powershell_command()
         } else {
             let mut c = CommandBuilder::new("ssh.exe");
             for arg in &ssh_args {
                 c.arg(arg);
             }
+            c.env("TERM", "xterm-256color");
+            c.env("COLORTERM", "truecolor");
             c
         };
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
 
         let child = match pair.slave.spawn_command(cmd) {
             Ok(c) => c,
@@ -493,7 +803,7 @@ impl PtySessionManager {
             .map_err(|e| AppError::Pty(format!("Failed to clone ConPTY master reader: {e}")))?;
 
         let session = Arc::new(PtySession {
-            tab_id: tab_id.clone(),
+            tab_id: Mutex::new(tab_id.clone()),
             host_id: host_id.clone(),
             ssh_key_id,
             pid,
@@ -744,7 +1054,7 @@ impl PtySessionManager {
             let pipe_writer = elevated_pty::PipeWriter(conn.pipe_in);
 
             let session = Arc::new(PtySession {
-                tab_id: tab_id.clone(),
+                tab_id: Mutex::new(tab_id.clone()),
                 host_id: host_id.clone(),
                 ssh_key_id: None,
                 pid: None,
@@ -987,7 +1297,7 @@ impl PtySessionManager {
             session.terminate();
             Self::emit_status(
                 app,
-                &session.tab_id,
+                &session.tab_id(),
                 &session.host_id,
                 "DISCONNECTED",
                 vec![],
@@ -1045,6 +1355,16 @@ impl PtySessionManager {
     }
 
     pub fn shutdown_all(&self) {
+        self.prewarm_cancelled.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.prewarmed_local.lock() {
+            if let Some(prewarmed) = guard.take() {
+                prewarmed
+                    .session
+                    .manual_disconnect
+                    .store(true, Ordering::SeqCst);
+                prewarmed.session.terminate();
+            }
+        }
         self.telemetry_hub.shutdown_all();
         let keys: Vec<String> = self.sessions.iter().map(|e| e.key().clone()).collect();
         for tab_id in keys {

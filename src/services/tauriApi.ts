@@ -244,6 +244,13 @@ export const tauriApi = {
     });
   },
 
+  windowPresent(params?: { cols?: number; rows?: number }): Promise<void> {
+    return invoke<void>("window_present", {
+      cols: params?.cols ?? null,
+      rows: params?.rows ?? null,
+    });
+  },
+
   windowMinimize(): Promise<void> {
     return invoke<void>("window_minimize", {});
   },

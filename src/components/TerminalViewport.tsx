@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from "react";
 import { Channel } from "@tauri-apps/api/core";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle, RotateCw } from "lucide-react";
 import {
@@ -144,15 +143,25 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
     term.loadAddon(fitAddon);
     term.open(container);
 
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-      term.loadAddon(webglAddon);
-    } catch {
-      // Fallback to default canvas renderer
-    }
+    const webglRafId = window.requestAnimationFrame(() => {
+      if (cancelled || terminalRef.current !== term) return;
+      import("@xterm/addon-webgl")
+        .then(({ WebglAddon }) => {
+          if (cancelled || terminalRef.current !== term) return;
+          try {
+            const webglAddon = new WebglAddon();
+            webglAddon.onContextLoss(() => {
+              webglAddon.dispose();
+            });
+            term.loadAddon(webglAddon);
+          } catch {
+            // Fallback to default canvas renderer
+          }
+        })
+        .catch(() => {
+          // Fallback to default canvas renderer
+        });
+    });
 
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -332,6 +341,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(webglRafId);
       clearTimeout(connectTimer);
       if (fitRafId !== null) {
         cancelAnimationFrame(fitRafId);

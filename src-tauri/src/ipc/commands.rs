@@ -397,6 +397,14 @@ pub async fn clipboard_write_text(text: String) -> AppResult<()> {
     crate::os::clipboard::write_text(&text).map_err(AppError::Internal)
 }
 
+fn apply_launch_size(window: &tauri::WebviewWindow, cols: u16, rows: u16) {
+    let clamped_cols = cols.clamp(40, 300) as f64;
+    let clamped_rows = rows.clamp(10, 120) as f64;
+    let width = (clamped_cols * 8.45 + 20.0).round();
+    let height = (clamped_rows * 17.0 + 48.0).round();
+    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+}
+
 /// Resizes main window based on terminal launch columns and rows.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn window_set_launch_size(
@@ -404,11 +412,24 @@ pub async fn window_set_launch_size(
     cols: u16,
     rows: u16,
 ) -> AppResult<()> {
-    let clamped_cols = cols.clamp(40, 300) as f64;
-    let clamped_rows = rows.clamp(10, 120) as f64;
-    let width = (clamped_cols * 8.45 + 20.0).round();
-    let height = (clamped_rows * 17.0 + 48.0).round();
-    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+    apply_launch_size(&window, cols, rows);
+    Ok(())
+}
+
+/// Applies optional launch size and presents the main window once the first frame is ready.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_present(
+    window: tauri::WebviewWindow,
+    cols: Option<u16>,
+    rows: Option<u16>,
+) -> AppResult<()> {
+    if let (Some(c), Some(r)) = (cols, rows) {
+        apply_launch_size(&window, c, r);
+    }
+    if !window.is_visible().unwrap_or(false) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
     Ok(())
 }
 
