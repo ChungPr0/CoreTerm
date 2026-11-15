@@ -1,0 +1,173 @@
+use std::io::Write;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+
+use dashmap::DashMap;
+use portable_pty::{Child, MasterPty, PtySize};
+use tauri::ipc::Channel;
+use tauri::AppHandle;
+
+use crate::core::error::{CoreError, CoreResult};
+use crate::infra::os::elevated_pty;
+
+pub(super) const READ_BUF_SIZE: usize = 16 * 1024;
+pub(super) const MAX_BATCH_SIZE: usize = 32 * 1024;
+pub(super) const BATCH_WINDOW_MS: u64 = 10;
+pub(super) const PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
+
+pub(super) enum PrewarmSink {
+    Buffering(Vec<u8>),
+    Streaming(tokio::sync::mpsc::UnboundedSender<Vec<u8>>),
+    Closed,
+}
+
+pub(super) struct AttachedTabTarget {
+    pub app: AppHandle,
+    pub tab_id: String,
+    pub on_output: Channel<Vec<u8>>,
+    pub batcher_handle: tauri::async_runtime::JoinHandle<()>,
+}
+
+pub(super) struct PrewarmedLocalSession {
+    pub session: Arc<PtySession>,
+    pub pid: Option<u32>,
+    pub is_admin: bool,
+    pub initial_cols: u16,
+    pub initial_rows: u16,
+    pub sink: Arc<Mutex<PrewarmSink>>,
+    pub attached: Arc<Mutex<Option<AttachedTabTarget>>>,
+}
+
+pub(super) enum PtyBackend {
+    Direct {
+        master: Mutex<Box<dyn MasterPty + Send>>,
+        writer: Mutex<Box<dyn Write + Send>>,
+        child: Mutex<Box<dyn Child + Send + Sync>>,
+    },
+    #[cfg(windows)]
+    Elevated {
+        pipe_writer: Mutex<elevated_pty::PipeWriter>,
+        pipe_out: Arc<elevated_pty::OverlappedPipe>,
+    },
+}
+
+pub struct PtySession {
+    pub(super) tab_id: Mutex<String>,
+    pub host_id: String,
+    pub ssh_key_id: Option<String>,
+    pub is_admin: bool,
+    pub(super) backend: PtyBackend,
+    pub(super) pending_prompt_type: Mutex<Option<String>>,
+    pub(super) manual_disconnect: AtomicBool,
+}
+
+impl PtySession {
+    pub(super) fn tab_id(&self) -> String {
+        self.tab_id
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn set_tab_id(&self, next_tab_id: &str) {
+        if let Ok(mut g) = self.tab_id.lock() {
+            *g = next_tab_id.to_string();
+        }
+    }
+
+    pub(super) fn write_bytes(&self, data: &[u8]) -> CoreResult<()> {
+        match &self.backend {
+            PtyBackend::Direct { writer, .. } => {
+                let mut w = writer
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("PTY writer mutex poisoned: {e}")))?;
+                w.write_all(data)?;
+                w.flush()?;
+                Ok(())
+            }
+            #[cfg(windows)]
+            PtyBackend::Elevated { pipe_writer, .. } => {
+                let mut w = pipe_writer
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("Elevated pipe mutex poisoned: {e}")))?;
+                elevated_pty::write_frame(&mut *w, elevated_pty::FRAME_DATA, data)?;
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn resize(&self, cols: u16, rows: u16) -> CoreResult<()> {
+        if cols == 0 || rows == 0 {
+            return Ok(());
+        }
+        match &self.backend {
+            PtyBackend::Direct { master, .. } => {
+                let m = master
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("PTY master mutex poisoned: {e}")))?;
+                m.resize(PtySize {
+                    rows: rows.max(2),
+                    cols: cols.max(10),
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| CoreError::Pty(format!("Failed to resize ConPTY: {e}")))?;
+                Ok(())
+            }
+            #[cfg(windows)]
+            PtyBackend::Elevated { pipe_writer, .. } => {
+                let mut w = pipe_writer
+                    .lock()
+                    .map_err(|e| CoreError::Internal(format!("Elevated pipe mutex poisoned: {e}")))?;
+                let mut payload = [0u8; 4];
+                payload[0..2].copy_from_slice(&cols.to_le_bytes());
+                payload[2..4].copy_from_slice(&rows.to_le_bytes());
+                elevated_pty::write_frame(&mut *w, elevated_pty::FRAME_RESIZE, &payload)?;
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn terminate(&self) {
+        match &self.backend {
+            PtyBackend::Direct { child, .. } => {
+                if let Ok(mut c) = child.lock() {
+                    let _ = c.kill();
+                }
+            }
+            #[cfg(windows)]
+            PtyBackend::Elevated {
+                pipe_writer,
+                pipe_out,
+            } => {
+                if let Ok(mut w) = pipe_writer.lock() {
+                    let _ = elevated_pty::write_frame(&mut *w, elevated_pty::FRAME_CLOSE, &[]);
+                }
+                pipe_out.cancel();
+            }
+        }
+    }
+
+    pub(super) fn wait_exit_code(&self) -> Option<u32> {
+        match &self.backend {
+            PtyBackend::Direct { child, .. } => child
+                .lock()
+                .ok()
+                .and_then(|mut c| c.wait().ok())
+                .map(|status| status.exit_code()),
+            #[cfg(windows)]
+            PtyBackend::Elevated { .. } => None,
+        }
+    }
+}
+
+pub(super) struct InFlightConnectGuard {
+    pub map: Arc<DashMap<String, ()>>,
+    pub tab_id: String,
+}
+
+impl Drop for InFlightConnectGuard {
+    fn drop(&mut self) {
+        self.map.remove(&self.tab_id);
+    }
+}

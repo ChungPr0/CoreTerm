@@ -1,13 +1,17 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
 
-use crate::ipc::dto::{SshPreviewCommandDto, HostFullConfigDto};
-use crate::ipc::error::{AppError, AppResult};
+use crate::core::error::{CoreError, CoreResult};
+use crate::ipc::dto::HostFullConfigDto;
+
+use super::arg_builder::{
+    push_base_target_args, push_key_identity_args, push_strict_host_key_arg, validate_host_target,
+};
 
 pub struct SshCommandCompiler;
 
 impl SshCommandCompiler {
-    pub fn compile_args(config: &HostFullConfigDto) -> AppResult<Vec<OsString>> {
+    pub fn compile_args(config: &HostFullConfigDto) -> CoreResult<Vec<OsString>> {
         Self::compile_args_with_skipped_rules(config, &HashSet::new())
     }
 
@@ -16,20 +20,11 @@ impl SshCommandCompiler {
     pub fn compile_args_with_skipped_rules(
         config: &HostFullConfigDto,
         skipped_rule_ids: &HashSet<String>,
-    ) -> AppResult<Vec<OsString>> {
-        if config.host.trim().is_empty() {
-            return Err(AppError::Validation("Host cannot be empty".to_string()));
-        }
-        if config.username.trim().is_empty() {
-            return Err(AppError::Validation("Username cannot be empty".to_string()));
-        }
+    ) -> CoreResult<Vec<OsString>> {
+        let (host, _) = validate_host_target(config)?;
 
         let mut args: Vec<OsString> = Vec::with_capacity(24);
-
-        args.push(OsString::from("-p"));
-        args.push(OsString::from(config.port.to_string()));
-        args.push(OsString::from("-l"));
-        args.push(OsString::from(config.username.trim()));
+        push_base_target_args(&mut args, config);
 
         match config.auth_method.as_str() {
             "SSH_KEY" => {
@@ -39,15 +34,12 @@ impl SshCommandCompiler {
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .ok_or_else(|| {
-                        AppError::Validation(
+                        CoreError::Validation(
                             "SSH_KEY authentication requires a valid private_key_path".to_string(),
                         )
                     })?;
 
-                args.push(OsString::from("-i"));
-                args.push(OsString::from(key_path));
-                args.push(OsString::from("-o"));
-                args.push(OsString::from("IdentitiesOnly=yes"));
+                push_key_identity_args(&mut args, key_path);
             }
             "PASSWORD" => {
                 args.push(OsString::from("-o"));
@@ -58,7 +50,7 @@ impl SshCommandCompiler {
                 args.push(OsString::from("PubkeyAuthentication=no"));
             }
             other => {
-                return Err(AppError::Validation(format!(
+                return Err(CoreError::Validation(format!(
                     "Unsupported auth_method: {other}"
                 )));
             }
@@ -85,15 +77,7 @@ impl SshCommandCompiler {
             args.push(OsString::from("-A"));
         }
 
-        let strict_val = match config.options.strict_host_key_checking.as_str() {
-            "YES" => "yes",
-            "NO" => "no",
-            _ => "accept-new",
-        };
-        args.push(OsString::from("-o"));
-        args.push(OsString::from(format!(
-            "StrictHostKeyChecking={strict_val}"
-        )));
+        push_strict_host_key_arg(&mut args, &config.options.strict_host_key_checking);
 
         for pf in config
             .port_forwards
@@ -139,41 +123,29 @@ impl SshCommandCompiler {
 
         if let Some(cmd) = startup_cmd {
             args.push(OsString::from("-t"));
-            args.push(OsString::from(config.host.trim()));
+            args.push(OsString::from(host));
             args.push(OsString::from(format!(
                 "{cmd}; exec ${{SHELL:-/bin/sh}} -l"
             )));
         } else {
-            args.push(OsString::from(config.host.trim()));
+            args.push(OsString::from(host));
         }
 
         Ok(args)
     }
 
-    pub fn preview_command_with_skipped_rules(
-        config: &HostFullConfigDto,
-        skipped_rule_ids: &HashSet<String>,
-    ) -> AppResult<SshPreviewCommandDto> {
-        let os_args = Self::compile_args_with_skipped_rules(config, skipped_rule_ids)?;
-        let string_args: Vec<String> = os_args
-            .iter()
-            .map(|a| a.to_string_lossy().to_string())
-            .collect();
-
-        let formatted_parts: Vec<String> = std::iter::once("ssh.exe".to_string())
-            .chain(string_args.iter().map(|arg| {
-                if arg.contains(' ') || arg.contains(';') || arg.contains('$') {
-                    format!("\"{arg}\"")
-                } else {
-                    arg.clone()
-                }
-            }))
-            .collect();
-
-        Ok(SshPreviewCommandDto {
-            cli_string: formatted_parts.join(" "),
-            args: string_args,
-        })
+    pub fn format_cli_preview(args: &[OsString]) -> String {
+        let mut parts = Vec::with_capacity(args.len() + 1);
+        parts.push("ssh.exe".to_string());
+        for raw in args {
+            let s = raw.to_string_lossy();
+            if s.contains([' ', ';', '$']) {
+                parts.push(format!("\"{s}\""));
+            } else {
+                parts.push(s.into_owned());
+            }
+        }
+        parts.join(" ")
     }
 }
 
@@ -378,5 +350,19 @@ mod tests {
         assert!(!tab2_args.contains(&"-L".to_string()));
         assert!(!tab2_args.contains(&"-D".to_string()));
         assert!(tab2_args.contains(&"-R".to_string()));
+    }
+
+    #[test]
+    fn test_format_cli_preview_quotes_special_args() {
+        let args = vec![
+            OsString::from("-p"),
+            OsString::from("22"),
+            OsString::from("my key path"),
+            OsString::from("echo $HOME; sh"),
+        ];
+        assert_eq!(
+            SshCommandCompiler::format_cli_preview(&args),
+            "ssh.exe -p 22 \"my key path\" \"echo $HOME; sh\""
+        );
     }
 }

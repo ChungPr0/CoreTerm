@@ -5,13 +5,12 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use crate::ipc::dto::{PortForwardRuleDto, PortForwardStatusDto, PortProbeResultDto};
-
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use crate::infra::os::CREATE_NO_WINDOW;
+use crate::ipc::dto::{PortForwardRuleDto, PortForwardStatusDto, PortProbeResultDto};
 
 #[derive(Debug, Clone)]
 pub struct ActiveTunnelOwner {

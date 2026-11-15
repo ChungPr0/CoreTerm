@@ -10,8 +10,19 @@ use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey};
 
-use crate::ipc::error::{AppError, AppResult};
-use crate::os::restrict_private_key_acl;
+use crate::core::error::{CoreError, CoreResult};
+use crate::infra::os::restrict_private_key_acl;
+#[cfg(windows)]
+use crate::infra::os::CREATE_NO_WINDOW;
+
+pub fn normalize_key_path_input(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        trimmed[1..trimmed.len() - 1].trim().to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
 
 pub struct GeneratedKeyMaterial {
     pub key_type: String,
@@ -53,7 +64,6 @@ impl SshKeyEngine {
         pub_path: &Path,
         comment: &str,
     ) -> Option<PrivateKey> {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         for bin in Self::resolve_ssh_keygen_binaries() {
             let _ = fs::remove_file(priv_path);
             let _ = fs::remove_file(pub_path);
@@ -89,14 +99,14 @@ impl SshKeyEngine {
         key_type: &str,
         comment: Option<&str>,
         passphrase: Option<&str>,
-    ) -> AppResult<GeneratedKeyMaterial> {
+    ) -> CoreResult<GeneratedKeyMaterial> {
         fs::create_dir_all(keys_dir)?;
 
         let (algorithm, normalized_type, ext) = match key_type {
             "ED25519" => (Algorithm::Ed25519, "ED25519", "id_ed25519"),
             "RSA_4096" => (Algorithm::Rsa { hash: None }, "RSA_4096", "id_rsa"),
             other => {
-                return Err(AppError::Validation(format!(
+                return Err(CoreError::Validation(format!(
                     "Unsupported key_type: {other}"
                 )));
             }
@@ -117,7 +127,7 @@ impl SshKeyEngine {
         }
         .map(Ok)
         .unwrap_or_else(|| PrivateKey::random(&mut OsRng, algorithm))
-        .map_err(|e| AppError::Internal(format!("SSH key generation failed: {e}")))?;
+        .map_err(|e| CoreError::Internal(format!("SSH key generation failed: {e}")))?;
 
         private_key.set_comment(comment_str);
 
@@ -126,21 +136,21 @@ impl SshKeyEngine {
 
         let public_key_content = pub_key
             .to_openssh()
-            .map_err(|e| AppError::Internal(format!("Public key formatting failed: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Public key formatting failed: {e}")))?;
         let fingerprint = pub_key.fingerprint(HashAlg::Sha256).to_string();
 
         let has_passphrase = passphrase.map(|p| !p.is_empty()).unwrap_or(false);
         let final_key = if let Some(pw) = passphrase.filter(|p| !p.is_empty()) {
             private_key
                 .encrypt(&mut OsRng, pw.as_bytes())
-                .map_err(|e| AppError::Internal(format!("Private key encryption failed: {e}")))?
+                .map_err(|e| CoreError::Internal(format!("Private key encryption failed: {e}")))?
         } else {
             private_key
         };
 
         let openssh_pem = final_key
             .to_openssh(LineEnding::LF)
-            .map_err(|e| AppError::Internal(format!("Private key serialization failed: {e}")))?;
+            .map_err(|e| CoreError::Internal(format!("Private key serialization failed: {e}")))?;
 
         fs::write(&priv_path, openssh_pem.as_bytes())?;
         fs::write(&pub_path, public_key_content.as_bytes())?;
@@ -218,7 +228,7 @@ impl SshKeyEngine {
         source_path: &Path,
         copy_to_managed_dir: bool,
         has_passphrase_hint: bool,
-    ) -> AppResult<InspectedKeyMaterial> {
+    ) -> CoreResult<InspectedKeyMaterial> {
         let final_path = if copy_to_managed_dir && source_path.exists() {
             fs::create_dir_all(keys_dir)?;
             let dest = keys_dir.join(format!("{key_id}.imported_key"));

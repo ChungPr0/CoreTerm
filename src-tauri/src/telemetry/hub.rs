@@ -9,15 +9,18 @@ use dashmap::DashMap;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::watch;
 
-use crate::db::Database;
-use crate::ipc::dto::{TelemetryMetricsEventDto, HostFullConfigDto};
-use crate::os::JobObjectSupervisor;
+use crate::hosts::HostService;
+#[cfg(windows)]
+use crate::infra::os::CREATE_NO_WINDOW;
+use crate::infra::os::system_metrics::{sample_local_cpu, sample_local_mem};
+use crate::infra::os::JobObjectSupervisor;
+use crate::ipc::dto::{HostFullConfigDto, TelemetryMetricsEventDto};
+use crate::ssh::arg_builder::{
+    push_base_target_args, push_key_identity_args, push_strict_host_key_arg,
+};
 use crate::telemetry::parser::{
     compute_cpu_delta, parse_proc_meminfo, parse_proc_stat, CpuJiffies, MemStats,
 };
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const SAMPLE_TIMEOUT_MS: u64 = 1500;
 const DELIMITER: &str = "---MEMINFO---";
@@ -110,13 +113,13 @@ impl TelemetryHub {
             .unwrap_or(0)
     }
 
-    pub fn register_tab(&self, app: &AppHandle, db: &Database, host_id: &str, tab_id: &str) {
+    pub fn register_tab(&self, app: &AppHandle, hosts: &HostService, host_id: &str, tab_id: &str) {
         if host_id == "local" {
             if !self.local_enabled.load(Ordering::Relaxed) {
                 return;
             }
         } else {
-            let Ok(config) = db.host_get_detail(host_id) else {
+            let Ok(config) = hosts.get_detail(host_id) else {
                 return;
             };
             if !config.options.telemetry_enabled {
@@ -144,12 +147,12 @@ impl TelemetryHub {
             return;
         }
 
-        let db_clone = db.clone();
+        let hosts_clone = hosts.clone();
         let job_sup = self.job_supervisor.clone();
         let worker_host_id = host_id.to_string();
 
         tauri::async_runtime::spawn(async move {
-            Self::run_worker_loop(app_handle, db_clone, job_sup, worker_host_id, stop_rx).await;
+            Self::run_worker_loop(app_handle, hosts_clone, job_sup, worker_host_id, stop_rx).await;
         });
     }
 
@@ -162,7 +165,7 @@ impl TelemetryHub {
 
     async fn run_worker_loop(
         app: AppHandle,
-        db: Database,
+        hosts: HostService,
         job_supervisor: JobObjectSupervisor,
         host_id: String,
         mut stop_rx: watch::Receiver<bool>,
@@ -176,7 +179,7 @@ impl TelemetryHub {
                 break;
             }
 
-            let Ok(config) = db.host_get_detail(&host_id) else {
+            let Ok(config) = hosts.get_detail(&host_id) else {
                 break;
             };
             if !config.options.telemetry_enabled {
@@ -257,35 +260,24 @@ impl TelemetryHub {
     ) -> Result<Option<(CpuJiffies, MemStats)>, String> {
         let mut args: Vec<OsString> = Vec::with_capacity(18);
         args.push(OsString::from("-T"));
-        args.push(OsString::from("-p"));
-        args.push(OsString::from(config.port.to_string()));
-        args.push(OsString::from("-l"));
-        args.push(OsString::from(config.username.trim()));
+        push_base_target_args(&mut args, config);
         args.push(OsString::from("-o"));
         args.push(OsString::from("BatchMode=yes"));
         args.push(OsString::from("-o"));
         args.push(OsString::from("ConnectTimeout=2"));
 
         if config.auth_method == "SSH_KEY" {
-            if let Some(ref key_path) = config.private_key_path {
-                if !key_path.trim().is_empty() {
-                    args.push(OsString::from("-i"));
-                    args.push(OsString::from(key_path.trim()));
-                    args.push(OsString::from("-o"));
-                    args.push(OsString::from("IdentitiesOnly=yes"));
-                }
+            if let Some(key_path) = config
+                .private_key_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                push_key_identity_args(&mut args, key_path);
             }
         }
 
-        let strict_val = match config.options.strict_host_key_checking.as_str() {
-            "YES" => "yes",
-            "NO" => "no",
-            _ => "accept-new",
-        };
-        args.push(OsString::from("-o"));
-        args.push(OsString::from(format!(
-            "StrictHostKeyChecking={strict_val}"
-        )));
+        push_strict_host_key_arg(&mut args, &config.options.strict_host_key_checking);
 
         args.push(OsString::from(config.host.trim()));
         args.push(OsString::from(format!(
@@ -344,14 +336,21 @@ impl TelemetryHub {
         local_enabled: Arc<AtomicBool>,
         local_interval_sec: Arc<AtomicU64>,
     ) {
-        let mut prev_cpu: Option<CpuJiffies> = sample_local_cpu();
+        let mut prev_cpu: Option<CpuJiffies> = sample_local_cpu().map(|s| CpuJiffies {
+            total: s.total,
+            idle: s.idle,
+        });
 
         loop {
             if *stop_rx.borrow() || !local_enabled.load(Ordering::Relaxed) {
                 break;
             }
 
-            if let (Some(curr_cpu), Some(mem)) = (sample_local_cpu(), sample_local_mem()) {
+            if let (Some(curr_sample), Some(mem)) = (sample_local_cpu(), sample_local_mem()) {
+                let curr_cpu = CpuJiffies {
+                    total: curr_sample.total,
+                    idle: curr_sample.idle,
+                };
                 let cpu_pct = match prev_cpu {
                     Some(ref prev) => compute_cpu_delta(prev, &curr_cpu),
                     None => 0.0,
@@ -361,9 +360,9 @@ impl TelemetryHub {
                 let payload = TelemetryMetricsEventDto {
                     host_id: "local".to_string(),
                     cpu_usage_percent: cpu_pct,
-                    ram_used_mb: mem.ram_used_mb,
-                    ram_total_mb: mem.ram_total_mb,
-                    ram_usage_percent: mem.ram_usage_percent,
+                    ram_used_mb: mem.used_mb,
+                    ram_total_mb: mem.total_mb,
+                    ram_usage_percent: mem.usage_percent,
                     swap_used_mb: 0,
                     swap_total_mb: 0,
                     is_stale: false,
@@ -383,67 +382,6 @@ impl TelemetryHub {
             }
         }
     }
-}
-
-#[cfg(windows)]
-#[repr(C)]
-struct MemoryStatusEx {
-    dw_length: u32,
-    dw_memory_load: u32,
-    ull_total_phys: u64,
-    ull_avail_phys: u64,
-    ull_total_page_file: u64,
-    ull_avail_page_file: u64,
-    ull_total_virtual: u64,
-    ull_avail_virtual: u64,
-    ull_avail_extended_virtual: u64,
-}
-
-#[cfg(windows)]
-extern "system" {
-    fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
-    fn GetSystemTimes(
-        lp_idle_time: *mut u64,
-        lp_kernel_time: *mut u64,
-        lp_user_time: *mut u64,
-    ) -> i32;
-}
-
-fn sample_local_cpu() -> Option<CpuJiffies> {
-    #[cfg(windows)]
-    unsafe {
-        let mut idle: u64 = 0;
-        let mut kernel: u64 = 0;
-        let mut user: u64 = 0;
-        if GetSystemTimes(&mut idle, &mut kernel, &mut user) != 0 {
-            return Some(CpuJiffies {
-                total: kernel.saturating_add(user),
-                idle,
-            });
-        }
-    }
-    None
-}
-
-fn sample_local_mem() -> Option<MemStats> {
-    #[cfg(windows)]
-    unsafe {
-        let mut status: MemoryStatusEx = std::mem::zeroed();
-        status.dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
-        if GlobalMemoryStatusEx(&mut status) != 0 && status.ull_total_phys > 0 {
-            let total_mb = status.ull_total_phys / (1024 * 1024);
-            let avail_mb = status.ull_avail_phys / (1024 * 1024);
-            let used_mb = total_mb.saturating_sub(avail_mb);
-            return Some(MemStats {
-                ram_used_mb: used_mb,
-                ram_total_mb: total_mb,
-                ram_usage_percent: (status.dw_memory_load as f32).clamp(0.0, 100.0),
-                swap_used_mb: 0,
-                swap_total_mb: 0,
-            });
-        }
-    }
-    None
 }
 
 fn now_ms() -> u64 {

@@ -1,29 +1,39 @@
-pub mod db;
+pub mod core;
+pub mod hosts;
+pub mod infra;
 pub mod ipc;
 pub mod keys;
-pub mod os;
 pub mod pty;
-pub mod security;
+pub mod sftp;
 pub mod ssh;
 pub mod telemetry;
 
 use tauri::{Manager, RunEvent};
 use tracing::info;
 
-use crate::db::Database;
+use crate::hosts::HostService;
+use crate::infra::db::SqliteDb;
+use crate::infra::security::SecretVault;
+use crate::keys::KeyService;
 use crate::ipc::commands::{
     app_get_status, clipboard_read_text, clipboard_write_text, host_create, host_delete,
     host_duplicate, host_get_detail, host_group_create, host_group_delete, host_group_list,
-    host_list, host_move_group, host_update, key_delete, key_generate, key_get_default, key_import,
-    key_list, key_set_default, port_forward_delete, port_forward_probe, port_forward_toggle,
-    port_forward_upsert, session_connect, session_disconnect, session_reconnect,
-    session_resize_pty, session_submit_host_key, session_submit_secret, session_write_stdin,
-    telemetry_set_local_config, window_close, window_minimize, window_present,
+    host_group_reorder, host_list, host_move_group, host_update, key_delete, key_generate,
+    key_get_default, key_import, key_list, key_set_default, local_create_dir, local_delete,
+    local_home_dir, local_list_dir, local_list_drives, local_rename, port_forward_delete,
+    port_forward_probe, port_forward_toggle, port_forward_upsert, session_connect,
+    session_disconnect, session_reconnect, session_resize_pty, session_submit_host_key,
+    session_submit_secret, session_write_stdin, sftp_cancel_transfer, sftp_chmod,
+    sftp_clear_finished_transfers, sftp_connect, sftp_create_dir, sftp_delete, sftp_disconnect,
+    sftp_download, sftp_list_dir, sftp_list_transfers, sftp_pause_transfer, sftp_rename,
+    sftp_resolve_conflict, sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret,
+    sftp_upload, telemetry_set_local_config, window_close, window_minimize, window_present,
     window_set_launch_size, window_toggle_maximize, AppState,
 };
-use crate::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
-use crate::os::JobObjectSupervisor;
+use crate::infra::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
+use crate::infra::os::JobObjectSupervisor;
 use crate::pty::PtySessionManager;
+use crate::sftp::SftpSessionManager;
 
 /// Runs elevated ConPTY named-pipe relay and skips GUI bootstrap when invoked via UAC helper flag.
 pub fn maybe_run_elevated_worker() -> Option<i32> {
@@ -48,6 +58,7 @@ pub fn run() {
         JobObjectSupervisor::new().expect("Failed to initialize Windows Job Object Supervisor");
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let app_data_dir = app
                 .path()
@@ -58,14 +69,19 @@ pub fn run() {
                 "Initializing SQLite WAL database at {:?}",
                 app_data_dir.join("data").join("app.db")
             );
-            let db = Database::init(&app_data_dir)
+            let db = SqliteDb::init(&app_data_dir)
                 .expect("Failed to initialize SQLite database and schema");
+            let vault = SecretVault::new();
+            let hosts = HostService::new(db.clone(), vault.clone());
+            let keys = KeyService::new(db, vault, &app_data_dir)
+                .expect("Failed to initialize SSH key storage");
 
             let pty_manager = PtySessionManager::new(job_supervisor.clone());
             pty_manager.prewarm_local_shell(120, 30);
+            let sftp_manager = SftpSessionManager::new();
 
             if let Some(main_win) = app.get_webview_window("main") {
-                crate::os::configure_main_window(&main_win);
+                crate::infra::os::configure_main_window(&main_win);
                 let fallback_win = main_win.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
@@ -75,7 +91,12 @@ pub fn run() {
                 });
             }
 
-            app.manage(AppState { db, pty_manager });
+            app.manage(AppState {
+                hosts,
+                keys,
+                pty_manager,
+                sftp_manager,
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -88,6 +109,7 @@ pub fn run() {
             host_group_list,
             host_group_create,
             host_group_delete,
+            host_group_reorder,
             host_move_group,
             key_list,
             key_get_default,
@@ -107,6 +129,29 @@ pub fn run() {
             session_submit_host_key,
             session_reconnect,
             session_disconnect,
+            sftp_connect,
+            sftp_disconnect,
+            sftp_submit_secret,
+            sftp_submit_host_key,
+            sftp_list_dir,
+            sftp_create_dir,
+            sftp_rename,
+            sftp_delete,
+            sftp_chmod,
+            local_list_drives,
+            local_home_dir,
+            local_list_dir,
+            local_create_dir,
+            local_rename,
+            local_delete,
+            sftp_upload,
+            sftp_download,
+            sftp_pause_transfer,
+            sftp_resume_transfer,
+            sftp_cancel_transfer,
+            sftp_resolve_conflict,
+            sftp_list_transfers,
+            sftp_clear_finished_transfers,
             app_get_status,
             clipboard_read_text,
             clipboard_write_text,
@@ -123,6 +168,7 @@ pub fn run() {
         if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
             if let Some(state) = app_handle.try_state::<AppState>() {
                 state.pty_manager.shutdown_all();
+                state.sftp_manager.shutdown_all();
             }
         }
     });

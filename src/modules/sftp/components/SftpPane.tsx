@@ -1,0 +1,371 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/shared/i18n";
+import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
+import { useAlert, type ContextMenuEntry } from "@/shared/ui";
+import { copyText } from "@/shared/utils/clipboard";
+import { getEditableInput } from "@/shared/utils/editableTarget";
+import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
+import { localParent, posixParent } from "@/shared/utils/path";
+import { localFsApi } from "../api/localFsApi";
+import { sftpApi } from "../api/sftpApi";
+import { toLocalItem, toRemoteItem } from "../hooks/fileListUtils";
+import { useDirectoryBrowser } from "../hooks/useDirectoryBrowser";
+import { useSftpConnection } from "../hooks/useSftpConnection";
+import { useSftpEvents } from "../hooks/useSftpEvents";
+import { useSftpFileDrag } from "../hooks/useSftpFileDrag";
+import { useSftpTransfers } from "../hooks/useSftpTransfers";
+import { buildQueueMenu } from "../menus/sftpMenus";
+import type { FileItem, SftpConnectionState } from "../types";
+import { SftpBrowserPanels } from "./SftpBrowserPanels";
+import { SftpOverlays, type NamePromptState } from "./SftpOverlays";
+import { SftpToolbar } from "./SftpToolbar";
+import { TransferQueue } from "./TransferQueue";
+
+export interface SftpPaneProps {
+  tab: TerminalTabItem;
+  isActive: boolean;
+  isVisible: boolean;
+  mode: "split" | "full";
+  conflictPolicy: SftpConflictPolicy;
+  onOpenInTerminal?: (remotePath: string) => void;
+  onShowMenu: (x: number, y: number, items: ContextMenuEntry[]) => void;
+  onConfirmDelete: (opts: {
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+  }) => void;
+  onModalChange?: (tabId: string, open: boolean) => void;
+  onSftpState?: (tabId: string, state: SftpConnectionState) => void;
+  onToggleAutoReconnect?: (tabId: string, enabled: boolean) => void;
+  onCloseSplit?: () => void;
+}
+
+export const SftpPane: React.FC<SftpPaneProps> = ({
+  tab,
+  isActive,
+  isVisible,
+  mode,
+  conflictPolicy,
+  onOpenInTerminal,
+  onShowMenu,
+  onConfirmDelete,
+  onModalChange,
+  onSftpState,
+  onToggleAutoReconnect,
+  onCloseSplit,
+}) => {
+  const { t } = useI18n();
+  const alert = useAlert();
+
+  const [showLocal, setShowLocal] = useState(mode === "full");
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [nameModal, setNameModal] = useState<NamePromptState | null>(null);
+  const [chmodItem, setChmodItem] = useState<FileItem | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const remoteDropRef = useRef<HTMLDivElement>(null);
+  const connStateRef = useRef<SftpConnectionState>("CONNECTING");
+  const showLocalRef = useRef(showLocal);
+  const activePaneRef = useRef<"local" | "remote">("remote");
+  const modalOpenRef = useRef(false);
+  const markDisconnectRef = useRef<() => void>(() => {});
+  showLocalRef.current = showLocal;
+
+  const notifyError = useCallback(
+    (err: unknown) => alert.error(formatLocalizedError(err, t)),
+    [alert, t]
+  );
+
+  const remote = useDirectoryBrowser({
+    defaultHome: "/",
+    parentPath: posixParent,
+    fetchDir: async (path) => {
+      const res = await sftpApi.sftpListDir(tab.tabId, path);
+      return { path: res.path, items: res.entries.map(toRemoteItem) };
+    },
+    onError: (err) => {
+      if (/sender dropped|channel closed|disconnected|not found/i.test(extractRawErrorMessage(err))) {
+        markDisconnectRef.current();
+      }
+      notifyError(err);
+    },
+  });
+
+  const local = useDirectoryBrowser({
+    parentPath: localParent,
+    fetchDir: async (path) => {
+      const res = await localFsApi.localListDir(path);
+      return { path: res.path, items: res.entries.map(toLocalItem) };
+    },
+    onError: notifyError,
+  });
+
+  const transfers = useSftpTransfers({
+    tabId: tab.tabId,
+    connStateRef,
+    showLocalRef,
+    conflictPolicy,
+    remoteBrowser: remote,
+    localBrowser: local,
+    onError: notifyError,
+  });
+
+  const conn = useSftpConnection({
+    tabId: tab.tabId,
+    hostId: tab.hostId,
+    reconnectToken: tab.reconnectToken,
+    autoReconnect: tab.autoReconnect,
+    reconnectIntervalSec: tab.reconnectIntervalSec,
+    remoteBrowser: remote,
+    localBrowser: local,
+    onSftpState,
+    onHydrateJobs: transfers.setJobs,
+    onError: notifyError,
+  });
+
+  connStateRef.current = conn.connState;
+  markDisconnectRef.current = conn.markDisconnectedOnError;
+
+  const hasSftpModal =
+    transfers.conflicts.length > 0 ||
+    nameModal !== null ||
+    chmodItem !== null ||
+    transfers.pendingTransfer !== null;
+  modalOpenRef.current = hasSftpModal;
+
+  useEffect(() => {
+    onModalChange?.(tab.tabId, hasSftpModal);
+  }, [tab.tabId, hasSftpModal, onModalChange]);
+
+  const goHistoryRef = useRef((kind: "local" | "remote", delta: -1 | 1) => {
+    (kind === "local" ? local : remote).goHistory(delta);
+  });
+  goHistoryRef.current = (kind, delta) => (kind === "local" ? local : remote).goHistory(delta);
+
+  // Intercept Windows mouse side buttons (XButton1=3 Back, XButton2=4 Forward) for active SFTP pane
+  useEffect(() => {
+    if (!isVisible) return;
+    const onMouseNav = (e: MouseEvent) => {
+      if ((e.button !== 3 && e.button !== 4) || modalOpenRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type !== "mousedown") return;
+      const paneEl = (e.target as HTMLElement | null)?.closest("[data-sftp-pane]") as HTMLElement | null;
+      const kind: "local" | "remote" =
+        paneEl?.dataset.sftpPane === "local"
+          ? "local"
+          : paneEl?.dataset.sftpPane === "remote"
+            ? "remote"
+            : showLocalRef.current
+              ? activePaneRef.current
+              : "remote";
+      goHistoryRef.current(kind, e.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("mousedown", onMouseNav, true);
+    window.addEventListener("mouseup", onMouseNav, true);
+    window.addEventListener("auxclick", onMouseNav, true);
+    return () => {
+      window.removeEventListener("mousedown", onMouseNav, true);
+      window.removeEventListener("mouseup", onMouseNav, true);
+      window.removeEventListener("auxclick", onMouseNav, true);
+    };
+  }, [isVisible]);
+
+  const { requestUpload, requestDownload } = transfers;
+
+  const nativeDragActive = useSftpEvents({
+    tabId: tab.tabId,
+    isActive,
+    isVisible,
+    remoteDropRef,
+    onStatus: conn.handleStatus,
+    onProgress: transfers.handleProgress,
+    onConflict: transfers.handleConflict,
+    onNativeDrop: requestUpload,
+  });
+
+  const fileDrag = useSftpFileDrag({
+    enabled: showLocal && conn.connState === "CONNECTED",
+    containerRef,
+    onDropTransfer: (fromKind, paths) => {
+      if (fromKind === "local") requestUpload(paths);
+      else void requestDownload(paths);
+    },
+  });
+
+  const handleCopyPath = useCallback(
+    (path: string) => void copyText(path).then(() => alert.info(t("sftp.copied"), 2500)),
+    [alert, t]
+  );
+
+  const requestDelete = useCallback(
+    (targetKind: "local" | "remote", paths: string[]) => {
+      if (paths.length === 0 || (targetKind === "remote" && connStateRef.current !== "CONNECTED")) {
+        return;
+      }
+      onConfirmDelete({
+        title: t("sftp.delete_confirm_title"),
+        message: t("sftp.delete_confirm_message", { count: paths.length }),
+        onConfirm: async () => {
+          if (targetKind === "remote") {
+            await sftpApi.sftpDelete(tab.tabId, paths);
+            remote.refresh();
+          } else {
+            await localFsApi.localDelete(paths);
+            local.refresh();
+          }
+        },
+      });
+    },
+    [local, onConfirmDelete, remote, t, tab.tabId]
+  );
+
+  const handleNameSubmit = async (name: string) => {
+    if (!nameModal) return;
+    if (nameModal.kind === "mkdir") {
+      if (nameModal.targetKind === "remote") {
+        await sftpApi.sftpCreateDir(tab.tabId, remote.cwd, name);
+        remote.refresh();
+      } else {
+        await localFsApi.localCreateDir(local.cwd, name);
+        local.refresh();
+      }
+    } else if (nameModal.targetKind === "remote") {
+      await sftpApi.sftpRename(tab.tabId, nameModal.item.path, name);
+      remote.refresh();
+    } else {
+      await localFsApi.localRename(nameModal.item.path, name);
+      local.refresh();
+    }
+    setNameModal(null);
+  };
+
+  const startSplitDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const box = containerRef.current;
+    if (!box) return;
+    document.body.style.cursor = "col-resize";
+    const onMove = (ev: MouseEvent) => {
+      const rect = box.getBoundingClientRect();
+      if (rect.width > 0) {
+        setSplitRatio(Math.min(0.82, Math.max(0.18, (ev.clientX - rect.left) / rect.width)));
+      }
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      onContextMenu={(e) => {
+        if (getEditableInput(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onShowMenu(e.clientX, e.clientY, []);
+      }}
+      className="flex h-full min-h-0 select-none flex-col bg-[#0d1117] text-[#c9d1d9]"
+    >
+      <SftpToolbar
+        hostLabel={tab.title.replace(/^SFTP:\s*/i, "")}
+        connState={conn.connState}
+        sftpOffline={conn.sftpOffline}
+        remoteCwd={remote.cwd}
+        showLocal={showLocal}
+        autoReconnect={tab.autoReconnect}
+        onReconnect={() => {
+          conn.setAuthBlocked(false);
+          void conn.connectSftp();
+        }}
+        onToggleAutoReconnect={
+          onToggleAutoReconnect
+            ? (enabled) => {
+                if (enabled) conn.setAuthBlocked(false);
+                onToggleAutoReconnect(tab.tabId, enabled);
+              }
+            : undefined
+        }
+        onOpenInTerminal={onOpenInTerminal}
+        onToggleLocalPane={() => setShowLocal((v) => !v)}
+        onCloseSplit={onCloseSplit}
+      />
+
+      <SftpBrowserPanels
+        containerRef={containerRef}
+        remoteDropRef={remoteDropRef}
+        activePaneRef={activePaneRef}
+        showLocal={showLocal}
+        splitRatio={splitRatio}
+        connected={conn.connState === "CONNECTED"}
+        nativeDragActive={nativeDragActive}
+        local={local}
+        remote={remote}
+        localDrives={conn.localDrives}
+        fileDrag={fileDrag}
+        onResetSplit={() => setSplitRatio(0.5)}
+        onStartSplitDrag={startSplitDrag}
+        onShowMenu={onShowMenu}
+        onNamePrompt={setNameModal}
+        onChmod={setChmodItem}
+        onCopyPath={handleCopyPath}
+        onRequestDelete={requestDelete}
+        onRequestUpload={requestUpload}
+        onRequestDownload={(paths) => void requestDownload(paths)}
+        onUploadDialog={(dir) => void transfers.uploadViaDialog(dir)}
+      />
+
+      <TransferQueue
+        jobs={transfers.jobs}
+        expanded={transfers.queueOpen}
+        onToggleExpand={() => transfers.setQueueOpen((v) => !v)}
+        onPause={transfers.pauseTransfer}
+        onResume={transfers.resumeTransfer}
+        onCancel={transfers.cancelTransfer}
+        onClearFinished={transfers.clearFinished}
+        onContextMenuQueue={(job, hasFinished, e) =>
+          onShowMenu(
+            e.clientX,
+            e.clientY,
+            buildQueueMenu({
+              job,
+              hasFinished,
+              t,
+              onPause: transfers.pauseTransfer,
+              onResume: transfers.resumeTransfer,
+              onCancel: transfers.cancelTransfer,
+              onClearFinished: transfers.clearFinished,
+            })
+          )
+        }
+      />
+
+      <SftpOverlays
+        pendingTransfer={transfers.pendingTransfer}
+        transferBusy={transfers.transferBusy}
+        onCancelTransfer={transfers.cancelPendingTransfer}
+        onConfirmTransfer={transfers.confirmPendingTransfer}
+        activeConflict={transfers.conflicts[0] ?? null}
+        onResolveConflict={transfers.resolveConflict}
+        nameModal={nameModal}
+        onCancelNameModal={() => setNameModal(null)}
+        onSubmitNameModal={handleNameSubmit}
+        chmodItem={chmodItem}
+        onCloseChmod={() => setChmodItem(null)}
+        onConfirmChmod={async (nextMode) => {
+          if (!chmodItem) return;
+          try {
+            await sftpApi.sftpChmod(tab.tabId, chmodItem.path, nextMode);
+            remote.refresh();
+          } catch (err) {
+            notifyError(err);
+          }
+        }}
+        dragPreview={fileDrag.dragPreview}
+      />
+    </div>
+  );
+};

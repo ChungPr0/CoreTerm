@@ -77,3 +77,12 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(148, 163, 184, 0.45);
 }
+
+@keyframes alert-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}

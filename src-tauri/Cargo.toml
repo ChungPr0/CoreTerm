@@ -1,6 +1,6 @@
 [package]
 name = "coreterm"
-version = "0.1.0"
+version = "0.2.0"
 description = "CoreTerm - Multi-Tab Terminal & SSH Client"
 authors = ["ChungPr0"]
 edition = "2021"
@@ -30,6 +30,10 @@ ssh-key = { version = "0.6", features = ["ed25519", "rsa", "encryption", "rand_c
 rand_core = { version = "0.6", features = ["getrandom"] }
 keyring = { version = "3", features = ["windows-native"] }
 zeroize = { version = "1", features = ["derive"] }
+russh = "0.65.1"
+russh-sftp = "3.0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+tauri-plugin-dialog = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
