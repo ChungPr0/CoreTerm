@@ -26,15 +26,24 @@ describe("useSettingsStore", () => {
     expect(typeof initial.launchCols).toBe("number");
     expect(typeof initial.launchRows).toBe("number");
 
+    const cmdProfile = {
+      id: "cmd",
+      kind: "cmd",
+      name: "CMD",
+      executable: "cmd.exe",
+      args: [],
+    };
     const updated = {
       ...initial,
       sftpConflictPolicy: "OVERWRITE" as const,
       launchCols: 120,
-      showLocalTelemetry: !initial.showLocalTelemetry,
+      defaultShellId: "cmd",
+      defaultShellProfile: cmdProfile,
     };
     useSettingsStore.getState().updateSettings(updated);
 
     expect(useSettingsStore.getState().settings).toEqual(updated);
     expect(Array.from(storeMap.values()).some((v) => v.includes('"launchCols":120'))).toBe(true);
+    expect(Array.from(storeMap.values()).some((v) => v.includes('"defaultShellId":"cmd"'))).toBe(true);
   });
 });

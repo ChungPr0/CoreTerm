@@ -50,3 +50,46 @@ pub fn configure_main_window(window: &tauri::WebviewWindow) {
         }
     }
 }
+
+pub fn dispatch_window_sys_command(window: &tauri::WebviewWindow, action: &str) -> Result<(), String> {
+    let is_maximized = window.is_maximized().unwrap_or(false);
+    match action {
+        "restore" => {
+            if is_maximized {
+                window.unmaximize().map_err(|e| e.to_string())?;
+            }
+        }
+        "minimize" => {
+            window.minimize().map_err(|e| e.to_string())?;
+        }
+        "maximize" => {
+            if !is_maximized {
+                window.maximize().map_err(|e| e.to_string())?;
+            }
+        }
+        "close" => {
+            window.close().map_err(|e| e.to_string())?;
+        }
+        "move" | "size" => {
+            if is_maximized {
+                return Ok(());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                use windows_sys::Win32::Foundation::HWND;
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    PostMessageW, SC_MOVE, SC_SIZE, WM_SYSCOMMAND,
+                };
+                let _ = window.set_focus();
+                if let Ok(hwnd) = window.hwnd() {
+                    let cmd = if action == "move" { SC_MOVE } else { SC_SIZE };
+                    unsafe {
+                        let _ = PostMessageW(hwnd.0 as HWND, WM_SYSCOMMAND, cmd as usize, 0);
+                    }
+                }
+            }
+        }
+        other => return Err(format!("Unsupported window command: {other}")),
+    }
+    Ok(())
+}

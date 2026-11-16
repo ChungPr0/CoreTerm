@@ -1,17 +1,22 @@
 import React, { useCallback, useEffect } from "react";
 import { posixCdCmd } from "@/shared/utils/path";
 import { formatLocalizedError } from "@/shared/utils/formatError";
-import type { TerminalTabItem } from "@/shared/types/ipc";
+import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
+import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import type { HostFullConfigDto, HostProfileSummaryDto } from "@/modules/hosts";
 import { sftpApi } from "@/modules/sftp";
 import { createLocalTab, useTabsStore, windowApi } from "@/modules/workspace";
 import { sessionApi } from "../api/sessionApi";
-import { telemetryApi } from "../api/telemetryApi";
 import type { ConflictStrategy, SessionConnectAckDto } from "../types";
-import { useTelemetryStore } from "./useTelemetry";
+
+export interface NewLocalTabOpts {
+  profile?: ShellProfile;
+  asAdmin?: boolean;
+}
 
 interface UseSessionControllerOpts {
   isAppElevated: boolean;
+  defaultShellProfile: ShellProfile;
   allProfiles: HostProfileSummaryDto[];
   t: (key: string, params?: Record<string, string | number>) => string;
   onError: (msg: string) => void;
@@ -21,12 +26,14 @@ interface UseSessionControllerOpts {
 
 export function useSessionController({
   isAppElevated,
+  defaultShellProfile,
   allProfiles,
   t,
   onError,
   onDismissSidebar,
   onFocusTerminal,
 }: UseSessionControllerOpts) {
+  const startMouseDrag = useWindowMouseDrag();
   useEffect(() => {
     let active = true;
     const unlisteners: Array<() => void> = [];
@@ -41,9 +48,6 @@ export function useSessionController({
             payload.error_message ?? null,
             payload.active_local_forwards
           );
-      }),
-      telemetryApi.onTelemetryMetrics((p) => {
-        useTelemetryStore.getState().setMetric(p);
       }),
     ]).then((fns) => {
       if (!active) {
@@ -78,15 +82,16 @@ export function useSessionController({
   );
 
   const newLocalTab = useCallback(
-    (explicitAdmin?: boolean) => {
-      const tab = createLocalTab(
-        typeof explicitAdmin === "boolean" ? explicitAdmin : isAppElevated
-      );
+    (opts?: NewLocalTabOpts) => {
+      const profile = opts?.profile ?? defaultShellProfile;
+      const asAdmin =
+        typeof opts?.asAdmin === "boolean" ? opts.asAdmin : isAppElevated;
+      const tab = createLocalTab(profile, asAdmin);
       useTabsStore.getState().addTab(tab);
       onDismissSidebar();
       onFocusTerminal();
     },
-    [isAppElevated, onDismissSidebar, onFocusTerminal]
+    [defaultShellProfile, isAppElevated, onDismissSidebar, onFocusTerminal]
   );
 
   const spawnHostTab = useCallback(
@@ -100,7 +105,6 @@ export function useSessionController({
         errorMessage: null,
         reconnectToken: 0,
         conflictStrategy: strategy,
-        telemetryEnabled: host.telemetry_enabled,
         autoReconnect: host.auto_reconnect,
         reconnectIntervalSec: host.reconnect_interval_sec,
       });
@@ -173,26 +177,23 @@ export function useSessionController({
     [onError, onFocusTerminal, t]
   );
 
-  const startSplitResize = useCallback((tabId: string, e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const rect = e.currentTarget.parentElement?.getBoundingClientRect();
-    if (!rect || rect.height <= 0) return;
+  const startSplitResize = useCallback(
+    (tabId: string, e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+      if (!rect || rect.height <= 0) return;
 
-    const onMove = (ev: MouseEvent) => {
-      const clamped = Math.min(0.75, Math.max(0.25, (rect.bottom - ev.clientY) / rect.height));
-      useTabsStore.getState().resizeSftpSplit(tabId, clamped);
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, []);
+      startMouseDrag({
+        cursor: "row-resize",
+        lockUserSelect: true,
+        onMove: (ev) => {
+          const clamped = Math.min(0.75, Math.max(0.25, (rect.bottom - ev.clientY) / rect.height));
+          useTabsStore.getState().resizeSftpSplit(tabId, clamped);
+        },
+      });
+    },
+    [startMouseDrag]
+  );
 
   const handleSessionAck = useCallback((tabId: string, ack: SessionConnectAckDto) => {
     useTabsStore.getState().updateSessionAck(tabId, ack.is_admin);
@@ -200,27 +201,12 @@ export function useSessionController({
 
   const syncHostConfigInTabs = useCallback((saved: HostFullConfigDto) => {
     useTabsStore.getState().syncHostConfig(saved);
-    if (saved.options.telemetry_enabled) {
-      const ids = useTabsStore
-        .getState()
-        .tabs.filter((tab) => tab.hostId === saved.id)
-        .map((tab) => tab.tabId);
-      useTelemetryStore.getState().clearHiddenForTabs(ids);
-    }
-  }, []);
-
-  const clearLocalHiddenTelemetry = useCallback(() => {
-    const ids = useTabsStore
-      .getState()
-      .tabs.filter((tab) => tab.hostId === "local")
-      .map((tab) => tab.tabId);
-    useTelemetryStore.getState().clearHiddenForTabs(ids);
   }, []);
 
   const duplicateTab = useCallback(
     (tab: TerminalTabItem, connectHostFn: (host: HostProfileSummaryDto) => Promise<void>) => {
       if (tab.hostId === "local") {
-        newLocalTab(!!tab.isAdmin);
+        newLocalTab({ profile: tab.shellProfile, asAdmin: !!tab.isAdmin });
         return;
       }
       const profile = allProfiles.find((p) => p.id === tab.hostId);
@@ -245,7 +231,6 @@ export function useSessionController({
     startSplitResize,
     handleSessionAck,
     syncHostConfigInTabs,
-    clearLocalHiddenTelemetry,
     duplicateTab,
   };
 }

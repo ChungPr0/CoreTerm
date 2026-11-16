@@ -11,13 +11,16 @@ import {
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import { copyText, readText, replaceInputSelection } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
-import { buildLaunchItems } from "./tabMenus";
+import type { ShellProfile } from "../types";
+import { buildLaunchItems, type LocalTabLaunchOpts } from "./tabMenus";
 
 interface UseGlobalContextMenuOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
   isAppElevated: boolean;
+  shellProfiles: ShellProfile[];
+  defaultShellProfile: ShellProfile;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
-  onNewLocalTab: (asAdmin?: boolean) => void;
+  onNewLocalTab: (opts?: LocalTabLaunchOpts) => void;
   onNewHost: (initialGroup?: string) => void;
   onOpenPalette: () => void;
   onOpenSettings: () => void;
@@ -27,6 +30,8 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
   const {
     t,
     isAppElevated,
+    shellProfiles,
+    defaultShellProfile,
     setContextMenu,
     onNewLocalTab,
     onNewHost,
@@ -138,7 +143,13 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
             { type: "separator", id: "sep-gen-copy" } as ContextMenuEntry,
           ]
         : []),
-      ...buildLaunchItems(t, isAppElevated, onNewLocalTab),
+      ...buildLaunchItems({
+        t,
+        isAppElevated,
+        shellProfiles,
+        defaultShellProfile,
+        onNewLocalTab,
+      }),
       {
         id: "gen-new-connection",
         label: t("ctx.new_connection"),

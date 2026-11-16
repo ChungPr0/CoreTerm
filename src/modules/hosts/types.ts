@@ -19,8 +19,6 @@ export interface HostProfileSummaryDto {
   password_mode: PasswordMode;
   has_saved_password: boolean;
   active_port_forwards_count: number;
-  telemetry_enabled: boolean;
-  telemetry_interval_sec: number;
   auto_reconnect: boolean;
   reconnect_interval_sec: number;
   last_connected_at: string | null;
@@ -36,8 +34,6 @@ export interface SshOptionsDto {
   strict_host_key_checking: StrictHostKeyChecking;
   startup_command: string | null;
   forward_agent: boolean;
-  telemetry_enabled: boolean;
-  telemetry_interval_sec: number;
   auto_reconnect: boolean;
   reconnect_interval_sec: number;
 }
@@ -103,8 +99,6 @@ export interface UpdateSshOptionsFieldsDto {
   strict_host_key_checking?: StrictHostKeyChecking;
   startup_command?: string | null;
   forward_agent?: boolean;
-  telemetry_enabled?: boolean;
-  telemetry_interval_sec?: number;
   auto_reconnect?: boolean;
   reconnect_interval_sec?: number;
 }

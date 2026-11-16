@@ -24,11 +24,13 @@ pub enum TransferEndState {
     Skipped,
     Paused,
     Cancelled,
+    Superseded,
 }
 
 pub async fn run_transfer_checking_conflict(
     ctx: &ConflictContext<'_>,
     job: &Arc<TransferJobRecord>,
+    run_gen: u64,
 ) -> CoreResult<TransferEndState> {
     let mut dest_path = job.dest_path.lock().map(|g| g.clone()).unwrap_or_default();
     let mut resume_offset = 0u64;
@@ -102,13 +104,22 @@ pub async fn run_transfer_checking_conflict(
         }
     }
 
-    run_transfer_with_offset(ctx, job, resume_offset).await
+    if job.is_superseded(run_gen) {
+        return Ok(TransferEndState::Superseded);
+    }
+    if job.paused.load(Ordering::Acquire) {
+        return Ok(TransferEndState::Paused);
+    }
+
+    job.mark_conflict_resolved();
+    run_transfer_with_offset(ctx, job, resume_offset, run_gen).await
 }
 
 pub async fn run_transfer_with_offset(
     ctx: &ConflictContext<'_>,
     job: &Arc<TransferJobRecord>,
     requested_offset: u64,
+    run_gen: u64,
 ) -> CoreResult<TransferEndState> {
     let dest_path = job.dest_path.lock().map(|g| g.clone()).unwrap_or_default();
     let total = job.total_bytes.load(Ordering::Relaxed);
@@ -128,7 +139,7 @@ pub async fn run_transfer_with_offset(
                     .await
                     .map_err(|e| CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string()))))?;
             }
-            stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer).await
+            stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer, run_gen).await
         }
         TransferDirection::Download => {
             let mut reader = ctx.client.open_read(&job.source_path).await?;
@@ -147,7 +158,7 @@ pub async fn run_transfer_with_offset(
             if offset > 0 {
                 writer.seek(SeekFrom::Start(offset)).await?;
             }
-            stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer).await
+            stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer, run_gen).await
         }
     }
 }
@@ -157,6 +168,7 @@ async fn stream_copy_with_controls<R, W>(
     job: &Arc<TransferJobRecord>,
     reader: &mut R,
     writer: &mut W,
+    run_gen: u64,
 ) -> CoreResult<TransferEndState>
 where
     R: AsyncRead + Unpin,
@@ -168,6 +180,10 @@ where
     let mut speed_window_bytes = 0u64;
 
     loop {
+        if job.is_superseded(run_gen) {
+            let _ = writer.shutdown().await;
+            return Ok(TransferEndState::Superseded);
+        }
         if job.paused.load(Ordering::Acquire) {
             let _ = writer.shutdown().await;
             return Ok(TransferEndState::Paused);

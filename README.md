@@ -8,7 +8,6 @@ A lightweight, multi-tab Windows Terminal & SSH Connection Manager built with **
 - **Connection & Group Management**: Custom connection groups, drag-and-drop host organization, tag filtering, startup commands, and optional auto-reconnect.
 - **SSH Key Vault & Keyring**: Generate (`Ed25519`, `RSA-4096`) or import SSH keys, copy public keys, and store passwords/passphrases securely in Windows Keyring / DPAPI.
 - **Port Forwarding**: Local (`-L`), Remote (`-R`), and Dynamic SOCKS (`-D`) tunnels with pre-connect port conflict detection and shared tunnel tracking across tabs.
-- **Live Telemetry Bar**: Optional real-time CPU & RAM monitor for SSH targets and local terminal with right-click temporary hide.
 - **Bilingual UI**: Vietnamese & English localization.
 
 ## Download

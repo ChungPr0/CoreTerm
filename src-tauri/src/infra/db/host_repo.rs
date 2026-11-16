@@ -44,8 +44,6 @@ pub fn list(
             v.password_mode,
             v.secret_ref_id,
             (SELECT COUNT(*) FROM port_forwards pf WHERE pf.host_id = v.id AND pf.is_enabled = 1) AS active_pf_count,
-            COALESCE(o.telemetry_enabled, 0) AS telemetry_enabled,
-            COALESCE(o.telemetry_interval_sec, 2) AS telemetry_interval_sec,
             COALESCE(o.auto_reconnect, 0) AS auto_reconnect,
             COALESCE(o.reconnect_interval_sec, 2) AS reconnect_interval_sec,
             v.last_connected_at,
@@ -63,8 +61,7 @@ pub fn list(
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
         let secret_ref_id: Option<String> = row.get(12)?;
         let active_pf_count: i64 = row.get(13)?;
-        let telemetry_enabled: i64 = row.get(14)?;
-        let auto_reconnect: i64 = row.get(16)?;
+        let auto_reconnect: i64 = row.get(14)?;
 
         Ok(HostProfileSummaryDto {
             id: row.get(0)?,
@@ -81,13 +78,11 @@ pub fn list(
             password_mode: row.get(11)?,
             has_saved_password: secret_ref_id.is_some(),
             active_port_forwards_count: active_pf_count as usize,
-            telemetry_enabled: telemetry_enabled != 0,
-            telemetry_interval_sec: row.get(15)?,
             auto_reconnect: auto_reconnect != 0,
-            reconnect_interval_sec: row.get(17)?,
-            last_connected_at: row.get(18)?,
-            created_at: row.get(19)?,
-            updated_at: row.get(20)?,
+            reconnect_interval_sec: row.get(15)?,
+            last_connected_at: row.get(16)?,
+            created_at: row.get(17)?,
+            updated_at: row.get(18)?,
         })
     })?;
 
@@ -210,7 +205,7 @@ pub fn get_options(conn: &Connection, host_id: &str) -> CoreResult<SshOptionsDto
             r#"
             SELECT host_id, server_alive_interval, server_alive_count_max,
                    compression, strict_host_key_checking, startup_command,
-                   forward_agent, COALESCE(telemetry_enabled, 0), COALESCE(telemetry_interval_sec, 2),
+                   forward_agent,
                    COALESCE(auto_reconnect, 0), COALESCE(reconnect_interval_sec, 2)
             FROM ssh_options
             WHERE host_id = ?1
@@ -219,8 +214,7 @@ pub fn get_options(conn: &Connection, host_id: &str) -> CoreResult<SshOptionsDto
             |row| {
                 let compression: i64 = row.get(3)?;
                 let forward_agent: i64 = row.get(6)?;
-                let telemetry_enabled: i64 = row.get(7)?;
-                let auto_reconnect: i64 = row.get(9)?;
+                let auto_reconnect: i64 = row.get(7)?;
                 Ok(SshOptionsDto {
                     host_id: row.get(0)?,
                     server_alive_interval: row.get(1)?,
@@ -229,10 +223,8 @@ pub fn get_options(conn: &Connection, host_id: &str) -> CoreResult<SshOptionsDto
                     strict_host_key_checking: row.get(4)?,
                     startup_command: row.get(5)?,
                     forward_agent: forward_agent != 0,
-                    telemetry_enabled: telemetry_enabled != 0,
-                    telemetry_interval_sec: row.get(8)?,
                     auto_reconnect: auto_reconnect != 0,
-                    reconnect_interval_sec: row.get(10)?,
+                    reconnect_interval_sec: row.get(8)?,
                 })
             },
         )
@@ -246,8 +238,6 @@ pub fn get_options(conn: &Connection, host_id: &str) -> CoreResult<SshOptionsDto
         strict_host_key_checking: "ACCEPT_NEW".to_string(),
         startup_command: None,
         forward_agent: false,
-        telemetry_enabled: false,
-        telemetry_interval_sec: 2,
         auto_reconnect: false,
         reconnect_interval_sec: 2,
     }))
@@ -331,9 +321,8 @@ pub fn insert_options(
         INSERT INTO ssh_options (
             host_id, server_alive_interval, server_alive_count_max,
             compression, strict_host_key_checking, startup_command,
-            forward_agent, telemetry_enabled, telemetry_interval_sec,
-            auto_reconnect, reconnect_interval_sec
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            forward_agent, auto_reconnect, reconnect_interval_sec
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         "#,
         params![
             host_id,
@@ -343,8 +332,6 @@ pub fn insert_options(
             opts.strict_host_key_checking.as_deref().unwrap_or("ACCEPT_NEW"),
             startup_command,
             if opts.forward_agent.unwrap_or(false) { 1 } else { 0 },
-            if opts.telemetry_enabled.unwrap_or(false) { 1 } else { 0 },
-            opts.telemetry_interval_sec.unwrap_or(2).clamp(1, 60),
             if opts.auto_reconnect.unwrap_or(false) { 1 } else { 0 },
             opts.reconnect_interval_sec.unwrap_or(2).clamp(1, 60),
         ],
@@ -362,9 +349,8 @@ pub fn insert_cloned_options(
         INSERT INTO ssh_options (
             host_id, server_alive_interval, server_alive_count_max,
             compression, strict_host_key_checking, startup_command,
-            forward_agent, telemetry_enabled, telemetry_interval_sec,
-            auto_reconnect, reconnect_interval_sec
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            forward_agent, auto_reconnect, reconnect_interval_sec
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         "#,
         params![
             host_id,
@@ -374,8 +360,6 @@ pub fn insert_cloned_options(
             opts.strict_host_key_checking,
             opts.startup_command,
             if opts.forward_agent { 1 } else { 0 },
-            if opts.telemetry_enabled { 1 } else { 0 },
-            opts.telemetry_interval_sec,
             if opts.auto_reconnect { 1 } else { 0 },
             opts.reconnect_interval_sec,
         ],
@@ -405,10 +389,8 @@ pub fn update_options(
             strict_host_key_checking = ?5,
             startup_command = ?6,
             forward_agent = ?7,
-            telemetry_enabled = ?8,
-            telemetry_interval_sec = ?9,
-            auto_reconnect = ?10,
-            reconnect_interval_sec = ?11,
+            auto_reconnect = ?8,
+            reconnect_interval_sec = ?9,
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE host_id = ?1
         "#,
@@ -420,8 +402,6 @@ pub fn update_options(
             opts.strict_host_key_checking.unwrap_or(cur.strict_host_key_checking),
             startup_command,
             if opts.forward_agent.unwrap_or(cur.forward_agent) { 1 } else { 0 },
-            if opts.telemetry_enabled.unwrap_or(cur.telemetry_enabled) { 1 } else { 0 },
-            opts.telemetry_interval_sec.unwrap_or(cur.telemetry_interval_sec).clamp(1, 60),
             if opts.auto_reconnect.unwrap_or(cur.auto_reconnect) { 1 } else { 0 },
             opts.reconnect_interval_sec.unwrap_or(cur.reconnect_interval_sec).clamp(1, 60),
         ],

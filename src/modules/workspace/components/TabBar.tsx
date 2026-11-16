@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Menu, Shield } from "lucide-react";
-import type { TerminalTabItem } from "@/shared/types/ipc";
+import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useI18n } from "@/shared/i18n";
 import { useTabDrag } from "../hooks/useTabDrag";
@@ -11,8 +11,12 @@ import { WindowCaptionControls } from "./WindowCaptionControls";
 interface TabBarProps {
   tabs: TerminalTabItem[];
   activeTabId: string | null;
+  renamingTabId?: string | null;
   isAppElevated: boolean;
   isModalOpen?: boolean;
+  isContextMenuOpen?: boolean;
+  shellProfiles: ShellProfile[];
+  defaultShellProfile: ShellProfile;
   profiles: HostProfileSummaryDto[];
   onToggleSidebar: () => void;
   onSelectTab: (tabId: string) => void;
@@ -21,9 +25,13 @@ interface TabBarProps {
   onReconnectTab: (tabId: string, e: React.MouseEvent) => void;
   onToggleSftp?: (tabId: string, e: React.MouseEvent) => void;
   onReorderTab: (tabId: string, toIndex: number) => void;
-  onNewTab: (asAdmin?: boolean) => void;
+  onCommitRenameTab?: (tabId: string, title: string) => void;
+  onCancelRenameTab?: () => void;
+  onNewTab: (opts?: { profile?: ShellProfile; asAdmin?: boolean }) => void;
   onConnectProfile: (host: HostProfileSummaryDto) => void;
   onCreateNewHost: () => void;
+  onOpenPalette: () => void;
+  onOpenSettings: () => void;
   onContextMenuTab: (e: React.MouseEvent, tab: TerminalTabItem) => void;
   onContextMenuTabBar?: (e: React.MouseEvent) => void;
 }
@@ -31,8 +39,12 @@ interface TabBarProps {
 export const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTabId,
+  renamingTabId = null,
   isAppElevated,
   isModalOpen = false,
+  isContextMenuOpen = false,
+  shellProfiles,
+  defaultShellProfile,
   profiles,
   onToggleSidebar,
   onSelectTab,
@@ -41,9 +53,13 @@ export const TabBar: React.FC<TabBarProps> = ({
   onReconnectTab,
   onToggleSftp,
   onReorderTab,
+  onCommitRenameTab,
+  onCancelRenameTab,
   onNewTab,
   onConnectProfile,
   onCreateNewHost,
+  onOpenPalette,
+  onOpenSettings,
   onContextMenuTab,
   onContextMenuTabBar,
 }) => {
@@ -131,6 +147,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               isActive={tab.tabId === activeTabId}
               isDragged={tab.tabId === draggingTabId}
               isCompact={isCompactTabs}
+              isRenaming={tab.tabId === renamingTabId}
               elRef={(el) => {
                 if (el) tabElsRef.current.set(tab.tabId, el);
                 else tabElsRef.current.delete(tab.tabId);
@@ -148,6 +165,8 @@ export const TabBar: React.FC<TabBarProps> = ({
               onToggleSftp={
                 onToggleSftp ? (e) => onToggleSftp(tab.tabId, e) : undefined
               }
+              onCommitRename={(title) => onCommitRenameTab?.(tab.tabId, title)}
+              onCancelRename={onCancelRenameTab}
               onContextMenu={(e) => onContextMenuTab(e, tab)}
             />
           ))}
@@ -156,10 +175,15 @@ export const TabBar: React.FC<TabBarProps> = ({
         <NewTabDropdown
           isAppElevated={isAppElevated}
           isModalOpen={isModalOpen}
+          isContextMenuOpen={isContextMenuOpen}
+          shellProfiles={shellProfiles}
+          defaultShellProfile={defaultShellProfile}
           profiles={profiles}
           onNewTab={onNewTab}
           onConnectProfile={onConnectProfile}
           onCreateNewHost={onCreateNewHost}
+          onOpenPalette={onOpenPalette}
+          onOpenSettings={onOpenSettings}
         />
 
         <div

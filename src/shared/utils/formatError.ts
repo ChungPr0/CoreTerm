@@ -185,7 +185,7 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   },
   {
     pattern:
-      /^(?:Failed to (?:open elevated ConPTY|spawn elevated powershell\.exe|verify elevated worker handshake|open named pipe|resolve executable path)|Elevation launched without process handle|Elevation thread panicked|Invalid elevated worker handshake).*$/i,
+      /^(?:Failed to (?:open elevated ConPTY|spawn elevated [^:]+|verify elevated worker handshake|open named pipe|resolve executable path)|Elevation launched without process handle|Elevation thread panicked|Invalid elevated worker handshake).*$/i,
     key: "errors.session_elevated_failed",
     params: (m) => ({ detail: m[0] }),
   },

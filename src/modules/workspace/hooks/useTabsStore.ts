@@ -6,16 +6,21 @@ import type {
   TerminalTabItem,
 } from "@/shared/types/ipc";
 import type { HostFullConfigDto } from "@/modules/hosts";
-import { createLocalTab, sftpToTabState } from "../utils/tabHelpers";
+import { loadSettings } from "@/modules/settings/settingsStorage";
+import { DEFAULT_LOCAL_SHELL, createLocalTab, sftpToTabState } from "../utils/tabHelpers";
 
 export type TabDisposeCallback = (tab: TerminalTabItem, hadSftp: boolean) => void;
 
 interface TabsStoreState {
   tabs: TerminalTabItem[];
   activeTabId: string | null;
+  renamingTabId: string | null;
   openedSftpTabs: Record<string, boolean>;
   sftpModalByTab: Record<string, boolean>;
   setActiveTabId: (tabId: string | null) => void;
+  startRenamingTab: (tabId: string) => void;
+  cancelRenamingTab: () => void;
+  renameTab: (tabId: string, title: string) => void;
   addTab: (tab: TerminalTabItem) => void;
   closeTab: (
     tabId: string,
@@ -42,20 +47,45 @@ interface TabsStoreState {
   markLocalTabsAdmin: () => void;
 }
 
-const initialTab = createLocalTab();
+const initialShell = loadSettings().defaultShellProfile ?? DEFAULT_LOCAL_SHELL;
+const initialTab = createLocalTab(initialShell);
 
 export const useTabsStore = create<TabsStoreState>((set, get) => ({
   tabs: [initialTab],
   activeTabId: initialTab.tabId,
+  renamingTabId: null,
   openedSftpTabs: {},
   sftpModalByTab: {},
 
   setActiveTabId: (tabId) => set({ activeTabId: tabId }),
 
+  startRenamingTab: (tabId) =>
+    set((s) => {
+      const target = s.tabs.find((t) => t.tabId === tabId);
+      if (!target || target.hostId !== "local") return s;
+      return { renamingTabId: tabId, activeTabId: tabId };
+    }),
+
+  cancelRenamingTab: () => set({ renamingTabId: null }),
+
+  renameTab: (tabId, rawTitle) =>
+    set((s) => {
+      const nextTitle = rawTitle.trim();
+      const target = s.tabs.find((t) => t.tabId === tabId);
+      if (!target || target.hostId !== "local" || !nextTitle) {
+        return s.renamingTabId === tabId ? { renamingTabId: null } : s;
+      }
+      return {
+        renamingTabId: s.renamingTabId === tabId ? null : s.renamingTabId,
+        tabs: s.tabs.map((t) => (t.tabId === tabId ? { ...t, title: nextTitle } : t)),
+      };
+    }),
+
   addTab: (tab) =>
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.tabId,
+      renamingTabId: null,
     })),
 
   closeTab: (tabId, onDispose, onEmpty) => {
@@ -77,6 +107,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       set({
         tabs: [],
         activeTabId: null,
+        renamingTabId: null,
         openedSftpTabs: nextOpened,
         sftpModalByTab: nextModals,
       });
@@ -92,6 +123,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     set({
       tabs: nextTabs,
       activeTabId: nextActive,
+      renamingTabId: state.renamingTabId === tabId ? null : state.renamingTabId,
       openedSftpTabs: nextOpened,
       sftpModalByTab: nextModals,
     });
@@ -109,6 +141,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       openedSftpTabs: state.openedSftpTabs[keepTabId] ? { [keepTabId]: true } : {},
       sftpModalByTab: state.sftpModalByTab[keepTabId] ? { [keepTabId]: true } : {},
       activeTabId: keepTabId,
+      renamingTabId: state.renamingTabId === keepTabId ? keepTabId : null,
     });
   },
 
@@ -222,7 +255,11 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
         s.activeTabId === tabId && nextTabs.length > 0
           ? nextTabs[Math.min(Math.max(idx, 0), nextTabs.length - 1)].tabId
           : s.activeTabId;
-      return { tabs: nextTabs, activeTabId: nextActive };
+      return {
+        tabs: nextTabs,
+        activeTabId: nextActive,
+        renamingTabId: s.renamingTabId === tabId ? null : s.renamingTabId,
+      };
     }),
 
   toggleAutoReconnect: (tabId, enabled) =>
@@ -238,7 +275,6 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
         tab.hostId === saved.id
           ? {
               ...tab,
-              telemetryEnabled: saved.options.telemetry_enabled,
               autoReconnect: saved.options.auto_reconnect,
               reconnectIntervalSec: saved.options.reconnect_interval_sec,
             }

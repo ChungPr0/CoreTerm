@@ -32,8 +32,6 @@ pub struct HostProfileSummaryDto {
     pub password_mode: String,
     pub has_saved_password: bool,
     pub active_port_forwards_count: usize,
-    pub telemetry_enabled: bool,
-    pub telemetry_interval_sec: u16,
     pub auto_reconnect: bool,
     pub reconnect_interval_sec: u16,
     pub last_connected_at: Option<String>,
@@ -70,8 +68,6 @@ pub struct UpdateSshOptionsFieldsDto {
     pub strict_host_key_checking: Option<String>,
     pub startup_command: Option<String>,
     pub forward_agent: Option<bool>,
-    pub telemetry_enabled: Option<bool>,
-    pub telemetry_interval_sec: Option<u16>,
     pub auto_reconnect: Option<bool>,
     pub reconnect_interval_sec: Option<u16>,
 }
@@ -145,8 +141,6 @@ pub struct SshOptionsDto {
     pub strict_host_key_checking: String,
     pub startup_command: Option<String>,
     pub forward_agent: bool,
-    pub telemetry_enabled: bool,
-    pub telemetry_interval_sec: u16,
     pub auto_reconnect: bool,
     pub reconnect_interval_sec: u16,
 }

@@ -1,6 +1,15 @@
 export type SftpConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME" | "RESUME";
 export type ForwardType = "LOCAL" | "REMOTE" | "DYNAMIC";
 export type ConflictStrategy = "AUTO_SHARE_OR_SKIP" | "OVERRIDE_PORT" | "ABORT";
+export type ShellKind = "powershell" | "pwsh" | "cmd" | "git-bash" | "wsl";
+
+export interface ShellProfile {
+  id: string;
+  kind: ShellKind | string;
+  name: string;
+  executable: string;
+  args: string[];
+}
 
 export type SessionState =
   | "CONNECTING"
@@ -42,12 +51,12 @@ export interface TerminalTabItem {
   hostId: string;
   title: string;
   hostSubtitle: string;
+  shellProfile?: ShellProfile;
   state: SessionState;
   errorMessage?: string | null;
   reconnectToken: number;
   conflictStrategy?: ConflictStrategy;
   activeForwards?: PortForwardStatusDto[];
-  telemetryEnabled?: boolean;
   autoReconnect?: boolean;
   reconnectIntervalSec?: number;
   isAdmin?: boolean;

@@ -3,41 +3,44 @@ import {
   Clipboard,
   ClipboardCopy,
   Eraser,
-  Eye,
-  EyeOff,
   RotateCw,
+  Search,
   TextSelect,
 } from "lucide-react";
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
-import type { TerminalTabItem } from "@/shared/types/ipc";
+import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { copyText } from "@/shared/utils/clipboard";
-import type { AppSettingsValues } from "@/modules/settings";
-import { buildSftpPanelItem, isTabOffline } from "@/modules/workspace";
+import {
+  buildLaunchItems,
+  buildSftpPanelItem,
+  isTabOffline,
+  type LocalTabLaunchOpts,
+} from "@/modules/workspace";
 import type { TerminalContextActions } from "../hooks/useTerminalSession";
 
 interface UseTerminalMenusOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
-  settings: AppSettingsValues;
-  hiddenTelemetryTabIds: Record<string, boolean>;
+  isAppElevated: boolean;
+  shellProfiles: ShellProfile[];
+  defaultShellProfile: ShellProfile;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
+  onNewLocalTab: (opts?: LocalTabLaunchOpts) => void;
+  onFindInTab: (tabId: string) => void;
   onReconnectTab: (tabId: string) => void;
   onToggleSftp: (tabId: string) => void;
-  onShowTelemetry: (tabId: string) => void;
-  onHideTelemetry: (tabId: string) => void;
-  onFocusTerminal: () => void;
 }
 
 export function useTerminalMenus(opts: UseTerminalMenusOpts) {
   const {
     t,
-    settings,
-    hiddenTelemetryTabIds,
+    isAppElevated,
+    shellProfiles,
+    defaultShellProfile,
     setContextMenu,
+    onNewLocalTab,
+    onFindInTab,
     onReconnectTab,
     onToggleSftp,
-    onShowTelemetry,
-    onHideTelemetry,
-    onFocusTerminal,
   } = opts;
 
   const openTerminalMenu = useCallback(
@@ -72,6 +75,13 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
           icon: <Eraser className="h-3.5 w-3.5" />,
           onSelect: actions.clear,
         },
+        {
+          id: "term-find",
+          label: t("ctx.find"),
+          icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
+          shortcut: "Ctrl+F",
+          onSelect: () => onFindInTab(tab.tabId),
+        },
       ];
 
       if (tab.hostId !== "local" || offline) {
@@ -89,58 +99,31 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
         }
       }
 
-      const configuredTelemetry =
-        tab.hostId === "local"
-          ? settings.showLocalTelemetry
-          : (tab.telemetryEnabled ?? false);
-
-      if (configuredTelemetry && hiddenTelemetryTabIds[tab.tabId]) {
-        items.push(
-          { type: "separator", id: "sep-term-telemetry" },
-          {
-            id: "term-show-telemetry",
-            label: t("ctx.show_telemetry"),
-            icon: <Eye className="h-3.5 w-3.5 text-emerald-400" />,
-            onSelect: () => {
-              onShowTelemetry(tab.tabId);
-              actions.focus();
-            },
-          }
-        );
-      }
+      items.push(
+        { type: "separator", id: "sep-term-launch" },
+        ...buildLaunchItems({
+          t,
+          isAppElevated,
+          shellProfiles,
+          defaultShellProfile,
+          contextShell: tab.hostId === "local" ? tab.shellProfile : undefined,
+          onNewLocalTab,
+        })
+      );
 
       setContextMenu({ x: e.clientX, y: e.clientY, items });
     },
     [
-      hiddenTelemetryTabIds,
+      defaultShellProfile,
+      isAppElevated,
+      onFindInTab,
+      onNewLocalTab,
       onReconnectTab,
-      onShowTelemetry,
       onToggleSftp,
       setContextMenu,
-      settings.showLocalTelemetry,
+      shellProfiles,
       t,
     ]
-  );
-
-  const openTelemetryMenu = useCallback(
-    (e: React.MouseEvent, tab: TerminalTabItem) => {
-      setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
-        items: [
-          {
-            id: "telemetry-hide",
-            label: t("ctx.hide_telemetry"),
-            icon: <EyeOff className="h-3.5 w-3.5 text-slate-400" />,
-            onSelect: () => {
-              onHideTelemetry(tab.tabId);
-              onFocusTerminal();
-            },
-          },
-        ],
-      });
-    },
-    [onFocusTerminal, onHideTelemetry, setContextMenu, t]
   );
 
   const openBannerMenu = useCallback(
@@ -170,5 +153,5 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
     [onReconnectTab, setContextMenu, t]
   );
 
-  return { openTerminalMenu, openTelemetryMenu, openBannerMenu };
+  return { openTerminalMenu, openBannerMenu };
 }

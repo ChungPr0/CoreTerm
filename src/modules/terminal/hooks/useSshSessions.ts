@@ -1,12 +1,13 @@
 import { useCallback, useMemo } from "react";
+import type { ShellProfile } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useTabsStore } from "@/modules/workspace";
 import { usePtyAuthPrompts } from "./usePtyAuthPrompts";
 import { useSessionController } from "./useSessionController";
-import { useTelemetryStore } from "./useTelemetry";
 
 interface UseSshSessionsOpts {
   isAppElevated: boolean;
+  defaultShellProfile: ShellProfile;
   allProfiles: HostProfileSummaryDto[];
   t: (key: string, params?: Record<string, string | number>) => string;
   onError: (msg: string) => void;
@@ -17,19 +18,18 @@ interface UseSshSessionsOpts {
 export function useSshSessions(opts: UseSshSessionsOpts) {
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
+  const renamingTabId = useTabsStore((s) => s.renamingTabId);
   const openedSftpTabs = useTabsStore((s) => s.openedSftpTabs);
   const sftpModalByTab = useTabsStore((s) => s.sftpModalByTab);
+  const startRenamingTab = useTabsStore((s) => s.startRenamingTab);
+  const cancelRenamingTab = useTabsStore((s) => s.cancelRenamingTab);
+  const renameTab = useTabsStore((s) => s.renameTab);
   const reorderTab = useTabsStore((s) => s.reorderTab);
   const setSftpModalOpen = useTabsStore((s) => s.setSftpModalOpen);
   const setSftpState = useTabsStore((s) => s.setSftpState);
   const removeTabIfMultiple = useTabsStore((s) => s.removeTabIfMultiple);
   const toggleAutoReconnect = useTabsStore((s) => s.toggleAutoReconnect);
   const markLocalTabsAdmin = useTabsStore((s) => s.markLocalTabsAdmin);
-
-  const telemetryByHost = useTelemetryStore((s) => s.telemetryByHost);
-  const hiddenTelemetryIds = useTelemetryStore((s) => s.hiddenTelemetryIds);
-  const hideTabTelemetry = useTelemetryStore((s) => s.hideTabTelemetry);
-  const showTabTelemetry = useTelemetryStore((s) => s.showTabTelemetry);
 
   const controller = useSessionController(opts);
   const prompts = usePtyAuthPrompts(controller.spawnHostTab);
@@ -49,12 +49,12 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     tabs,
     stableTabs,
     activeTabId,
-    telemetryByHost,
-    hiddenTelemetryIds,
-    hideTabTelemetry,
-    showTabTelemetry,
+    renamingTabId,
     openedSftpTabs,
     sftpModalByTab,
+    startRenamingTab,
+    cancelRenamingTab,
+    renameTab,
     authPrompt: prompts.authPrompt,
     setAuthPrompt: prompts.setAuthPrompt,
     authPromptSource: prompts.authPromptSource,
@@ -83,7 +83,6 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     handleElevationCancelled: removeTabIfMultiple,
     toggleAutoReconnect,
     syncHostConfigInTabs: controller.syncHostConfigInTabs,
-    clearLocalHiddenTelemetry: controller.clearLocalHiddenTelemetry,
     markLocalTabsAdmin,
   };
 }

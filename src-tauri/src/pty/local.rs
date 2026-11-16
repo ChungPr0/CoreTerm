@@ -9,10 +9,9 @@ use tauri::AppHandle;
 use tracing::warn;
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::hosts::HostService;
 #[cfg(windows)]
 use crate::infra::os::elevated_pty;
-use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto};
+use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto, ShellProfile};
 
 #[cfg(windows)]
 use super::events::{
@@ -26,13 +25,13 @@ impl PtySessionManager {
     pub(super) fn connect_elevated_local(
         &self,
         app: &AppHandle,
-        hosts: &HostService,
         req: SessionConnectRequestDto,
+        profile: &ShellProfile,
         on_output: Channel<Vec<u8>>,
     ) -> CoreResult<SessionConnectAckDto> {
         #[cfg(not(windows))]
         {
-            let _ = (app, hosts, req, on_output);
+            let _ = (app, req, profile, on_output);
             return Err(CoreError::Pty(
                 "Elevated tabs are only supported on Windows".to_string(),
             ));
@@ -44,7 +43,12 @@ impl PtySessionManager {
             let host_id = req.host_id;
             emit_status(app, &tab_id, &host_id, "CONNECTING", vec![], None);
 
-            let conn = match elevated_pty::spawn_elevated_pty(req.cols, req.rows) {
+            let conn = match elevated_pty::spawn_elevated_pty(
+                req.cols,
+                req.rows,
+                &profile.executable,
+                &profile.args,
+            ) {
                 Ok(c) => c,
                 Err(msg) => {
                     emit_status(app, &tab_id, &host_id, "ERROR", vec![], Some(msg.clone()));
@@ -71,12 +75,10 @@ impl PtySessionManager {
 
             self.sessions.insert(tab_id.clone(), session.clone());
             emit_status(app, &tab_id, &host_id, "ONLINE", vec![], None);
-            self.telemetry_hub.register_tab(app, hosts, &host_id, &tab_id);
 
             let (tx, batcher_handle) = spawn_output_batcher(on_output.clone());
             let sessions_map = self.sessions.clone();
             let tunnel_reg = self.tunnel_registry.clone();
-            let telemetry_hub = self.telemetry_hub.clone();
             let app_handle = app.clone();
             let reader_tab_id = tab_id.clone();
             let reader_host_id = host_id.clone();
@@ -130,7 +132,6 @@ impl PtySessionManager {
                         ReaderExitCtx {
                             sessions_map: &sessions_map,
                             tunnel_reg: &tunnel_reg,
-                            telemetry_hub: &telemetry_hub,
                             app_handle: &app_handle,
                             on_output: &on_output,
                             session_ref: &session_ref,
@@ -152,7 +153,7 @@ impl PtySessionManager {
                 tab_id,
                 host_id,
                 pid: None,
-                cli_preview: "powershell.exe (Admin)".to_string(),
+                cli_preview: format!("{} (Admin)", profile.name),
                 status: "ONLINE".to_string(),
                 is_admin: true,
             })

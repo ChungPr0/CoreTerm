@@ -75,3 +75,16 @@ pub async fn window_close(window: tauri::WebviewWindow) -> AppResult<()> {
     let _ = window.close();
     Ok(())
 }
+
+#[tauri::command]
+pub async fn window_is_maximized(window: tauri::WebviewWindow) -> AppResult<bool> {
+    Ok(window.is_maximized().unwrap_or(false))
+}
+
+#[tauri::command]
+pub async fn window_sys_command(
+    window: tauri::WebviewWindow,
+    action: String,
+) -> AppResult<()> {
+    os::window::dispatch_window_sys_command(&window, &action).map_err(AppError::Os)
+}

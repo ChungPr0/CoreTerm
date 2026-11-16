@@ -7,6 +7,8 @@ interface UseGlobalShortcutsOpts {
   hasContextMenu: boolean;
   onTogglePalette: () => void;
   onNewLocalTab: () => void;
+  onFindInTerminal: () => void;
+  onOpenSettings: () => void;
   onCloseContextMenu: () => void;
   onDismissSidebar: () => void;
 }
@@ -18,20 +20,46 @@ export function useGlobalShortcuts(opts: UseGlobalShortcutsOpts) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const cur = optsRef.current;
       const key = e.key.toLowerCase();
-      if (key !== "k" && key !== "t") return;
+
+      if (!e.shiftKey) {
+        if (e.key === ",") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!e.repeat && !cur.hasAnyModal) {
+            cur.onCloseContextMenu();
+            cur.onOpenSettings();
+          }
+          return;
+        }
+        // Always suppress WebView2's built-in Ctrl+F Find bar and route to Terminal Find.
+        if (key === "f") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!e.repeat && !cur.hasAnyModal) {
+            cur.onCloseContextMenu();
+            cur.onFindInTerminal();
+          }
+        }
+        return;
+      }
+
+      if (key !== "k" && key !== "t" && key !== "f") return;
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return;
 
-      const cur = optsRef.current;
       if (key === "k" && !cur.hasBlockingModal) {
         cur.onCloseContextMenu();
         cur.onTogglePalette();
       } else if (key === "t" && !cur.hasAnyModal) {
         cur.onCloseContextMenu();
         cur.onNewLocalTab();
+      } else if (key === "f" && !cur.hasAnyModal) {
+        cur.onCloseContextMenu();
+        cur.onFindInTerminal();
       }
     };
 

@@ -8,15 +8,31 @@ use crate::core::error::{CoreError, CoreResult};
 
 const KEYRING_SERVICE: &str = "coreterm";
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct SecretVault {
     fallback_mem: Arc<DashMap<String, Zeroizing<String>>>,
+    use_keyring: bool,
+}
+
+impl Default for SecretVault {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SecretVault {
     pub fn new() -> Self {
         Self {
             fallback_mem: Arc::new(DashMap::new()),
+            use_keyring: true,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_in_memory() -> Self {
+        Self {
+            fallback_mem: Arc::new(DashMap::new()),
+            use_keyring: false,
         }
     }
 
@@ -33,18 +49,22 @@ impl SecretVault {
         self.fallback_mem
             .insert(secret_ref_id.to_string(), zeroized.clone());
 
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
-            let _ = entry.set_password(&zeroized);
+        if self.use_keyring {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
+                let _ = entry.set_password(&zeroized);
+            }
         }
         Ok(())
     }
 
     pub fn get_secret(&self, secret_ref_id: &str) -> CoreResult<Option<Zeroizing<String>>> {
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
-            match entry.get_password() {
-                Ok(pw) => return Ok(Some(Zeroizing::new(pw))),
-                Err(keyring::Error::NoEntry) => {}
-                Err(_) => {}
+        if self.use_keyring {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
+                match entry.get_password() {
+                    Ok(pw) => return Ok(Some(Zeroizing::new(pw))),
+                    Err(keyring::Error::NoEntry) => {}
+                    Err(_) => {}
+                }
             }
         }
 
@@ -57,11 +77,13 @@ impl SecretVault {
 
     pub fn delete_secret(&self, secret_ref_id: &str) -> CoreResult<()> {
         self.fallback_mem.remove(secret_ref_id);
-        if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
-            match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => {}
-                Err(e) => {
-                    return Err(CoreError::Os(format!("Keyring delete error: {e}")));
+        if self.use_keyring {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, secret_ref_id) {
+                match entry.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => {}
+                    Err(e) => {
+                        return Err(CoreError::Os(format!("Keyring delete error: {e}")));
+                    }
                 }
             }
         }

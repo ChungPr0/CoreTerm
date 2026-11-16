@@ -1,14 +1,15 @@
-export { sessionApi } from "./api/sessionApi";
-export { telemetryApi } from "./api/telemetryApi";
+export { sessionApi, detectAvailableShells } from "./api/sessionApi";
 export { TerminalViewport } from "./components/TerminalViewport";
-export { TelemetryBar } from "./components/TelemetryBar";
 export { AuthPromptModal } from "./components/AuthPromptModal";
 export { HostKeyPromptModal } from "./components/HostKeyPromptModal";
 export { SecretPromptModal } from "./components/SecretPromptModal";
 export { useSshSessions } from "./hooks/useSshSessions";
-export { useSessionController } from "./hooks/useSessionController";
+export { useShellsStore, resolveDefaultShell } from "./hooks/useShellsStore";
+export {
+  useSessionController,
+  type NewLocalTabOpts,
+} from "./hooks/useSessionController";
 export { usePtyAuthPrompts } from "./hooks/usePtyAuthPrompts";
-export { useTelemetryStore } from "./hooks/useTelemetry";
 export {
   useTerminalSession,
   type TerminalContextActions,
@@ -21,5 +22,4 @@ export type {
   SessionConnectAckDto,
   SessionHostKeyPromptEventDto,
   SessionStatusEventDto,
-  TelemetryMetricsEventDto,
 } from "./types";

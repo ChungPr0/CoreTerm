@@ -3,6 +3,8 @@ import type {
   PortForwardStatusDto,
   SessionState,
   SftpConnectionState,
+  ShellKind,
+  ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
 
@@ -11,6 +13,8 @@ export type {
   PortForwardStatusDto,
   SessionState,
   SftpConnectionState,
+  ShellKind,
+  ShellProfile,
   TerminalTabItem,
 };
 

@@ -87,11 +87,72 @@ pub struct TransferJobRecord {
     pub status: Mutex<TransferJobStatus>,
     pub error_message: Mutex<Option<String>>,
     pub paused: AtomicBool,
+    pub run_gen: AtomicU64,
+    pub conflict_resolved: AtomicBool,
+    pub exec_lock: tokio::sync::Mutex<()>,
     pub cancel_token: CancellationToken,
     pub batch_conflict: Arc<BatchConflictState>,
 }
 
 impl TransferJobRecord {
+    pub fn mark_conflict_resolved(&self) {
+        self.conflict_resolved.store(true, Ordering::Release);
+    }
+
+    pub fn is_superseded(&self, run_gen: u64) -> bool {
+        self.run_gen.load(Ordering::Acquire) != run_gen
+    }
+
+    fn begin_pause(&self) -> bool {
+        let Ok(mut status) = self.status.lock() else {
+            return false;
+        };
+        if !matches!(*status, TransferJobStatus::Queued | TransferJobStatus::Running) {
+            return false;
+        }
+        self.run_gen.fetch_add(1, Ordering::AcqRel);
+        self.paused.store(true, Ordering::Release);
+        *status = TransferJobStatus::Paused;
+        self.speed_bps.store(0, Ordering::Relaxed);
+        true
+    }
+
+    /// Transitions a paused/failed job back to Queued and returns `(next_gen, forced_resume_offset)`.
+    fn begin_resume(&self) -> Option<(u64, Option<u64>)> {
+        let Ok(mut status) = self.status.lock() else {
+            return None;
+        };
+        if !matches!(*status, TransferJobStatus::Paused | TransferJobStatus::Failed) {
+            return None;
+        }
+        let next_gen = self.run_gen.fetch_add(1, Ordering::AcqRel) + 1;
+        self.paused.store(false, Ordering::Release);
+        *status = TransferJobStatus::Queued;
+        drop(status);
+        if let Ok(mut err) = self.error_message.lock() {
+            *err = None;
+        }
+        let forced_offset = if self.conflict_resolved.load(Ordering::Acquire) {
+            Some(self.transferred_bytes.load(Ordering::Relaxed))
+        } else {
+            None
+        };
+        Some((next_gen, forced_offset))
+    }
+
+    fn begin_cancel(&self) -> bool {
+        let Ok(mut status) = self.status.lock() else {
+            return false;
+        };
+        if status.is_finished() {
+            return false;
+        }
+        self.run_gen.fetch_add(1, Ordering::AcqRel);
+        self.cancel_token.cancel();
+        *status = TransferJobStatus::Cancelled;
+        self.speed_bps.store(0, Ordering::Relaxed);
+        true
+    }
     pub fn to_dto(&self) -> SftpTransferJobDto {
         let dest_path = self.dest_path.lock().map(|g| g.clone()).unwrap_or_default();
         let file_name = self.file_name.lock().map(|g| g.clone()).unwrap_or_default();
@@ -237,57 +298,38 @@ impl TransferEngine {
             .collect()
     }
 
-    fn get_job(&self, job_id: &str) -> CoreResult<(Arc<TransferJobRecord>, TransferJobStatus)> {
-        let job = self
-            .jobs
+    fn get_job(&self, job_id: &str) -> CoreResult<Arc<TransferJobRecord>> {
+        self.jobs
             .get(job_id)
-            .ok_or_else(|| CoreError::NotFound(format!("Transfer job not found: {job_id}")))?
-            .clone();
-        let status = *job
-            .status
-            .lock()
-            .map_err(|_| CoreError::Internal("Transfer status lock poisoned".to_string()))?;
-        Ok((job, status))
+            .map(|entry| entry.clone())
+            .ok_or_else(|| CoreError::NotFound(format!("Transfer job not found: {job_id}")))
     }
 
     pub fn pause_job(&self, job_id: &str) -> CoreResult<()> {
-        let (job, current) = self.get_job(job_id)?;
-        if matches!(current, TransferJobStatus::Queued | TransferJobStatus::Running) {
-            job.paused.store(true, Ordering::Release);
-            job.set_status(TransferJobStatus::Paused, None);
-            job.speed_bps.store(0, Ordering::Relaxed);
+        let job = self.get_job(job_id)?;
+        if job.begin_pause() {
             emit_progress(&self.app, &job);
         }
         Ok(())
     }
 
     pub fn resume_job(self: &Arc<Self>, job_id: &str) -> CoreResult<()> {
-        let (job, current) = self.get_job(job_id)?;
-        if !matches!(
-            current,
-            TransferJobStatus::Paused | TransferJobStatus::Failed
-        ) {
+        let job = self.get_job(job_id)?;
+        let Some((next_gen, forced_offset)) = job.begin_resume() else {
             return Ok(());
-        }
-
-        job.paused.store(false, Ordering::Release);
-        job.set_status(TransferJobStatus::Queued, None);
+        };
         emit_progress(&self.app, &job);
 
         let engine = Arc::clone(self);
-        let resume_from = job.transferred_bytes.load(Ordering::Relaxed);
         tokio::spawn(async move {
-            engine.execute_job(job, Some(resume_from)).await;
+            engine.execute_job(job, next_gen, forced_offset).await;
         });
         Ok(())
     }
 
     pub fn cancel_job(&self, job_id: &str) -> CoreResult<()> {
-        let (job, current) = self.get_job(job_id)?;
-        if !current.is_finished() {
-            job.cancel_token.cancel();
-            job.set_status(TransferJobStatus::Cancelled, None);
-            job.speed_bps.store(0, Ordering::Relaxed);
+        let job = self.get_job(job_id)?;
+        if job.begin_cancel() {
             emit_progress(&self.app, &job);
         }
         Ok(())
@@ -330,6 +372,9 @@ impl TransferEngine {
             status: Mutex::new(TransferJobStatus::Queued),
             error_message: Mutex::new(None),
             paused: AtomicBool::new(false),
+            run_gen: AtomicU64::new(0),
+            conflict_resolved: AtomicBool::new(false),
+            exec_lock: tokio::sync::Mutex::new(()),
             cancel_token: self.session_cancel.child_token(),
             batch_conflict,
         });
@@ -344,7 +389,7 @@ impl TransferEngine {
 
         let engine = Arc::clone(self);
         tokio::spawn(async move {
-            engine.execute_job(record, None).await;
+            engine.execute_job(record, 0, None).await;
         });
 
         dto
@@ -353,12 +398,19 @@ impl TransferEngine {
     async fn execute_job(
         &self,
         job: Arc<TransferJobRecord>,
+        run_gen: u64,
         forced_resume_offset: Option<u64>,
     ) {
+        if job.is_superseded(run_gen) || job.paused.load(Ordering::Acquire) {
+            return;
+        }
+
         let permit = tokio::select! {
             _ = job.cancel_token.cancelled() => {
-                job.set_status(TransferJobStatus::Cancelled, None);
-                emit_progress(&self.app, &job);
+                if !job.is_superseded(run_gen) {
+                    job.set_status(TransferJobStatus::Cancelled, None);
+                    emit_progress(&self.app, &job);
+                }
                 return;
             }
             p = self.semaphore.clone().acquire_owned() => match p {
@@ -367,7 +419,8 @@ impl TransferEngine {
             }
         };
 
-        if job.paused.load(Ordering::Acquire) {
+        let _exec_guard = job.exec_lock.lock().await;
+        if job.is_superseded(run_gen) || job.paused.load(Ordering::Acquire) {
             drop(permit);
             return;
         }
@@ -389,15 +442,21 @@ impl TransferEngine {
         };
 
         let result = match forced_resume_offset {
-            Some(off) => run_transfer_with_offset(&ctx, &job, off).await,
-            None => run_transfer_checking_conflict(&ctx, &job).await,
+            Some(off) => run_transfer_with_offset(&ctx, &job, off, run_gen).await,
+            None => run_transfer_checking_conflict(&ctx, &job, run_gen).await,
         };
+
+        if matches!(result, Ok(TransferEndState::Superseded)) || job.is_superseded(run_gen) {
+            drop(permit);
+            return;
+        }
 
         let (final_status, err) = match result {
             Ok(TransferEndState::Completed) => (TransferJobStatus::Completed, None),
             Ok(TransferEndState::Skipped) => (TransferJobStatus::Skipped, None),
             Ok(TransferEndState::Paused) => (TransferJobStatus::Paused, None),
             Ok(TransferEndState::Cancelled) => (TransferJobStatus::Cancelled, None),
+            Ok(TransferEndState::Superseded) => unreachable!(),
             Err(e) => (
                 TransferJobStatus::Failed,
                 Some(dedupe_error_text(&e.to_string())),
@@ -415,6 +474,28 @@ impl TransferEngine {
 mod tests {
     use super::*;
 
+    fn sample_job() -> TransferJobRecord {
+        TransferJobRecord {
+            job_id: "job-1".into(),
+            tab_id: "tab-1".into(),
+            direction: TransferDirection::Upload,
+            source_path: "C:\\tmp\\a.bin".into(),
+            dest_path: Mutex::new("/tmp/a.bin".into()),
+            file_name: Mutex::new("a.bin".into()),
+            total_bytes: AtomicU64::new(1024),
+            transferred_bytes: AtomicU64::new(0),
+            speed_bps: AtomicU64::new(500),
+            status: Mutex::new(TransferJobStatus::Queued),
+            error_message: Mutex::new(None),
+            paused: AtomicBool::new(false),
+            run_gen: AtomicU64::new(0),
+            conflict_resolved: AtomicBool::new(false),
+            exec_lock: tokio::sync::Mutex::new(()),
+            cancel_token: CancellationToken::new(),
+            batch_conflict: BatchConflictState::new(ConflictPolicy::Ask),
+        }
+    }
+
     #[test]
     fn test_transfer_status_terminal_flags() {
         assert!(!TransferJobStatus::Queued.is_finished());
@@ -424,5 +505,29 @@ mod tests {
         assert!(TransferJobStatus::Failed.is_finished());
         assert!(TransferJobStatus::Cancelled.is_finished());
         assert!(TransferJobStatus::Skipped.is_finished());
+    }
+
+    #[test]
+    fn pause_resume_while_queued_supersedes_old_worker_and_preserves_conflict_check() {
+        let job = sample_job();
+        assert!(!job.is_superseded(0));
+
+        assert!(job.begin_pause());
+        assert!(job.is_superseded(0));
+        assert_eq!(job.speed_bps.load(Ordering::Relaxed), 0);
+
+        // Pausing while queued keeps conflict_resolved=false so resume re-runs conflict check.
+        let (next_gen, forced_offset) = job.begin_resume().expect("resume from paused");
+        assert!(job.is_superseded(0));
+        assert!(!job.is_superseded(next_gen));
+        assert_eq!(forced_offset, None);
+
+        // Once conflict resolution has passed, pause+resume resumes from transferred offset.
+        job.mark_conflict_resolved();
+        job.transferred_bytes.store(256, Ordering::Relaxed);
+        assert!(job.begin_pause());
+        let (gen2, offset2) = job.begin_resume().expect("resume with resolved conflict");
+        assert!(!job.is_superseded(gen2));
+        assert_eq!(offset2, Some(256));
     }
 }

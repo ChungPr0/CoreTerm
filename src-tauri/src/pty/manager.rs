@@ -12,14 +12,14 @@ use crate::hosts::HostService;
 use crate::infra::os::{is_process_elevated, JobObjectSupervisor};
 use crate::ipc::dto::{
     PortProbeResultDto, SessionConnectAckDto, SessionConnectRequestDto,
-    SessionReconnectRequestDto,
+    SessionReconnectRequestDto, ShellProfile,
 };
 use crate::keys::KeyService;
 use crate::ssh::ActiveTunnelRegistry;
-use crate::telemetry::TelemetryHub;
 
 use super::direct::DirectLaunchSpec;
 use super::events::emit_status;
+use super::shells::{default_shell_profile, detect_available_shells as scan_available_shells};
 use super::ssh::prepare_ssh_launch;
 use super::types::{InFlightConnectGuard, PrewarmedLocalSession, PtySession};
 
@@ -29,11 +29,12 @@ pub struct PtySessionManager {
     in_flight_connects: Arc<DashMap<String, ()>>,
     tab_host_map: Arc<DashMap<String, String>>,
     tab_admin_map: Arc<DashMap<String, bool>>,
+    tab_shell_map: Arc<DashMap<String, ShellProfile>>,
     pub(super) tunnel_registry: ActiveTunnelRegistry,
-    pub(super) telemetry_hub: TelemetryHub,
     pub(super) job_supervisor: JobObjectSupervisor,
     pub(super) prewarmed_local: Arc<Mutex<Option<PrewarmedLocalSession>>>,
     pub(super) prewarm_cancelled: Arc<AtomicBool>,
+    cached_shells: Arc<tokio::sync::Mutex<Option<Vec<ShellProfile>>>>,
 }
 
 impl PtySessionManager {
@@ -43,12 +44,25 @@ impl PtySessionManager {
             in_flight_connects: Arc::new(DashMap::new()),
             tab_host_map: Arc::new(DashMap::new()),
             tab_admin_map: Arc::new(DashMap::new()),
+            tab_shell_map: Arc::new(DashMap::new()),
             tunnel_registry: ActiveTunnelRegistry::new(),
-            telemetry_hub: TelemetryHub::new(job_supervisor.clone()),
             job_supervisor,
             prewarmed_local: Arc::new(Mutex::new(None)),
             prewarm_cancelled: Arc::new(AtomicBool::new(false)),
+            cached_shells: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub async fn detect_available_shells(&self, refresh: bool) -> Vec<ShellProfile> {
+        let mut guard = self.cached_shells.lock().await;
+        if !refresh {
+            if let Some(ref cached) = *guard {
+                return cached.clone();
+            }
+        }
+        let detected = scan_available_shells().await;
+        *guard = Some(detected.clone());
+        detected
     }
 
     pub fn tunnel_registry(&self) -> &ActiveTunnelRegistry {
@@ -102,14 +116,33 @@ impl PtySessionManager {
         let is_admin = is_local && (app_elevated || req.as_admin.unwrap_or(false));
         self.tab_admin_map.insert(req.tab_id.clone(), is_admin);
 
+        let local_profile = if is_local {
+            let profile = req
+                .shell_profile
+                .clone()
+                .unwrap_or_else(default_shell_profile);
+            if profile.executable.trim().is_empty() || profile.name.trim().is_empty() {
+                return Err(CoreError::Validation(
+                    "Shell profile name and executable cannot be empty".to_string(),
+                ));
+            }
+            self.tab_shell_map
+                .insert(req.tab_id.clone(), profile.clone());
+            Some(profile)
+        } else {
+            self.tab_shell_map.remove(&req.tab_id);
+            None
+        };
+
         // When parent app is unelevated and user asks for an Admin terminal tab, use UAC helper bridge.
         if is_admin && !app_elevated {
-            return self.connect_elevated_local(app, hosts, req, on_output);
+            let profile = local_profile.unwrap_or_else(default_shell_profile);
+            return self.connect_elevated_local(app, req, &profile, on_output);
         }
 
-        if is_local {
+        if let Some(ref profile) = local_profile {
             if let Some(ack) =
-                self.try_claim_prewarmed_local(app, hosts, &req, is_admin, &on_output)
+                self.try_claim_prewarmed_local(app, &req, profile, is_admin, &on_output)
             {
                 return Ok(ack);
             }
@@ -136,6 +169,7 @@ impl PtySessionManager {
                 req,
                 is_local,
                 is_admin,
+                local_profile,
                 ssh_plan,
             },
             on_output,
@@ -204,7 +238,7 @@ impl PtySessionManager {
             "ACCEPT" => self.write_stdin(tab_id, b"yes\r\n"),
             "REJECT" => {
                 let _ = self.write_stdin(tab_id, b"no\r\n");
-                let _ = self.disconnect(app, tab_id);
+                let _ = self.disconnect_session_only(app, tab_id);
                 Ok(())
             }
             "REMOVE_OLD_AND_ACCEPT" => {
@@ -263,7 +297,11 @@ impl PtySessionManager {
             .or_else(|| self.tab_admin_map.get(&tab_id).map(|v| *v.value()))
             .or_else(|| self.sessions.get(&tab_id).map(|s| s.is_admin));
 
-        let _ = self.disconnect(app, &tab_id);
+        let remembered_shell = req
+            .shell_profile
+            .or_else(|| self.tab_shell_map.get(&tab_id).map(|v| v.value().clone()));
+
+        let _ = self.disconnect_session_only(app, &tab_id);
         self.connect(
             app,
             hosts,
@@ -275,18 +313,28 @@ impl PtySessionManager {
                 rows: req.rows,
                 conflict_strategy: None,
                 as_admin: remembered_admin,
+                shell_profile: remembered_shell,
             },
             on_output,
         )
     }
 
-    pub fn disconnect(&self, app: &AppHandle, tab_id: &str) -> CoreResult<()> {
+    fn terminate_active_session(&self, tab_id: &str) -> Option<Arc<PtySession>> {
         self.tunnel_registry.release_tab_tunnels(tab_id);
-        self.telemetry_hub.release_tab(tab_id);
+        let (_, session) = self.sessions.remove(tab_id)?;
+        session.manual_disconnect.store(true, Ordering::SeqCst);
+        session.terminate();
+        Some(session)
+    }
 
-        if let Some((_, session)) = self.sessions.remove(tab_id) {
-            session.manual_disconnect.store(true, Ordering::SeqCst);
-            session.terminate();
+    fn cleanup_tab_metadata(&self, tab_id: &str) {
+        self.tab_host_map.remove(tab_id);
+        self.tab_admin_map.remove(tab_id);
+        self.tab_shell_map.remove(tab_id);
+    }
+
+    fn disconnect_session_only(&self, app: &AppHandle, tab_id: &str) -> CoreResult<()> {
+        if let Some(session) = self.terminate_active_session(tab_id) {
             emit_status(
                 app,
                 &session.tab_id(),
@@ -299,46 +347,10 @@ impl PtySessionManager {
         Ok(())
     }
 
-    fn sync_telemetry_for_host(
-        &self,
-        app: &AppHandle,
-        hosts: &HostService,
-        host_id: &str,
-        enabled: bool,
-    ) {
-        let active_tabs: Vec<String> = self
-            .sessions
-            .iter()
-            .filter(|entry| entry.value().host_id == host_id)
-            .map(|entry| entry.key().clone())
-            .collect();
-
-        for tab_id in active_tabs {
-            if enabled {
-                self.telemetry_hub.register_tab(app, hosts, host_id, &tab_id);
-            } else {
-                self.telemetry_hub.release_tab(&tab_id);
-            }
-        }
-    }
-
-    pub fn sync_host_telemetry(&self, app: &AppHandle, hosts: &HostService, host_id: &str) {
-        let enabled = hosts
-            .get_detail(host_id)
-            .map(|c| c.options.telemetry_enabled)
-            .unwrap_or(false);
-        self.sync_telemetry_for_host(app, hosts, host_id, enabled);
-    }
-
-    pub fn sync_local_telemetry(
-        &self,
-        app: &AppHandle,
-        hosts: &HostService,
-        enabled: bool,
-        interval_sec: u16,
-    ) {
-        self.telemetry_hub.set_local_config(enabled, interval_sec);
-        self.sync_telemetry_for_host(app, hosts, "local", enabled);
+    pub fn disconnect(&self, app: &AppHandle, tab_id: &str) -> CoreResult<()> {
+        self.disconnect_session_only(app, tab_id)?;
+        self.cleanup_tab_metadata(tab_id);
+        Ok(())
     }
 
     pub fn shutdown_all(&self) {
@@ -352,15 +364,31 @@ impl PtySessionManager {
                 prewarmed.session.terminate();
             }
         }
-        self.telemetry_hub.shutdown_all();
         let keys: Vec<String> = self.sessions.iter().map(|e| e.key().clone()).collect();
         for tab_id in keys {
-            self.tunnel_registry.release_tab_tunnels(&tab_id);
-            if let Some((_, session)) = self.sessions.remove(&tab_id) {
-                session.manual_disconnect.store(true, Ordering::SeqCst);
-                session.terminate();
-            }
+            let _ = self.terminate_active_session(&tab_id);
+            self.cleanup_tab_metadata(&tab_id);
         }
-        info!("All ConPTY sessions and telemetry workers shut down.");
+        info!("All ConPTY sessions shut down.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_tab_metadata_clears_all_tracking_maps() {
+        let mgr = PtySessionManager::new(JobObjectSupervisor::new().expect("job supervisor"));
+        mgr.tab_host_map.insert("tab-1".into(), "local".into());
+        mgr.tab_admin_map.insert("tab-1".into(), true);
+        mgr.tab_shell_map
+            .insert("tab-1".into(), default_shell_profile());
+
+        mgr.cleanup_tab_metadata("tab-1");
+
+        assert!(mgr.tab_host_map.is_empty());
+        assert!(mgr.tab_admin_map.is_empty());
+        assert!(mgr.tab_shell_map.is_empty());
     }
 }

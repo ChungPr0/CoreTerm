@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalTabItem } from "@/shared/types/ipc";
+import { createLocalTab } from "../../utils/tabHelpers";
 import { useTabsStore } from "../useTabsStore";
 
 function makeTab(overrides: Partial<TerminalTabItem> = {}): TerminalTabItem {
@@ -113,5 +114,52 @@ describe("useTabsStore", () => {
     const tab = useTabsStore.getState().tabs[0];
     expect(tab.sftpState).toBe("CONNECTED");
     expect(tab.state).toBe("ONLINE");
+  });
+
+  it("creates local tabs preserving ShellProfile metadata", () => {
+    const gitBash = {
+      id: "git-bash",
+      kind: "git-bash",
+      name: "Git Bash",
+      executable: "C:\\Program Files\\Git\\bin\\bash.exe",
+      args: ["--login", "-i"],
+    };
+    const tab = createLocalTab(gitBash, true);
+    expect(tab.hostId).toBe("local");
+    expect(tab.title).toBe("Git Bash");
+    expect(tab.shellProfile).toEqual(gitBash);
+    expect(tab.isAdmin).toBe(true);
+  });
+
+  it("allows renaming only local shell tabs with non-empty trimmed titles", () => {
+    useTabsStore.setState({
+      tabs: [
+        makeTab({ tabId: "local-1", hostId: "local", title: "PowerShell" }),
+        makeTab({ tabId: "ssh-1", hostId: "h1", title: "prod-ssh" }),
+        makeTab({ tabId: "sftp-1", hostId: "h1", tabKind: "sftp", title: "SFTP" }),
+      ],
+      activeTabId: "local-1",
+      renamingTabId: null,
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().startRenamingTab("ssh-1");
+    expect(useTabsStore.getState().renamingTabId).toBeNull();
+
+    useTabsStore.getState().startRenamingTab("local-1");
+    expect(useTabsStore.getState().renamingTabId).toBe("local-1");
+
+    useTabsStore.getState().renameTab("local-1", "   ");
+    expect(useTabsStore.getState().tabs[0].title).toBe("PowerShell");
+    expect(useTabsStore.getState().renamingTabId).toBeNull();
+
+    useTabsStore.getState().renameTab("local-1", "  Build Shell  ");
+    expect(useTabsStore.getState().tabs[0].title).toBe("Build Shell");
+
+    useTabsStore.getState().renameTab("ssh-1", "Hacked");
+    useTabsStore.getState().renameTab("sftp-1", "Hacked");
+    expect(useTabsStore.getState().tabs[1].title).toBe("prod-ssh");
+    expect(useTabsStore.getState().tabs[2].title).toBe("SFTP");
   });
 });

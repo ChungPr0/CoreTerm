@@ -11,14 +11,12 @@ use crate::ipc::dto::{
     SessionStatusEventDto,
 };
 use crate::ssh::ActiveTunnelRegistry;
-use crate::telemetry::TelemetryHub;
 
 use super::types::{PtySession, BATCH_WINDOW_MS, MAX_BATCH_SIZE};
 
 pub(super) struct ReaderExitCtx<'a> {
     pub sessions_map: &'a DashMap<String, Arc<PtySession>>,
     pub tunnel_reg: &'a ActiveTunnelRegistry,
-    pub telemetry_hub: &'a TelemetryHub,
     pub app_handle: &'a AppHandle,
     pub on_output: &'a Channel<Vec<u8>>,
     pub session_ref: &'a Arc<PtySession>,
@@ -116,7 +114,6 @@ pub(super) fn finalize_reader_exit(ctx: ReaderExitCtx<'_>, meta: ReaderExitMeta)
         .remove_if(&meta.tab_id, |_, current| Arc::ptr_eq(current, ctx.session_ref));
     if removed.is_some() {
         ctx.tunnel_reg.release_tab_tunnels(&meta.tab_id);
-        ctx.telemetry_hub.release_tab(&meta.tab_id);
     }
 
     if !meta.was_manual {

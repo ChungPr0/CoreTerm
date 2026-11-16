@@ -6,7 +6,6 @@ pub mod keys;
 pub mod pty;
 pub mod sftp;
 pub mod ssh;
-pub mod telemetry;
 
 use tauri::{Manager, RunEvent};
 use tracing::info;
@@ -16,19 +15,20 @@ use crate::infra::db::SqliteDb;
 use crate::infra::security::SecretVault;
 use crate::keys::KeyService;
 use crate::ipc::commands::{
-    app_get_status, clipboard_read_text, clipboard_write_text, host_create, host_delete,
-    host_duplicate, host_get_detail, host_group_create, host_group_delete, host_group_list,
-    host_group_reorder, host_list, host_move_group, host_update, key_delete, key_generate,
-    key_get_default, key_import, key_list, key_set_default, local_create_dir, local_delete,
-    local_home_dir, local_list_dir, local_list_drives, local_rename, port_forward_delete,
-    port_forward_probe, port_forward_toggle, port_forward_upsert, session_connect,
-    session_disconnect, session_reconnect, session_resize_pty, session_submit_host_key,
-    session_submit_secret, session_write_stdin, sftp_cancel_transfer, sftp_chmod,
-    sftp_clear_finished_transfers, sftp_connect, sftp_create_dir, sftp_delete, sftp_disconnect,
-    sftp_download, sftp_list_dir, sftp_list_transfers, sftp_pause_transfer, sftp_rename,
-    sftp_resolve_conflict, sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret,
-    sftp_upload, telemetry_set_local_config, window_close, window_minimize, window_present,
-    window_set_launch_size, window_toggle_maximize, AppState,
+    app_get_status, clipboard_read_text, clipboard_write_text, detect_available_shells,
+    host_create, host_delete, host_duplicate, host_get_detail, host_group_create,
+    host_group_delete, host_group_list, host_group_reorder, host_list, host_move_group,
+    host_update, key_delete, key_generate, key_get_default, key_import, key_list,
+    key_set_default, local_create_dir, local_delete, local_home_dir, local_list_dir,
+    local_list_drives, local_rename, port_forward_delete, port_forward_probe,
+    port_forward_toggle, port_forward_upsert, session_connect, session_disconnect,
+    session_reconnect, session_resize_pty, session_submit_host_key, session_submit_secret,
+    session_write_stdin, sftp_cancel_transfer, sftp_chmod, sftp_clear_finished_transfers,
+    sftp_connect, sftp_create_dir, sftp_delete, sftp_disconnect, sftp_download, sftp_list_dir,
+    sftp_list_transfers, sftp_pause_transfer, sftp_rename, sftp_resolve_conflict,
+    sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, window_close,
+    window_is_maximized, window_minimize, window_present, window_set_launch_size,
+    window_sys_command, window_toggle_maximize, AppState,
 };
 use crate::infra::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
 use crate::infra::os::JobObjectSupervisor;
@@ -78,6 +78,10 @@ pub fn run() {
 
             let pty_manager = PtySessionManager::new(job_supervisor.clone());
             pty_manager.prewarm_local_shell(120, 30);
+            let shell_scan_manager = pty_manager.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = shell_scan_manager.detect_available_shells(false).await;
+            });
             let sftp_manager = SftpSessionManager::new();
 
             if let Some(main_win) = app.get_webview_window("main") {
@@ -117,11 +121,11 @@ pub fn run() {
             key_import,
             key_set_default,
             key_delete,
-            telemetry_set_local_config,
             port_forward_upsert,
             port_forward_toggle,
             port_forward_delete,
             port_forward_probe,
+            detect_available_shells,
             session_connect,
             session_write_stdin,
             session_resize_pty,
@@ -157,6 +161,8 @@ pub fn run() {
             clipboard_write_text,
             window_set_launch_size,
             window_present,
+            window_is_maximized,
+            window_sys_command,
             window_minimize,
             window_toggle_maximize,
             window_close,

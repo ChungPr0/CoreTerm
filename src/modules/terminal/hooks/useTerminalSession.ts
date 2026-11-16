@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Channel } from "@/shared/api/tauriClient";
-import { Terminal } from "@xterm/xterm";
+import type { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import type { TerminalTabItem } from "@/shared/types/ipc";
 import type { SessionConnectAckDto } from "../types";
 import { sessionApi } from "../api/sessionApi";
@@ -12,6 +12,8 @@ import {
   attachWebglRenderer,
   bindScrollbackSync,
   bindTerminalShortcuts,
+  createOutputChannel,
+  createTerminalInstance,
 } from "./terminalHelpers";
 
 export interface TerminalContextActions {
@@ -24,30 +26,6 @@ export interface TerminalContextActions {
 }
 
 const RESIZE_DEBOUNCE_MS = 60;
-
-const XTERM_THEME = {
-  background: "#090d16",
-  foreground: "#e2e8f0",
-  cursor: "#38bdf8",
-  cursorAccent: "#090d16",
-  selectionBackground: "rgba(56, 189, 248, 0.28)",
-  black: "#1e293b",
-  red: "#f43f5e",
-  green: "#10b981",
-  yellow: "#f59e0b",
-  blue: "#3b82f6",
-  magenta: "#a855f7",
-  cyan: "#06b6d4",
-  white: "#f1f5f9",
-  brightBlack: "#475569",
-  brightRed: "#fb7185",
-  brightGreen: "#34d399",
-  brightYellow: "#fbbf24",
-  brightBlue: "#60a5fa",
-  brightMagenta: "#c084fc",
-  brightCyan: "#22d3ee",
-  brightWhite: "#ffffff",
-};
 
 interface UseTerminalSessionOpts {
   tab: TerminalTabItem;
@@ -81,12 +59,17 @@ export function useTerminalSession({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
   const isActiveRef = useRef<boolean>(isActive);
   const suppressAutoFocusRef = useRef<boolean>(suppressAutoFocus);
   const lastDimsRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
+  const launchDimsRef = useRef({ cols: launchCols, rows: launchRows });
+  const tabMetaRef = useRef({ isAdmin: tab.isAdmin, shellProfile: tab.shellProfile });
 
   isActiveRef.current = isActive;
   suppressAutoFocusRef.current = suppressAutoFocus;
+  launchDimsRef.current = { cols: launchCols, rows: launchRows };
+  tabMetaRef.current = { isAdmin: tab.isAdmin, shellProfile: tab.shellProfile };
 
   const syncPtySize = useCallback(
     (term: Terminal) => {
@@ -104,39 +87,20 @@ export function useTerminalSession({
     [tab.tabId]
   );
 
-  const createOutputChannel = useCallback((term: Terminal, isCancelled: () => boolean) => {
-    const channel = new Channel<number[] | Uint8Array>();
-    channel.onmessage = (chunk) => {
-      if (isCancelled()) return;
-      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
-      term.write(bytes);
-    };
-    return channel;
-  }, []);
-
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const term = new Terminal({
-      cols: launchCols,
-      rows: launchRows,
-      cursorBlink: true,
-      cursorStyle: "block",
-      fontFamily: '"JetBrains Mono", "Cascadia Mono", Consolas, monospace',
-      fontSize: 14,
-      lineHeight: 1.2,
-      scrollback: 10000,
-      allowProposedApi: true,
-      convertEol: false,
-      theme: XTERM_THEME,
-    });
+    const term = createTerminalInstance(launchCols, launchRows);
 
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon({ highlightLimit: 1000 });
     term.loadAddon(fitAddon);
+    term.loadAddon(searchAddon);
     term.open(container);
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
+    searchAddonRef.current = searchAddon;
 
     let cancelled = false;
     const isCancelled = () => cancelled || terminalRef.current !== term;
@@ -219,6 +183,7 @@ export function useTerminalSession({
           rows: initialRows,
           conflictStrategy: tab.conflictStrategy ?? "AUTO_SHARE_OR_SKIP",
           asAdmin: tab.isAdmin,
+          shellProfile: tab.shellProfile,
           onOutput: outputChannel,
         })
         .then((ack) => {
@@ -250,6 +215,7 @@ export function useTerminalSession({
       term.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
+      searchAddonRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.tabId, tab.hostId]);
@@ -259,15 +225,21 @@ export function useTerminalSession({
     const term = terminalRef.current;
     if (!term) return;
 
+    let cancelled = false;
     try {
       fitAddonRef.current?.fit();
     } catch {
       // Ignore
     }
 
-    const cols = Math.max(term.cols || launchCols, 20);
-    const rows = Math.max(term.rows || launchRows, 5);
-    const outputChannel = createOutputChannel(term, () => false);
+    const { cols: defCols, rows: defRows } = launchDimsRef.current;
+    const { isAdmin, shellProfile } = tabMetaRef.current;
+    const cols = Math.max(term.cols || defCols, 20);
+    const rows = Math.max(term.rows || defRows, 5);
+    const outputChannel = createOutputChannel(
+      term,
+      () => cancelled || terminalRef.current !== term
+    );
 
     sessionApi
       .sessionReconnect({
@@ -275,27 +247,26 @@ export function useTerminalSession({
         hostId: tab.hostId,
         cols,
         rows,
-        asAdmin: tab.isAdmin,
+        asAdmin: isAdmin,
+        shellProfile,
         onOutput: outputChannel,
       })
       .then((ack) => {
+        if (cancelled || terminalRef.current !== term) return;
         onSessionAckRef.current?.(tab.tabId, ack);
-        term.focus();
+        if (isActiveRef.current) term.focus();
       })
       .catch((err) => {
+        if (cancelled || terminalRef.current !== term) return;
         term.writeln(
           `\r\n\x1b[31m✖ ${formatLocalizedError(err, tRef.current)}\x1b[0m`
         );
       });
-  }, [
-    tab.reconnectToken,
-    tab.tabId,
-    tab.hostId,
-    tab.isAdmin,
-    launchCols,
-    launchRows,
-    createOutputChannel,
-  ]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tab.reconnectToken, tab.tabId, tab.hostId]);
 
   useEffect(() => {
     if (!isActive || suppressAutoFocus) return;
@@ -354,6 +325,8 @@ export function useTerminalSession({
 
   return {
     containerRef,
+    terminalRef,
+    searchAddonRef,
     focus: () => terminalRef.current?.focus(),
     getContextActions,
   };

@@ -53,13 +53,26 @@ mod win_worker {
         }
     }
 
-    pub fn run_elevated_worker(args: &[String]) -> i32 {
+    struct WorkerLaunchArgs {
+        pipe_base: String,
+        cols: u16,
+        rows: u16,
+        secret: String,
+        cwd: Option<String>,
+        parent_pid: Option<u32>,
+        executable: String,
+        shell_args: Vec<String>,
+    }
+
+    fn parse_worker_args(args: &[String]) -> WorkerLaunchArgs {
         let mut pipe_base = String::new();
         let mut cols: u16 = 120;
         let mut rows: u16 = 30;
         let mut secret = String::new();
         let mut cwd: Option<String> = None;
         let mut parent_pid: Option<u32> = None;
+        let mut exe: Option<String> = None;
+        let mut shell_args: Vec<String> = Vec::new();
 
         let mut i = 0;
         while i < args.len() {
@@ -88,9 +101,47 @@ mod win_worker {
                     parent_pid = args[i + 1].parse().ok();
                     i += 2;
                 }
+                "--exe" if i + 1 < args.len() => {
+                    exe = Some(args[i + 1].clone());
+                    i += 2;
+                }
+                "--arg" if i + 1 < args.len() => {
+                    shell_args.push(args[i + 1].clone());
+                    i += 2;
+                }
                 _ => i += 1,
             }
         }
+
+        let executable = exe.unwrap_or_else(|| {
+            if shell_args.is_empty() {
+                shell_args.push("-NoLogo".to_string());
+            }
+            "powershell.exe".to_string()
+        });
+
+        WorkerLaunchArgs {
+            pipe_base,
+            cols,
+            rows,
+            secret,
+            cwd,
+            parent_pid,
+            executable,
+            shell_args,
+        }
+    }
+
+    pub fn run_elevated_worker(args: &[String]) -> i32 {
+        let parsed = parse_worker_args(args);
+        let pipe_base = parsed.pipe_base;
+        let cols = parsed.cols;
+        let rows = parsed.rows;
+        let secret = parsed.secret;
+        let cwd = parsed.cwd;
+        let parent_pid = parsed.parent_pid;
+        let target_exe = parsed.executable;
+        let shell_args = parsed.shell_args;
 
         if pipe_base.is_empty() || secret.is_empty() {
             return 2;
@@ -137,8 +188,10 @@ mod win_worker {
             }
         };
 
-        let mut cmd = CommandBuilder::new("powershell.exe");
-        cmd.arg("-NoLogo");
+        let mut cmd = CommandBuilder::new(&target_exe);
+        for arg in &shell_args {
+            cmd.arg(arg);
+        }
         if let Some(dir) = cwd {
             cmd.cwd(dir);
         }
@@ -148,7 +201,7 @@ mod win_worker {
         let child = match pair.slave.spawn_command(cmd) {
             Ok(c) => c,
             Err(e) => {
-                send_error(&format!("Failed to spawn elevated powershell.exe: {e}"));
+                send_error(&format!("Failed to spawn elevated {target_exe}: {e}"));
                 return 7;
             }
         };
@@ -241,6 +294,52 @@ mod win_worker {
         }
 
         0
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parses_cmd_and_git_bash_worker_args() {
+            let cmd_args: Vec<String> = [
+                "--pipe",
+                r"\\.\pipe\coreterm_1",
+                "--secret",
+                "abc",
+                "--exe",
+                r"C:\Windows\System32\cmd.exe",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+            let parsed_cmd = parse_worker_args(&cmd_args);
+            assert_eq!(parsed_cmd.executable, r"C:\Windows\System32\cmd.exe");
+            assert!(parsed_cmd.shell_args.is_empty());
+
+            let bash_args: Vec<String> = [
+                "--pipe",
+                r"\\.\pipe\coreterm_2",
+                "--secret",
+                "xyz",
+                "--exe",
+                r"C:\Program Files\Git\bin\bash.exe",
+                "--arg",
+                "--login",
+                "--arg",
+                "-i",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect();
+            let parsed_bash = parse_worker_args(&bash_args);
+            assert_eq!(parsed_bash.executable, r"C:\Program Files\Git\bin\bash.exe");
+            assert_eq!(parsed_bash.shell_args, vec!["--login", "-i"]);
+
+            let default_parsed = parse_worker_args(&[]);
+            assert_eq!(default_parsed.executable, "powershell.exe");
+            assert_eq!(default_parsed.shell_args, vec!["-NoLogo"]);
+        }
     }
 }
 

@@ -1,9 +1,9 @@
-import type { SftpConflictPolicy } from "@/shared/types/ipc";
+import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
 
 export interface AppSettingsValues {
   launchCols: number;
   launchRows: number;
-  showLocalTelemetry: boolean;
-  telemetryIntervalSec: number;
   sftpConflictPolicy: SftpConflictPolicy;
+  defaultShellId: string;
+  defaultShellProfile?: ShellProfile;
 }

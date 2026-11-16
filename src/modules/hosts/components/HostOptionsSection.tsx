@@ -14,10 +14,6 @@ interface HostOptionsSectionProps {
   onCompressionChange: (val: boolean) => void;
   forwardAgent: boolean;
   onForwardAgentChange: (val: boolean) => void;
-  telemetryEnabled: boolean;
-  onTelemetryEnabledChange: (val: boolean) => void;
-  telemetryIntervalSec: number;
-  onTelemetryIntervalSecChange: (val: number) => void;
   autoReconnect: boolean;
   onAutoReconnectChange: (val: boolean) => void;
   reconnectIntervalSec: number;
@@ -35,10 +31,6 @@ export const HostOptionsSection: React.FC<HostOptionsSectionProps> = ({
   onCompressionChange,
   forwardAgent,
   onForwardAgentChange,
-  telemetryEnabled,
-  onTelemetryEnabledChange,
-  telemetryIntervalSec,
-  onTelemetryIntervalSecChange,
   autoReconnect,
   onAutoReconnectChange,
   reconnectIntervalSec,
@@ -118,34 +110,7 @@ export const HostOptionsSection: React.FC<HostOptionsSectionProps> = ({
         </label>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
-        <div className="flex min-h-[46px] items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-slate-900/60 border border-slate-800">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200 font-medium">
-            <input
-              type="checkbox"
-              checked={telemetryEnabled}
-              onChange={(e) => onTelemetryEnabledChange(e.target.checked)}
-            />
-            <span>{t("telemetry.enabled")}</span>
-          </label>
-
-          {telemetryEnabled && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400">
-                {t("telemetry.interval")}:
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={telemetryIntervalSec}
-                onChange={(e) => onTelemetryIntervalSecChange(Number(e.target.value))}
-                className="w-14 h-7 px-2 rounded bg-slate-950 border border-slate-800 text-slate-100 font-mono text-right"
-              />
-            </div>
-          )}
-        </div>
-
+      <div className="pt-2 border-t border-slate-800/80">
         <div className="flex min-h-[46px] items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-slate-900/60 border border-slate-800">
           <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200 font-medium">
             <input

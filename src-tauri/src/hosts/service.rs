@@ -56,43 +56,42 @@ impl HostService {
         )?;
 
         let host_id = Uuid::new_v4().to_string();
-        let (password_mode, secret_ref_id) = self.resolve_password_binding(
+        let (password_mode, secret_ref_id, pending_vault) = Self::plan_password_binding(
             &host_id,
             &req.auth_method,
             req.password_mode.as_deref(),
             req.password.as_deref(),
             None,
-        )?;
+        );
 
         let tags_json = serde_json::to_string(&req.tags).unwrap_or_else(|_| "[]".to_string());
-        let tx = conn.transaction()?;
-        let group_name = group_repo::resolve_canonical(&tx, &req.group_name)?;
-        let row = HostRowWrite {
-            id: &host_id,
-            alias: req.alias.trim(),
-            host: req.host.trim(),
-            port: req.port,
-            username: req.username.trim(),
-            group_name: &group_name,
-            tags_json: &tags_json,
-            auth_method: &req.auth_method,
-            ssh_key_id: resolved_key_id.as_deref(),
-            private_key_path: resolved_key_path.as_deref(),
-            password_mode: &password_mode,
-            secret_ref_id: secret_ref_id.as_deref(),
-        };
-        host_repo::insert_profile(&tx, &row)?;
-        let opts = req.options.unwrap_or_default();
-        host_repo::insert_options(&tx, &host_id, &opts)?;
-        if let Some(ref rules) = req.port_forwards {
-            port_forward_repo::replace_for_host(&tx, &host_id, rules)?;
-        }
-        if let Err(err) = tx.commit() {
-            if let Some(ref ref_id) = secret_ref_id {
-                let _ = self.vault.delete_secret(ref_id);
+        let db_res: CoreResult<()> = (|| {
+            let tx = conn.transaction()?;
+            let group_name = group_repo::resolve_canonical(&tx, &req.group_name)?;
+            let row = HostRowWrite {
+                id: &host_id,
+                alias: req.alias.trim(),
+                host: req.host.trim(),
+                port: req.port,
+                username: req.username.trim(),
+                group_name: &group_name,
+                tags_json: &tags_json,
+                auth_method: &req.auth_method,
+                ssh_key_id: resolved_key_id.as_deref(),
+                private_key_path: resolved_key_path.as_deref(),
+                password_mode: &password_mode,
+                secret_ref_id: secret_ref_id.as_deref(),
+            };
+            host_repo::insert_profile(&tx, &row)?;
+            let opts = req.options.unwrap_or_default();
+            host_repo::insert_options(&tx, &host_id, &opts)?;
+            if let Some(ref rules) = req.port_forwards {
+                port_forward_repo::replace_for_host(&tx, &host_id, rules)?;
             }
-            return Err(err.into());
-        }
+            tx.commit()?;
+            Ok(())
+        })();
+        self.apply_vault_after_db(db_res, pending_vault)?;
 
         host_repo::get_detail(&conn, &host_id)
     }
@@ -114,39 +113,43 @@ impl HostService {
             req.private_key_path.as_deref(),
         )?;
 
-        let (password_mode, new_secret_ref) = self.resolve_password_binding(
+        let (password_mode, new_secret_ref, pending_vault) = Self::plan_password_binding(
             &req.id,
             &req.auth_method,
             req.password_mode.as_deref(),
             req.password.as_deref(),
             old_secret_ref,
-        )?;
+        );
 
         let tags_json = serde_json::to_string(&req.tags).unwrap_or_else(|_| "[]".to_string());
-        let tx = conn.transaction()?;
-        let group_name = group_repo::resolve_canonical(&tx, &req.group_name)?;
-        let row = HostRowWrite {
-            id: &req.id,
-            alias: req.alias.trim(),
-            host: req.host.trim(),
-            port: req.port,
-            username: req.username.trim(),
-            group_name: &group_name,
-            tags_json: &tags_json,
-            auth_method: &req.auth_method,
-            ssh_key_id: resolved_key_id.as_deref(),
-            private_key_path: resolved_key_path.as_deref(),
-            password_mode: &password_mode,
-            secret_ref_id: new_secret_ref.as_deref(),
-        };
-        host_repo::update_profile(&tx, &row)?;
-        if let Some(opts) = req.options {
-            host_repo::update_options(&tx, &req.id, opts)?;
-        }
-        if let Some(ref rules) = req.port_forwards {
-            port_forward_repo::replace_for_host(&tx, &req.id, rules)?;
-        }
-        tx.commit()?;
+        let db_res: CoreResult<()> = (|| {
+            let tx = conn.transaction()?;
+            let group_name = group_repo::resolve_canonical(&tx, &req.group_name)?;
+            let row = HostRowWrite {
+                id: &req.id,
+                alias: req.alias.trim(),
+                host: req.host.trim(),
+                port: req.port,
+                username: req.username.trim(),
+                group_name: &group_name,
+                tags_json: &tags_json,
+                auth_method: &req.auth_method,
+                ssh_key_id: resolved_key_id.as_deref(),
+                private_key_path: resolved_key_path.as_deref(),
+                password_mode: &password_mode,
+                secret_ref_id: new_secret_ref.as_deref(),
+            };
+            host_repo::update_profile(&tx, &row)?;
+            if let Some(opts) = req.options {
+                host_repo::update_options(&tx, &req.id, opts)?;
+            }
+            if let Some(ref rules) = req.port_forwards {
+                port_forward_repo::replace_for_host(&tx, &req.id, rules)?;
+            }
+            tx.commit()?;
+            Ok(())
+        })();
+        self.apply_vault_after_db(db_res, pending_vault)?;
 
         host_repo::get_detail(&conn, &req.id)
     }
@@ -398,33 +401,161 @@ impl HostService {
         Ok((None, Some(clean_path)))
     }
 
-    fn resolve_password_binding(
-        &self,
+    fn plan_password_binding(
         host_id: &str,
         auth_method: &str,
         password_mode: Option<&str>,
         password: Option<&str>,
         existing_secret_ref: Option<String>,
-    ) -> CoreResult<(String, Option<String>)> {
+    ) -> (String, Option<String>, PendingVaultOp) {
         if auth_method != "PASSWORD" {
-            if let Some(ref old_ref) = existing_secret_ref {
-                let _ = self.vault.delete_secret(old_ref);
-            }
-            return Ok(("NONE".to_string(), None));
+            return (
+                "NONE".to_string(),
+                None,
+                existing_secret_ref
+                    .map(PendingVaultOp::Delete)
+                    .unwrap_or(PendingVaultOp::None),
+            );
         }
         let mode = password_mode.unwrap_or("PROMPT_EVERY_TIME");
         if mode == "SAVED" {
             if let Some(pw) = password.filter(|p| !p.is_empty()) {
                 let ref_id = SecretVault::host_password_ref(host_id);
-                self.vault.store_secret(&ref_id, pw)?;
-                return Ok(("SAVED".to_string(), Some(ref_id)));
+                return (
+                    "SAVED".to_string(),
+                    Some(ref_id.clone()),
+                    PendingVaultOp::Store {
+                        ref_id,
+                        secret: Zeroizing::new(pw.to_string()),
+                    },
+                );
             }
             if existing_secret_ref.is_some() {
-                return Ok(("SAVED".to_string(), existing_secret_ref));
+                return ("SAVED".to_string(), existing_secret_ref, PendingVaultOp::None);
             }
-        } else if let Some(ref old_ref) = existing_secret_ref {
-            let _ = self.vault.delete_secret(old_ref);
+        } else if let Some(old_ref) = existing_secret_ref {
+            return (
+                "PROMPT_EVERY_TIME".to_string(),
+                None,
+                PendingVaultOp::Delete(old_ref),
+            );
         }
-        Ok(("PROMPT_EVERY_TIME".to_string(), None))
+        ("PROMPT_EVERY_TIME".to_string(), None, PendingVaultOp::None)
+    }
+
+    fn apply_vault_after_db(&self, db_res: CoreResult<()>, op: PendingVaultOp) -> CoreResult<()> {
+        db_res?;
+        match op {
+            PendingVaultOp::None => Ok(()),
+            PendingVaultOp::Store { ref_id, secret } => self.vault.store_secret(&ref_id, &secret),
+            PendingVaultOp::Delete(old_ref) => {
+                let _ = self.vault.delete_secret(&old_ref);
+                Ok(())
+            }
+        }
+    }
+}
+
+enum PendingVaultOp {
+    None,
+    Store {
+        ref_id: String,
+        secret: Zeroizing<String>,
+    },
+    Delete(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ipc::dto::SavePortForwardDto;
+
+    fn test_service() -> HostService {
+        HostService::new(
+            SqliteDb::init_in_memory().expect("in-memory db"),
+            SecretVault::new_in_memory(),
+        )
+    }
+
+    #[test]
+    fn failed_update_preserves_saved_vault_password() {
+        let svc = test_service();
+        let created = svc
+            .create(CreateHostRequestDto {
+                alias: "prod".into(),
+                host: "10.0.0.1".into(),
+                port: 22,
+                username: "root".into(),
+                group_name: "Default".into(),
+                tags: vec![],
+                auth_method: "PASSWORD".into(),
+                ssh_key_id: None,
+                private_key_path: None,
+                password_mode: Some("SAVED".into()),
+                password: Some("super-secret".into()),
+                options: None,
+                port_forwards: None,
+            })
+            .expect("create host");
+
+        let ref_id = SecretVault::host_password_ref(&created.id);
+        assert_eq!(
+            svc.vault.get_secret(&ref_id).unwrap().as_deref().map(String::as_str),
+            Some("super-secret")
+        );
+
+        // Simulate a failed update (invalid forward rule fails before DB commit).
+        let err = svc.update(UpdateHostRequestDto {
+            id: created.id.clone(),
+            alias: "prod".into(),
+            host: "10.0.0.1".into(),
+            port: 22,
+            username: "root".into(),
+            group_name: "Default".into(),
+            tags: vec![],
+            auth_method: "PASSWORD".into(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".into()),
+            password: None,
+            options: None,
+            port_forwards: Some(vec![SavePortForwardDto {
+                id: None,
+                label: "bad".into(),
+                forward_type: "LOCAL".into(),
+                bind_address: "127.0.0.1".into(),
+                bind_port: 0,
+                target_host: Some("localhost".into()),
+                target_port: Some(80),
+                is_enabled: true,
+            }]),
+        });
+        assert!(err.is_err());
+
+        // Vault secret must still be intact!
+        assert_eq!(
+            svc.vault.get_secret(&ref_id).unwrap().as_deref().map(String::as_str),
+            Some("super-secret")
+        );
+
+        // Now perform valid update switching to PROMPT_EVERY_TIME -> deletes secret after commit.
+        svc.update(UpdateHostRequestDto {
+            id: created.id,
+            alias: "prod".into(),
+            host: "10.0.0.1".into(),
+            port: 22,
+            username: "root".into(),
+            group_name: "Default".into(),
+            tags: vec![],
+            auth_method: "PASSWORD".into(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".into()),
+            password: None,
+            options: None,
+            port_forwards: None,
+        })
+        .expect("valid update");
+        assert!(svc.vault.get_secret(&ref_id).unwrap().is_none());
     }
 }

@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShellProfile {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub kind: String,
+    pub name: String,
+    pub executable: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionConnectAckDto {
     pub tab_id: String,
@@ -46,6 +58,7 @@ pub struct SessionConnectRequestDto {
     pub rows: u16,
     pub conflict_strategy: Option<String>,
     pub as_admin: Option<bool>,
+    pub shell_profile: Option<ShellProfile>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +68,7 @@ pub struct SessionReconnectRequestDto {
     pub cols: u16,
     pub rows: u16,
     pub as_admin: Option<bool>,
+    pub shell_profile: Option<ShellProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

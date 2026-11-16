@@ -1,10 +1,10 @@
-import React, { Suspense, lazy, useCallback, useState } from "react";
+import React, { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { useI18n } from "@/shared/i18n";
 import { useGlobalShortcuts } from "@/shared/hooks/useGlobalShortcuts";
 import { useAlert, useContextMenu } from "@/shared/ui";
 import { HostSidebar, useHostProfiles, type DeletePromptState, type HostFullConfigDto } from "@/modules/hosts";
 import { SftpSplitContainer } from "@/modules/sftp";
-import { TerminalViewport, useSshSessions } from "@/modules/terminal";
+import { resolveDefaultShell, TerminalViewport, useSshSessions } from "@/modules/terminal";
 import { TabBar } from "@/modules/workspace";
 import { APP_PRELOADERS, AppModals } from "./AppModals";
 import { useAppBootstrap } from "./useAppBootstrap";
@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState<DeletePromptState | null>(null);
+  const [findSignal, setFindSignal] = useState<{ tabId: string; seq: number } | null>(null);
 
   const focusTerminal = useCallback(() => setFocusToken((n) => n + 1), []);
   const dismissSidebar = useCallback(() => {
@@ -40,15 +41,22 @@ export const App: React.FC = () => {
     });
   }, [focusTerminal]);
 
-  const { settings, isAppElevated, hasNativeBorder, saveAndApplySettings } = useAppBootstrap({
-    preloaders: PRELOADERS,
-    onFocusTerminal: focusTerminal,
-  });
+  const { settings, shellProfiles, isAppElevated, hasNativeBorder, saveAndApplySettings } =
+    useAppBootstrap({
+      preloaders: PRELOADERS,
+      onFocusTerminal: focusTerminal,
+    });
+
+  const defaultShellProfile = useMemo(
+    () => resolveDefaultShell(shellProfiles, settings.defaultShellId),
+    [shellProfiles, settings.defaultShellId]
+  );
 
   const hosts = useHostProfiles({ t, onError: alert.error, onRequestDelete: setDeletePrompt });
 
   const sessions = useSshSessions({
     isAppElevated,
+    defaultShellProfile,
     allProfiles: hosts.allProfiles,
     t,
     onError: alert.error,
@@ -68,7 +76,22 @@ export const App: React.FC = () => {
     Object.values(sessions.sftpModalByTab).some(Boolean);
 
   const hasModalOpen = hasBlockingModal || isPaletteOpen;
-  const suppressFocus = hasModalOpen || isSidebarOpen || !!contextMenu;
+  const suppressFocus =
+    hasModalOpen || isSidebarOpen || !!contextMenu || !!sessions.renamingTabId;
+
+  const triggerFindInTab = useCallback(
+    (explicitTabId?: string) => {
+      const targetId = explicitTabId ?? sessions.activeTabId;
+      if (!targetId) return;
+      const targetTab = sessions.tabs.find((item) => item.tabId === targetId);
+      if (!targetTab || targetTab.tabKind === "sftp") return;
+      if (targetId !== sessions.activeTabId) {
+        sessions.selectTab(targetId);
+      }
+      setFindSignal((prev) => ({ tabId: targetId, seq: (prev?.seq ?? 0) + 1 }));
+    },
+    [sessions]
+  );
 
   useGlobalShortcuts({
     hasBlockingModal,
@@ -77,6 +100,8 @@ export const App: React.FC = () => {
     hasContextMenu: !!contextMenu,
     onTogglePalette: () => setIsPaletteOpen((v) => !v),
     onNewLocalTab: sessions.newLocalTab,
+    onFindInTerminal: () => triggerFindInTab(),
+    onOpenSettings: () => setIsSettingsOpen(true),
     onCloseContextMenu: closeMenu,
     onDismissSidebar: dismissSidebar,
   });
@@ -96,13 +121,15 @@ export const App: React.FC = () => {
 
   const menus = useAppMenus({
     t,
-    settings,
     tabs: sessions.tabs,
     allProfiles: hosts.allProfiles,
     isAppElevated,
-    hiddenTelemetryTabIds: sessions.hiddenTelemetryIds,
+    shellProfiles,
+    defaultShellProfile,
     setContextMenu,
     onNewLocalTab: sessions.newLocalTab,
+    onRenameTab: sessions.startRenamingTab,
+    onFindInTab: triggerFindInTab,
     onReconnectTab: (id) => sessions.reconnectTab(id),
     onToggleSftp: (id) => sessions.toggleSftpSplit(id),
     onOpenSftp: sessions.openSftpTab,
@@ -120,9 +147,6 @@ export const App: React.FC = () => {
     onOpenSettings: () => setIsSettingsOpen(true),
     onOpenPalette: () => setIsPaletteOpen(true),
     onDismissSidebar: dismissSidebar,
-    onFocusTerminal: focusTerminal,
-    onShowTelemetry: sessions.showTabTelemetry,
-    onHideTelemetry: sessions.hideTabTelemetry,
   });
 
   const handleHostSaved = async (saved: HostFullConfigDto) => {
@@ -139,8 +163,12 @@ export const App: React.FC = () => {
       <TabBar
         tabs={sessions.tabs}
         activeTabId={sessions.activeTabId}
+        renamingTabId={sessions.renamingTabId}
         isAppElevated={isAppElevated}
         isModalOpen={hasModalOpen}
+        isContextMenuOpen={!!contextMenu}
+        shellProfiles={shellProfiles}
+        defaultShellProfile={defaultShellProfile}
         profiles={hosts.allProfiles}
         onToggleSidebar={toggleSidebar}
         onSelectTab={sessions.selectTab}
@@ -149,9 +177,13 @@ export const App: React.FC = () => {
         onReconnectTab={sessions.reconnectTab}
         onToggleSftp={sessions.toggleSftpSplit}
         onReorderTab={sessions.reorderTab}
+        onCommitRenameTab={sessions.renameTab}
+        onCancelRenameTab={sessions.cancelRenamingTab}
         onNewTab={sessions.newLocalTab}
         onConnectProfile={sessions.connectHost}
         onCreateNewHost={() => hosts.openNewHost("Default")}
+        onOpenPalette={() => setIsPaletteOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onContextMenuTab={menus.openTabMenu}
         onContextMenuTabBar={menus.openTabBarMenu}
       />
@@ -159,9 +191,6 @@ export const App: React.FC = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
           const isTabActive = tab.tabId === sessions.activeTabId;
-          const configuredTelemetry =
-            tab.hostId === "local" ? settings.showLocalTelemetry : (tab.telemetryEnabled ?? false);
-          const showTelemetry = configuredTelemetry && !sessions.hiddenTelemetryIds[tab.tabId];
 
           const terminalNode =
             tab.tabKind === "sftp" ? undefined : (
@@ -171,9 +200,8 @@ export const App: React.FC = () => {
                 isActive={isTabActive}
                 launchCols={settings.launchCols}
                 launchRows={settings.launchRows}
-                showTelemetry={showTelemetry}
-                telemetry={sessions.telemetryByHost[tab.hostId]}
                 focusToken={focusToken}
+                findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
                 suppressAutoFocus={suppressFocus}
                 onReconnect={sessions.reconnectTab}
                 onToggleAutoReconnect={sessions.toggleAutoReconnect}
@@ -181,7 +209,6 @@ export const App: React.FC = () => {
                 onElevationCancelled={sessions.handleElevationCancelled}
                 onContextMenuTerminal={menus.openTerminalMenu}
                 onContextMenuBanner={menus.openBannerMenu}
-                onContextMenuTelemetry={menus.openTelemetryMenu}
               />
             );
 
@@ -257,12 +284,20 @@ export const App: React.FC = () => {
           onOpenVault={() => setIsVaultOpen(true)}
           onCloseVault={() => setIsVaultOpen(false)}
           isSettingsOpen={isSettingsOpen}
+          isAppElevated={isAppElevated}
           settings={settings}
+          shellProfiles={shellProfiles}
           onCloseSettings={() => setIsSettingsOpen(false)}
           onSaveSettings={saveAndApplySettings}
           isPaletteOpen={isPaletteOpen}
           onClosePalette={() => setIsPaletteOpen(false)}
           onSelectHost={sessions.connectHost}
+          onSelectShell={(profile, asAdmin) =>
+            sessions.newLocalTab({
+              profile,
+              asAdmin: typeof asAdmin === "boolean" ? asAdmin : isAppElevated,
+            })
+          }
           onOpenSftpTab={sessions.openSftpTab}
           authPrompt={sessions.authPrompt}
           authPromptSource={sessions.authPromptSource}

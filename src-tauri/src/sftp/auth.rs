@@ -381,11 +381,12 @@ async fn try_password_and_kbd(
     } = auth_res
     {
         if remaining_methods.contains(&russh::MethodKind::KeyboardInteractive) {
+            const MAX_KBD_INTERACTIVE_ROUNDS: usize = 8;
             let mut kbd = session
                 .authenticate_keyboard_interactive_start(username, None)
                 .await
                 .map_err(|e| map_russh_error("Keyboard-interactive auth error", e))?;
-            loop {
+            for _ in 0..MAX_KBD_INTERACTIVE_ROUNDS {
                 match kbd {
                     KeyboardInteractiveAuthResponse::Success => return Ok(true),
                     KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
@@ -400,6 +401,7 @@ async fn try_password_and_kbd(
                     }
                 }
             }
+            return Ok(false);
         }
     }
 

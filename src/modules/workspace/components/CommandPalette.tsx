@@ -9,39 +9,70 @@ import {
   X,
 } from "lucide-react";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import type { ShellProfile } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { ModalShell } from "@/shared/ui";
+import { ShellIcon } from "./ShellIcon";
 
 interface CommandPaletteProps {
   isOpen: boolean;
+  isAppElevated?: boolean;
   profiles: HostProfileSummaryDto[];
+  shellProfiles?: ShellProfile[];
   onClose: () => void;
   onSelectHost: (host: HostProfileSummaryDto) => void;
+  onSelectShell?: (profile: ShellProfile, asAdmin?: boolean) => void;
   onOpenSftp?: (host: HostProfileSummaryDto) => void;
 }
 
+type PaletteItem =
+  | { kind: "shell"; key: string; shell: ShellProfile }
+  | { kind: "host"; key: string; host: HostProfileSummaryDto };
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
+  isAppElevated = false,
   profiles,
+  shellProfiles = [],
   onClose,
   onSelectHost,
+  onSelectShell,
   onOpenSftp,
 }) => {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const filtered = useMemo(() => {
+  const items = useMemo<PaletteItem[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return profiles;
-    return profiles.filter((p) => {
-      const matchAlias = p.alias.toLowerCase().includes(q);
-      const matchHost = p.host.toLowerCase().includes(q);
-      const matchGroup = (p.group_name || "").toLowerCase().includes(q);
-      const matchTag = p.tags.some((tag) => tag.toLowerCase().includes(q));
-      return matchAlias || matchHost || matchGroup || matchTag;
-    });
-  }, [profiles, query]);
+    const matchedShells: PaletteItem[] = (
+      onSelectShell
+        ? shellProfiles.filter((s) => {
+            if (!q) return true;
+            return (
+              s.name.toLowerCase().includes(q) ||
+              s.kind.toLowerCase().includes(q) ||
+              s.id.toLowerCase().includes(q) ||
+              "local".includes(q)
+            );
+          })
+        : []
+    ).map((shell) => ({ kind: "shell", key: `shell:${shell.id}`, shell }));
+
+    const matchedHosts: PaletteItem[] = profiles
+      .filter((p) => {
+        if (!q) return true;
+        return (
+          p.alias.toLowerCase().includes(q) ||
+          p.host.toLowerCase().includes(q) ||
+          (p.group_name || "").toLowerCase().includes(q) ||
+          p.tags.some((tag) => tag.toLowerCase().includes(q))
+        );
+      })
+      .map((host) => ({ kind: "host", key: `host:${host.id}`, host }));
+
+    return [...matchedShells, ...matchedHosts];
+  }, [profiles, shellProfiles, onSelectShell, query]);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,24 +85,35 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setSelectedIndex(0);
   }, [query]);
 
+  const activateItem = (item: PaletteItem, forceAdmin = false) => {
+    if (item.kind === "shell") {
+      onSelectShell?.(item.shell, isAppElevated || forceAdmin);
+    } else {
+      onSelectHost(item.host);
+    }
+    onClose();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (filtered.length > 0) setSelectedIndex((prev) => (prev + 1) % filtered.length);
+      if (items.length > 0) setSelectedIndex((prev) => (prev + 1) % items.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (filtered.length > 0) {
-        setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
+      if (items.length > 0) {
+        setSelectedIndex((prev) => (prev - 1 + items.length) % items.length);
       }
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const target = filtered[selectedIndex];
-      if (target) {
-        onSelectHost(target);
-        onClose();
-      }
+      const target = items[selectedIndex];
+      if (target) activateItem(target, e.ctrlKey);
     }
   };
+
+  const shellAdminHint = isAppElevated
+    ? t("app.running_admin_hint")
+    : t("palette.ctrl_admin_hint");
+  const hasShellResults = items.some((item) => item.kind === "shell");
 
   return (
     <ModalShell
@@ -102,27 +144,63 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         </div>
 
         <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
-          {filtered.length === 0 ? (
+          {items.length === 0 ? (
             <div className="py-8 text-center text-slate-500 flex flex-col items-center gap-1.5">
               <Server className="w-6 h-6 text-slate-700" />
               <span>{t("palette.empty")}</span>
             </div>
           ) : (
-            filtered.map((host, idx) => {
+            items.map((item, idx) => {
               const isSelected = idx === selectedIndex;
+              const rowClass = `px-3 py-2 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                isSelected
+                  ? "bg-sky-500/15 border border-sky-500/40 text-slate-100"
+                  : "bg-transparent border border-transparent text-slate-300 hover:bg-slate-800/70"
+              }`;
+
+              if (item.kind === "shell") {
+                const { shell } = item;
+                return (
+                  <div
+                    key={item.key}
+                    title={shellAdminHint}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onClick={(e) => activateItem(item, e.ctrlKey)}
+                    className={rowClass}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-slate-800 shrink-0">
+                        <ShellIcon profile={shell} isAdmin={isAppElevated} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold truncate">{shell.name}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400">
+                            {t("palette.local_shell")}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono truncate">
+                          {shell.executable}
+                          {shell.args.length > 0 ? ` ${shell.args.join(" ")}` : ""}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[10px] text-sky-400 shrink-0">
+                      <span>{t("palette.open")}</span>
+                      <CornerDownLeft className="w-3 h-3" />
+                    </div>
+                  </div>
+                );
+              }
+
+              const { host } = item;
               return (
                 <div
-                  key={host.id}
+                  key={item.key}
                   onMouseEnter={() => setSelectedIndex(idx)}
-                  onClick={() => {
-                    onSelectHost(host);
-                    onClose();
-                  }}
-                  className={`px-3 py-2 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
-                    isSelected
-                      ? "bg-sky-500/15 border border-sky-500/40 text-slate-100"
-                      : "bg-transparent border border-transparent text-slate-300 hover:bg-slate-800/70"
-                  }`}
+                  onClick={() => activateItem(item)}
+                  className={rowClass}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span
@@ -186,6 +264,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             })
           )}
         </div>
+
+        {hasShellResults && (
+          <div className="border-t border-slate-800 px-3.5 py-1.5 text-[10px] italic text-slate-400">
+            {shellAdminHint}
+          </div>
+        )}
       </div>
     </ModalShell>
   );

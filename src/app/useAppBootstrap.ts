@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
-import { telemetryApi, useTelemetryStore } from "@/modules/terminal";
+import { useShellsStore } from "@/modules/terminal";
 import { useTabsStore, windowApi } from "@/modules/workspace";
 
 interface UseAppBootstrapOpts {
@@ -14,6 +14,7 @@ export function useAppBootstrap({
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const shellProfiles = useShellsStore((s) => s.shells);
   const [isAppElevated, setIsAppElevated] = useState(false);
   const [hasNativeBorder, setHasNativeBorder] = useState(false);
 
@@ -37,9 +38,7 @@ export function useAppBootstrap({
       if (!cancelled) preloaders.forEach((load) => void load().catch(() => {}));
     }, 150);
 
-    telemetryApi
-      .telemetrySetLocalConfig(settings.showLocalTelemetry, settings.telemetryIntervalSec)
-      .catch(() => {});
+    void useShellsStore.getState().detectShells();
 
     windowApi
       .appGetStatus()
@@ -62,22 +61,13 @@ export function useAppBootstrap({
     (next: AppSettingsValues) => {
       updateSettings(next);
       windowApi.windowSetLaunchSize(next.launchCols, next.launchRows).catch(() => {});
-      telemetryApi
-        .telemetrySetLocalConfig(next.showLocalTelemetry, next.telemetryIntervalSec)
-        .catch(() => {});
-      if (next.showLocalTelemetry) {
-        const localIds = useTabsStore
-          .getState()
-          .tabs.filter((tab) => tab.hostId === "local")
-          .map((tab) => tab.tabId);
-        useTelemetryStore.getState().clearHiddenForTabs(localIds);
-      }
     },
     [updateSettings]
   );
 
   return {
     settings,
+    shellProfiles,
     isAppElevated,
     hasNativeBorder,
     saveAndApplySettings,

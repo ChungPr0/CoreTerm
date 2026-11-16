@@ -26,7 +26,7 @@ export const PopoverMenu: React.FC<PopoverMenuProps> = ({
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node;
       if (menuRef.current?.contains(target)) return;
-      if (anchorRef?.current?.contains(target)) return;
+      if (e.button !== 2 && anchorRef?.current?.contains(target)) return;
       onClose();
     };
     const onKeyDown = (e: KeyboardEvent) => {

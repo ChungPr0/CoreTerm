@@ -1,34 +1,21 @@
-use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
-use crate::hosts::HostService;
 use crate::infra::os::is_process_elevated;
-use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto};
+use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto, ShellProfile};
 
 use super::events::{
     emit_status, finalize_reader_exit, spawn_output_batcher, ReaderExitCtx, ReaderExitMeta,
 };
 use super::manager::PtySessionManager;
+use super::shells::{default_shell_profile, is_default_powershell};
+use super::spawn::{spawn_pty, PtySpawnConfig};
 use super::types::{
-    AttachedTabTarget, PrewarmSink, PrewarmedLocalSession, PtyBackend, PtySession,
-    PREWARM_BUFFER_LIMIT, READ_BUF_SIZE,
+    AttachedTabTarget, PrewarmSink, PrewarmedLocalSession, PREWARM_BUFFER_LIMIT, READ_BUF_SIZE,
 };
-
-pub(super) fn build_local_powershell_command() -> CommandBuilder {
-    let mut c = CommandBuilder::new("powershell.exe");
-    c.arg("-NoLogo");
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        c.cwd(home);
-    }
-    c.env("TERM", "xterm-256color");
-    c.env("COLORTERM", "truecolor");
-    c
-}
 
 impl PtySessionManager {
     /// Spawns the initial local PowerShell ConPTY in the background while WebView2 initializes.
@@ -45,60 +32,38 @@ impl PtySessionManager {
                     return;
                 }
 
-                let pty_system = native_pty_system();
-                let Ok(pair) = pty_system.openpty(PtySize {
-                    rows: initial_rows,
-                    cols: initial_cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                }) else {
+                let profile = default_shell_profile();
+                let cwd = std::env::var("USERPROFILE").ok();
+                let Ok(spawned) = spawn_pty(
+                    PtySpawnConfig {
+                        profile: &profile,
+                        tab_id: "__prewarm__",
+                        host_id: "local",
+                        ssh_key_id: None,
+                        is_admin,
+                        cols: initial_cols,
+                        rows: initial_rows,
+                        cwd: cwd.as_deref(),
+                    },
+                    &manager.job_supervisor,
+                ) else {
                     return;
                 };
-
-                let Ok(mut child) = pair.slave.spawn_command(build_local_powershell_command()) else {
-                    return;
-                };
-                drop(pair.slave);
 
                 if manager.prewarm_cancelled.load(Ordering::SeqCst) {
-                    let _ = child.kill();
+                    spawned.session.manual_disconnect.store(true, Ordering::SeqCst);
+                    spawned.session.terminate();
                     return;
                 }
 
-                let pid = child.process_id();
-                if let Some(process_id) = pid {
-                    let _ = manager.job_supervisor.assign_pid(process_id);
-                }
-
-                let Ok(writer) = pair.master.take_writer() else {
-                    let _ = child.kill();
-                    return;
-                };
-                let Ok(mut reader) = pair.master.try_clone_reader() else {
-                    let _ = child.kill();
-                    return;
-                };
-
-                let session = Arc::new(PtySession {
-                    tab_id: Mutex::new("__prewarm__".to_string()),
-                    host_id: "local".to_string(),
-                    ssh_key_id: None,
-                    is_admin,
-                    backend: PtyBackend::Direct {
-                        master: Mutex::new(pair.master),
-                        writer: Mutex::new(writer),
-                        child: Mutex::new(child),
-                    },
-                    pending_prompt_type: Mutex::new(None),
-                    manual_disconnect: AtomicBool::new(false),
-                });
-
+                let session = spawned.session;
+                let mut reader = spawned.reader;
                 let sink = Arc::new(Mutex::new(PrewarmSink::Buffering(Vec::with_capacity(4096))));
                 let attached: Arc<Mutex<Option<AttachedTabTarget>>> = Arc::new(Mutex::new(None));
 
                 let prewarmed = PrewarmedLocalSession {
                     session: session.clone(),
-                    pid,
+                    pid: spawned.pid,
                     is_admin,
                     initial_cols,
                     initial_rows,
@@ -121,7 +86,6 @@ impl PtySessionManager {
 
                 let sessions_map = manager.sessions.clone();
                 let tunnel_reg = manager.tunnel_registry.clone();
-                let telemetry_hub = manager.telemetry_hub.clone();
                 let session_ref = session;
 
                 let _ = std::thread::Builder::new()
@@ -172,7 +136,6 @@ impl PtySessionManager {
                                 ReaderExitCtx {
                                     sessions_map: &sessions_map,
                                     tunnel_reg: &tunnel_reg,
-                                    telemetry_hub: &telemetry_hub,
                                     app_handle: &target.app,
                                     on_output: &target.on_output,
                                     session_ref: &session_ref,
@@ -193,22 +156,23 @@ impl PtySessionManager {
     pub(super) fn try_claim_prewarmed_local(
         &self,
         app: &AppHandle,
-        hosts: &HostService,
         req: &SessionConnectRequestDto,
+        profile: &ShellProfile,
         is_admin: bool,
         on_output: &Channel<Vec<u8>>,
     ) -> Option<SessionConnectAckDto> {
+        if !is_default_powershell(profile) {
+            return None;
+        }
+
         let taken = {
             let mut guard = self.prewarmed_local.lock().ok()?;
+            if !guard.as_ref().is_some_and(|p| p.is_admin == is_admin) {
+                return None;
+            }
             self.prewarm_cancelled.store(true, Ordering::SeqCst);
             guard.take()
         }?;
-
-        if taken.is_admin != is_admin {
-            taken.session.manual_disconnect.store(true, Ordering::SeqCst);
-            taken.session.terminate();
-            return None;
-        }
 
         let (tx, batcher_handle) = spawn_output_batcher(on_output.clone());
         if let Ok(mut attached_guard) = taken.attached.lock() {
@@ -249,7 +213,6 @@ impl PtySessionManager {
         taken.session.set_tab_id(&req.tab_id);
         self.sessions.insert(req.tab_id.clone(), taken.session.clone());
         emit_status(app, &req.tab_id, "local", "ONLINE", vec![], None);
-        self.telemetry_hub.register_tab(app, hosts, "local", &req.tab_id);
 
         if !buffered.is_empty() {
             let _ = tx.send(buffered);
@@ -265,7 +228,7 @@ impl PtySessionManager {
             tab_id: req.tab_id.clone(),
             host_id: "local".to_string(),
             pid: taken.pid,
-            cli_preview: "powershell.exe".to_string(),
+            cli_preview: profile.name.clone(),
             status: "ONLINE".to_string(),
             is_admin: taken.is_admin,
         })

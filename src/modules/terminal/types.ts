@@ -36,15 +36,3 @@ export interface SessionHostKeyPromptEventDto {
   fingerprint: string;
   reason: string;
 }
-
-export interface TelemetryMetricsEventDto {
-  host_id: string;
-  cpu_usage_percent: number;
-  ram_used_mb: number;
-  ram_total_mb: number;
-  ram_usage_percent: number;
-  swap_used_mb: number;
-  swap_total_mb: number;
-  is_stale: boolean;
-  sampled_at_ms: number;
-}

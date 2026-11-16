@@ -4,9 +4,15 @@
     "total_hosts": "Saved",
     "menu": "Connections",
     "local_shell": "PowerShell",
-    "local_admin": "PowerShell (Admin)",
-    "admin_badge": "Admin",
-    "new_tab_menu": "New tab options"
+    "local_shells": "Local Shells",
+    "local_admin": "PowerShell (Administrator)",
+    "open_shell_admin_name": "Open {{name}} (Administrator)",
+    "admin_badge": "Administrator",
+    "default_badge": "Default",
+    "new_tab_menu": "New tab options",
+    "new_tab_tooltip": "Open a new tab ({{name}})",
+    "ctrl_admin_hint": "Ctrl+Click: Administrator",
+    "running_admin_hint": "Administrator"
   },
   "common": {
     "save": "Save",
@@ -115,12 +121,6 @@
     "enabled": "Enabled",
     "delete_confirm": "Delete this port forwarding rule?"
   },
-  "telemetry": {
-    "cpu": "CPU",
-    "ram": "RAM",
-    "enabled": "Live Telemetry",
-    "interval": "Interval (sec)"
-  },
   "hostkey": {
     "title": "Verify Host Key",
     "changed_title": "Host Key Changed",
@@ -134,9 +134,12 @@
     "reconnect_interval": "Retry (sec)"
   },
   "palette": {
-    "search": "Quick jump (Name, IP, Group, Tag)...",
-    "empty": "No matching host",
-    "connect": "Connect"
+    "search": "Quick jump (Shell, Name, IP, Group, Tag)...",
+    "empty": "No matching host or shell",
+    "connect": "Connect",
+    "open": "Open",
+    "local_shell": "Local",
+    "ctrl_admin_hint": "Ctrl+Click / Ctrl+Enter: Administrator"
   },
   "conflict": {
     "title": "Local Port Conflict",
@@ -170,10 +173,8 @@
     "cols": "Columns (Width)",
     "rows": "Rows (Height)",
     "reset_win": "Windows Default (120 × 30)",
-    "show_telemetry": "Show CPU & RAM Bar",
-    "show_telemetry_desc": "Show or hide CPU & RAM bar in local Terminal",
-    "telemetry_interval": "Poll Interval (sec)",
     "sftp_conflict_policy": "SFTP Duplicate File Action",
+    "default_shell": "Default Local Shell",
     "sftp_conflict_ask": "Always Ask",
     "sftp_conflict_overwrite": "Overwrite",
     "sftp_conflict_skip": "Skip",
@@ -181,9 +182,21 @@
     "sftp_conflict_resume": "Resume Transfer"
   },
   "window": {
+    "restore": "Restore",
+    "move": "Move",
+    "size": "Size",
     "minimize": "Minimize",
     "maximize": "Maximize",
     "close": "Close"
+  },
+  "terminal": {
+    "find_placeholder": "Find...",
+    "find_no_results": "No results",
+    "find_prev": "Previous (Shift+Enter)",
+    "find_next": "Next (Enter)",
+    "find_case": "Match Case",
+    "find_regex": "Regex",
+    "find_invalid_regex": "Invalid regex"
   },
   "ctx": {
     "copy": "Copy",
@@ -191,8 +204,15 @@
     "paste": "Paste",
     "select_all": "Select All",
     "clear_terminal": "Clear Terminal",
+    "find": "Find...",
+    "rename_tab": "Rename Tab",
     "new_tab": "New Tab",
-    "new_admin_tab": "New Admin Tab",
+    "new_tab_name": "New Tab ({{name}})",
+    "new_tab_admin_name": "New Tab ({{name}} - Administrator)",
+    "new_admin_tab": "New Administrator Tab",
+    "open_shell": "Open Shell",
+    "open_shell_admin": "Open Shell (Administrator)",
+    "open_shell_admin_name": "Open {{name}} (Administrator)",
     "new_connection": "New Connection...",
     "new_connection_in_group": "New Connection in \"{{group}}\"...",
     "new_group": "New Group...",
@@ -203,8 +223,6 @@
     "close_other_tabs": "Close Other Tabs",
     "settings": "Settings",
     "saved_hosts": "Saved Connections",
-    "hide_telemetry": "Hide CPU & RAM Bar",
-    "show_telemetry": "Show CPU & RAM Bar",
     "sftp_panel": "SFTP Panel",
     "state_on": "ON",
     "state_off": "OFF",

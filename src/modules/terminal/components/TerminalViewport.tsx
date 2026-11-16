@@ -2,16 +2,17 @@ import React, { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle, RotateCw } from "lucide-react";
 import type { TerminalTabItem } from "@/shared/types/ipc";
-import type { SessionConnectAckDto, TelemetryMetricsEventDto } from "../types";
+import type { SessionConnectAckDto } from "../types";
 import { useI18n } from "@/shared/i18n";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
 import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
-import { TelemetryBar } from "./TelemetryBar";
 import {
   useTerminalSession,
   type TerminalContextActions,
 } from "../hooks/useTerminalSession";
+import { useTerminalFind } from "../hooks/useTerminalFind";
+import { TerminalFindBar } from "./TerminalFindBar";
 
 export type { TerminalContextActions };
 
@@ -20,9 +21,8 @@ interface TerminalViewportProps {
   isActive: boolean;
   launchCols: number;
   launchRows: number;
-  showTelemetry: boolean;
-  telemetry?: TelemetryMetricsEventDto;
   focusToken?: number;
+  findToken?: number;
   suppressAutoFocus?: boolean;
   onReconnect: (tabId: string) => void;
   onToggleAutoReconnect: (tabId: string, enabled: boolean) => void;
@@ -34,7 +34,6 @@ interface TerminalViewportProps {
     actions: TerminalContextActions
   ) => void;
   onContextMenuBanner?: (e: React.MouseEvent, tab: TerminalTabItem) => void;
-  onContextMenuTelemetry?: (e: React.MouseEvent, tab: TerminalTabItem) => void;
 }
 
 export const TerminalViewport: React.FC<TerminalViewportProps> = ({
@@ -42,9 +41,8 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   isActive,
   launchCols,
   launchRows,
-  showTelemetry,
-  telemetry,
   focusToken = 0,
+  findToken = 0,
   suppressAutoFocus = false,
   onReconnect,
   onToggleAutoReconnect,
@@ -52,21 +50,28 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   onElevationCancelled,
   onContextMenuTerminal,
   onContextMenuBanner,
-  onContextMenuTelemetry,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
   const lastAlertErrRef = useRef<string | null>(null);
 
-  const { containerRef, focus, getContextActions } = useTerminalSession({
-    tab,
+  const { containerRef, terminalRef, searchAddonRef, focus, getContextActions } =
+    useTerminalSession({
+      tab,
+      isActive,
+      launchCols,
+      launchRows,
+      focusToken,
+      suppressAutoFocus,
+      onSessionAck,
+      onElevationCancelled,
+    });
+
+  const find = useTerminalFind({
+    terminalRef,
+    searchAddonRef,
     isActive,
-    launchCols,
-    launchRows,
-    focusToken,
-    suppressAutoFocus,
-    onSessionAck,
-    onElevationCancelled,
+    findToken,
   });
 
   useAutoReconnect(
@@ -99,6 +104,22 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
       style={{ display: isActive ? "flex" : "none" }}
       className="flex-1 flex flex-col h-full w-full bg-[#090d16] overflow-hidden relative"
     >
+      <TerminalFindBar
+        isOpen={find.isOpen}
+        inputRef={find.inputRef}
+        query={find.query}
+        onChangeQuery={find.setQuery}
+        caseSensitive={find.caseSensitive}
+        onToggleCaseSensitive={find.toggleCaseSensitive}
+        regex={find.regex}
+        onToggleRegex={find.toggleRegex}
+        invalidRegex={find.invalidRegex}
+        matches={find.matches}
+        onFindPrev={find.findPrev}
+        onFindNext={find.findNext}
+        onClose={find.closeFind}
+      />
+
       {isDisconnected && (
         <div
           onContextMenu={(e) => {
@@ -152,16 +173,6 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
           className="w-full h-full overflow-hidden xterm-no-scrollback bg-[#090d16]"
         />
       </div>
-
-      {showTelemetry && (
-        <div className="absolute bottom-2.5 right-4 z-20">
-          <TelemetryBar
-            metrics={telemetry}
-            sessionState={tab.state}
-            onContextMenu={(e) => onContextMenuTelemetry?.(e, tab)}
-          />
-        </div>
-      )}
     </div>
   );
 };

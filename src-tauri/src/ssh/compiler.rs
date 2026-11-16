@@ -180,8 +180,6 @@ mod tests {
                 strict_host_key_checking: "ACCEPT_NEW".to_string(),
                 startup_command: None,
                 forward_agent: false,
-                telemetry_enabled: true,
-                telemetry_interval_sec: 2,
                 auto_reconnect: true,
                 reconnect_interval_sec: 2,
             },

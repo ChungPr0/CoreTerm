@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
+import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import {
   COL_PAIRS,
   DEFAULT_COLS,
@@ -19,6 +20,7 @@ export function useTableColumns(
   const [activeColDrag, setActiveColDrag] = useState<ColEdge | null>(null);
   const [wrapWidth, setWrapWidth] = useState(0);
   const colDragActiveRef = useRef(false);
+  const startMouseDrag = useWindowMouseDrag();
 
   useLayoutEffect(() => {
     const el = tableWrapRef.current;
@@ -65,39 +67,34 @@ export function useTableColumns(
     const start = { ...widths };
     const total = wrapWidth;
     const pair = COL_PAIRS[edge];
-    document.body.style.cursor = "col-resize";
 
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX;
-      const clamped = Math.max(
-        pair.minLeft - start[pair.left],
-        Math.min(start[pair.right] - pair.minRight, dx)
-      );
-      const next: ColWidths = {
-        ...start,
-        [pair.left]: start[pair.left] + clamped,
-        [pair.right]: start[pair.right] - clamped,
-      };
-      setColRatios({
-        name: next.name / total,
-        size: next.size / total,
-        mtime: next.mtime / total,
-        perms: showPerms ? next.perms / total : 0,
-      });
-    };
-
-    const onUp = () => {
-      document.body.style.cursor = "";
-      setActiveColDrag(null);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.setTimeout(() => {
-        colDragActiveRef.current = false;
-      }, 0);
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startMouseDrag({
+      cursor: "col-resize",
+      onMove: (ev) => {
+        const dx = ev.clientX - startX;
+        const clamped = Math.max(
+          pair.minLeft - start[pair.left],
+          Math.min(start[pair.right] - pair.minRight, dx)
+        );
+        const next: ColWidths = {
+          ...start,
+          [pair.left]: start[pair.left] + clamped,
+          [pair.right]: start[pair.right] - clamped,
+        };
+        setColRatios({
+          name: next.name / total,
+          size: next.size / total,
+          mtime: next.mtime / total,
+          perms: showPerms ? next.perms / total : 0,
+        });
+      },
+      onEnd: () => {
+        setActiveColDrag(null);
+        window.setTimeout(() => {
+          colDragActiveRef.current = false;
+        }, 0);
+      },
+    });
   };
 
   return {

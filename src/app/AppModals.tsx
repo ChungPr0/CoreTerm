@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState } from "react";
+import type { ShellProfile } from "@/shared/types/ipc";
 import type { AppSettingsValues } from "@/modules/settings";
 import type { DeletePromptState, HostFullConfigDto } from "@/modules/hosts";
 import type { HostProfileSummaryDto, PortProbeResultDto } from "@/modules/hosts";
@@ -68,13 +69,16 @@ interface AppModalsProps {
   onCloseVault: () => void;
 
   isSettingsOpen: boolean;
+  isAppElevated: boolean;
   settings: AppSettingsValues;
+  shellProfiles: ShellProfile[];
   onCloseSettings: () => void;
   onSaveSettings: (next: AppSettingsValues) => void;
 
   isPaletteOpen: boolean;
   onClosePalette: () => void;
   onSelectHost: (host: HostProfileSummaryDto) => void;
+  onSelectShell: (profile: ShellProfile, asAdmin?: boolean) => void;
   onOpenSftpTab: (host: HostProfileSummaryDto) => void;
 
   authPrompt: SessionAuthPromptEventDto | SftpAuthPromptEventDto | null;
@@ -112,12 +116,15 @@ export const AppModals: React.FC<AppModalsProps> = ({
   onOpenVault,
   onCloseVault,
   isSettingsOpen,
+  isAppElevated,
   settings,
+  shellProfiles,
   onCloseSettings,
   onSaveSettings,
   isPaletteOpen,
   onClosePalette,
   onSelectHost,
+  onSelectShell,
   onOpenSftpTab,
   authPrompt,
   authPromptSource,
@@ -163,6 +170,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
           <SettingsModal
             isOpen={isSettingsOpen}
             settings={settings}
+            shellProfiles={shellProfiles}
             onClose={onCloseSettings}
             onSave={onSaveSettings}
           />
@@ -191,9 +199,12 @@ export const AppModals: React.FC<AppModalsProps> = ({
         {isPaletteOpen && (
           <CommandPalette
             isOpen={isPaletteOpen}
+            isAppElevated={isAppElevated}
             profiles={allProfiles}
+            shellProfiles={shellProfiles}
             onClose={onClosePalette}
             onSelectHost={onSelectHost}
+            onSelectShell={onSelectShell}
             onOpenSftp={onOpenSftpTab}
           />
         )}

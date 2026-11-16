@@ -1,20 +1,25 @@
 import React from "react";
 import type { MenuState } from "@/shared/ui";
-import type { TerminalTabItem } from "@/shared/types/ipc";
-import type { AppSettingsValues } from "@/modules/settings";
+import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { useHostMenus, type HostProfileSummaryDto } from "@/modules/hosts";
-import { useTerminalMenus, type TerminalContextActions } from "@/modules/terminal";
+import {
+  useTerminalMenus,
+  type NewLocalTabOpts,
+  type TerminalContextActions,
+} from "@/modules/terminal";
 import { useGlobalContextMenu, useTabMenus } from "@/modules/workspace";
 
 interface UseAppMenusOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
-  settings: AppSettingsValues;
   tabs: TerminalTabItem[];
   allProfiles: HostProfileSummaryDto[];
   isAppElevated: boolean;
-  hiddenTelemetryTabIds: Record<string, boolean>;
+  shellProfiles: ShellProfile[];
+  defaultShellProfile: ShellProfile;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
-  onNewLocalTab: (asAdmin?: boolean) => void;
+  onNewLocalTab: (opts?: NewLocalTabOpts) => void;
+  onRenameTab: (tabId: string) => void;
+  onFindInTab: (tabId: string) => void;
   onReconnectTab: (tabId: string) => void;
   onToggleSftp: (tabId: string) => void;
   onOpenSftp: (host: HostProfileSummaryDto) => void;
@@ -32,9 +37,6 @@ interface UseAppMenusOpts {
   onOpenSettings: () => void;
   onOpenPalette: () => void;
   onDismissSidebar: () => void;
-  onFocusTerminal: () => void;
-  onShowTelemetry: (tabId: string) => void;
-  onHideTelemetry: (tabId: string) => void;
 }
 
 export type { MenuState, TerminalContextActions };
@@ -43,14 +45,14 @@ export type { MenuState, TerminalContextActions };
 export function useAppMenus(opts: UseAppMenusOpts) {
   const terminalMenus = useTerminalMenus({
     t: opts.t,
-    settings: opts.settings,
-    hiddenTelemetryTabIds: opts.hiddenTelemetryTabIds,
+    isAppElevated: opts.isAppElevated,
+    shellProfiles: opts.shellProfiles,
+    defaultShellProfile: opts.defaultShellProfile,
     setContextMenu: opts.setContextMenu,
+    onNewLocalTab: opts.onNewLocalTab,
+    onFindInTab: opts.onFindInTab,
     onReconnectTab: opts.onReconnectTab,
     onToggleSftp: opts.onToggleSftp,
-    onShowTelemetry: opts.onShowTelemetry,
-    onHideTelemetry: opts.onHideTelemetry,
-    onFocusTerminal: opts.onFocusTerminal,
   });
 
   const tabMenus = useTabMenus({
@@ -58,16 +60,18 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     tabs: opts.tabs,
     allProfiles: opts.allProfiles,
     isAppElevated: opts.isAppElevated,
+    shellProfiles: opts.shellProfiles,
+    defaultShellProfile: opts.defaultShellProfile,
     setContextMenu: opts.setContextMenu,
     onNewLocalTab: opts.onNewLocalTab,
+    onRenameTab: opts.onRenameTab,
+    onFindInTab: opts.onFindInTab,
     onReconnectTab: opts.onReconnectTab,
     onToggleSftp: opts.onToggleSftp,
     onOpenSftp: opts.onOpenSftp,
     onDuplicateTab: opts.onDuplicateTab,
     onCloseTab: opts.onCloseTab,
     onCloseOtherTabs: opts.onCloseOtherTabs,
-    onOpenPalette: opts.onOpenPalette,
-    onOpenSettings: opts.onOpenSettings,
   });
 
   const hostMenus = useHostMenus({
@@ -89,6 +93,8 @@ export function useAppMenus(opts: UseAppMenusOpts) {
   useGlobalContextMenu({
     t: opts.t,
     isAppElevated: opts.isAppElevated,
+    shellProfiles: opts.shellProfiles,
+    defaultShellProfile: opts.defaultShellProfile,
     setContextMenu: opts.setContextMenu,
     onNewLocalTab: opts.onNewLocalTab,
     onNewHost: opts.onNewHost,

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::ipc::commands::AppState;
 use crate::ipc::dto::{
@@ -36,16 +36,10 @@ pub async fn host_create(
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn host_update(
-    app: AppHandle,
     state: State<'_, AppState>,
     req: UpdateHostRequestDto,
 ) -> AppResult<HostFullConfigDto> {
-    let target_id = req.id.clone();
-    let updated = state.hosts.update(req)?;
-    state
-        .pty_manager
-        .sync_host_telemetry(&app, &state.hosts, &target_id);
-    Ok(updated)
+    state.hosts.update(req)
 }
 
 #[tauri::command(rename_all = "snake_case")]

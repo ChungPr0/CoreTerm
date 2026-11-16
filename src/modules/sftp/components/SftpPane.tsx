@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
 import { useAlert, type ContextMenuEntry } from "@/shared/ui";
+import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import { copyText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
@@ -240,24 +241,22 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     setNameModal(null);
   };
 
+  const startMouseDrag = useWindowMouseDrag();
+
   const startSplitDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     const box = containerRef.current;
     if (!box) return;
-    document.body.style.cursor = "col-resize";
-    const onMove = (ev: MouseEvent) => {
-      const rect = box.getBoundingClientRect();
-      if (rect.width > 0) {
-        setSplitRatio(Math.min(0.82, Math.max(0.18, (ev.clientX - rect.left) / rect.width)));
-      }
-    };
-    const onUp = () => {
-      document.body.style.cursor = "";
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startMouseDrag({
+      cursor: "col-resize",
+      lockUserSelect: true,
+      onMove: (ev) => {
+        const rect = box.getBoundingClientRect();
+        if (rect.width > 0) {
+          setSplitRatio(Math.min(0.82, Math.max(0.18, (ev.clientX - rect.left) / rect.width)));
+        }
+      },
+    });
   };
 
   return (

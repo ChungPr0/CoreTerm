@@ -1,15 +1,14 @@
 use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 use tracing::{error, info};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::hosts::HostService;
-use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto};
+use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto, ShellProfile};
 use crate::keys::KeyService;
 use crate::pty::expect::ExpectStateMachine;
 
@@ -17,14 +16,16 @@ use super::events::{
     emit_status, finalize_reader_exit, spawn_output_batcher, ReaderExitCtx, ReaderExitMeta,
 };
 use super::manager::PtySessionManager;
-use super::prewarm::build_local_powershell_command;
+use super::shells::default_shell_profile;
+use super::spawn::{spawn_pty, PtySpawnConfig};
 use super::ssh::{handle_expect_signal, SshExpectContext, SshLaunchPlan};
-use super::types::{PtyBackend, PtySession, READ_BUF_SIZE};
+use super::types::{PtySession, READ_BUF_SIZE};
 
 pub(super) struct DirectLaunchSpec {
     pub req: SessionConnectRequestDto,
     pub is_local: bool,
     pub is_admin: bool,
+    pub local_profile: Option<ShellProfile>,
     pub ssh_plan: Option<SshLaunchPlan>,
 }
 
@@ -59,10 +60,6 @@ impl PtySessionManager {
             .as_ref()
             .map(|p| p.active_forwards.clone())
             .unwrap_or_default();
-        let cli_preview = ssh_plan
-            .as_ref()
-            .map(|p| p.cli_preview.clone())
-            .unwrap_or_else(|| "powershell.exe".to_string());
         let ssh_key_id = ssh_plan.as_ref().and_then(|p| p.ssh_key_id.clone());
         let target_host = ssh_plan
             .as_ref()
@@ -74,6 +71,28 @@ impl PtySessionManager {
             .map(|p| p.host_pw_mode.clone())
             .unwrap_or_default();
 
+        let (profile, cli_preview) = match ssh_plan {
+            Some(ref plan) => {
+                let ssh_profile = ShellProfile {
+                    id: "ssh".to_string(),
+                    kind: "ssh".to_string(),
+                    name: plan.cli_preview.clone(),
+                    executable: "ssh.exe".to_string(),
+                    args: plan
+                        .args
+                        .iter()
+                        .map(|a| a.to_string_lossy().into_owned())
+                        .collect(),
+                };
+                (ssh_profile, plan.cli_preview.clone())
+            }
+            None => {
+                let p = spec.local_profile.unwrap_or_else(default_shell_profile);
+                let preview = p.name.clone();
+                (p, preview)
+            }
+        };
+
         emit_status(
             app,
             &tab_id,
@@ -83,75 +102,50 @@ impl PtySessionManager {
             None,
         );
 
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
-                rows: spec.req.rows.max(2),
-                cols: spec.req.cols.max(10),
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| CoreError::Pty(format!("Failed to open Windows ConPTY: {e}")))?;
-
-        let cmd = match ssh_plan {
-            None => build_local_powershell_command(),
-            Some(plan) => {
-                let mut c = CommandBuilder::new("ssh.exe");
-                for arg in &plan.args {
-                    c.arg(arg);
-                }
-                c.env("TERM", "xterm-256color");
-                c.env("COLORTERM", "truecolor");
-                c
-            }
+        let cwd = if spec.is_local {
+            std::env::var("USERPROFILE").ok()
+        } else {
+            None
         };
 
-        let child = match pair.slave.spawn_command(cmd) {
-            Ok(c) => c,
-            Err(e) => {
+        let spawned = match spawn_pty(
+            PtySpawnConfig {
+                profile: &profile,
+                tab_id: &tab_id,
+                host_id: &host_id,
+                ssh_key_id,
+                is_admin: spec.is_admin,
+                cols: spec.req.cols,
+                rows: spec.req.rows,
+                cwd: cwd.as_deref(),
+            },
+            &self.job_supervisor,
+        ) {
+            Ok(s) => s,
+            Err(err) => {
                 self.tunnel_registry.release_tab_tunnels(&tab_id);
-                let err_msg = format!("Failed to spawn process: {e}");
-                emit_status(app, &tab_id, &host_id, "ERROR", vec![], Some(err_msg.clone()));
-                return Err(CoreError::Pty(err_msg));
+                emit_status(
+                    app,
+                    &tab_id,
+                    &host_id,
+                    "ERROR",
+                    vec![],
+                    Some(err.to_string()),
+                );
+                return Err(err);
             }
         };
-        drop(pair.slave);
-
-        let pid = child.process_id();
-        if let Some(process_id) = pid {
-            let _ = self.job_supervisor.assign_pid(process_id);
-        }
 
         if !spec.is_local {
             let _ = hosts.touch_last_connected(&host_id);
         }
 
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| CoreError::Pty(format!("Failed to take ConPTY master writer: {e}")))?;
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| CoreError::Pty(format!("Failed to clone ConPTY master reader: {e}")))?;
-
-        let session = Arc::new(PtySession {
-            tab_id: Mutex::new(tab_id.clone()),
-            host_id: host_id.clone(),
-            ssh_key_id,
-            is_admin: spec.is_admin,
-            backend: PtyBackend::Direct {
-                master: Mutex::new(pair.master),
-                writer: Mutex::new(writer),
-                child: Mutex::new(child),
-            },
-            pending_prompt_type: Mutex::new(None),
-            manual_disconnect: AtomicBool::new(false),
-        });
+        let session = spawned.session;
+        let pid = spawned.pid;
+        let reader = spawned.reader;
 
         self.sessions.insert(tab_id.clone(), session.clone());
         emit_status(app, &tab_id, &host_id, "ONLINE", active_forwards, None);
-        self.telemetry_hub.register_tab(app, hosts, &host_id, &tab_id);
 
         let reader_spec = DirectReaderSpec {
             tab_id: tab_id.clone(),
@@ -192,7 +186,6 @@ impl PtySessionManager {
         let (tx, batcher_handle) = spawn_output_batcher(on_output.clone());
         let sessions_map = self.sessions.clone();
         let tunnel_reg = self.tunnel_registry.clone();
-        let telemetry_hub = self.telemetry_hub.clone();
         let app_handle = app.clone();
         let hosts = services.hosts.clone();
         let keys = services.keys.clone();
@@ -255,7 +248,6 @@ impl PtySessionManager {
                     ReaderExitCtx {
                         sessions_map: &sessions_map,
                         tunnel_reg: &tunnel_reg,
-                        telemetry_hub: &telemetry_hub,
                         app_handle: &app_handle,
                         on_output: &on_output,
                         session_ref: &session_ref,

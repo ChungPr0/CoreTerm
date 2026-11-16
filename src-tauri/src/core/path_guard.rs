@@ -45,13 +45,13 @@ pub fn validate_single_entry_name(name: &str) -> CoreResult<&str> {
 }
 
 pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
-    validate_single_entry_name(name)?;
-    if name.ends_with(' ') || name.ends_with('.') {
+    let valid = validate_single_entry_name(name)?;
+    if name.ends_with(' ') || name.ends_with('.') || valid.ends_with('.') {
         return Err(CoreError::Validation(format!(
             "Windows filename cannot end with a space or dot: '{name}'"
         )));
     }
-    if name
+    if valid
         .chars()
         .any(|c| (c as u32) < 0x20 || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
     {
@@ -60,7 +60,7 @@ pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
         )));
     }
 
-    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let stem = valid.split('.').next().unwrap_or("").to_ascii_uppercase();
     if WIN_RESERVED.contains(&stem.as_str()) {
         return Err(CoreError::Validation(format!(
             "Filename uses a reserved Windows device name: '{name}'"
@@ -142,6 +142,7 @@ mod tests {
         assert!(safe_join_windows_relative(base, &["..".into(), "evil.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["sub/dir".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["CON.txt".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &[" CON.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["nul".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["bad:name".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["trailing.".into()]).is_err());

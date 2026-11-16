@@ -1,4 +1,5 @@
 import { Channel, invoke, listenEvent, type UnlistenFn } from "@/shared/api/tauriClient";
+import type { ShellProfile } from "@/shared/types/ipc";
 import type {
   ConflictStrategy,
   SessionAuthPromptEventDto,
@@ -8,6 +9,10 @@ import type {
 } from "../types";
 
 export const sessionApi = {
+  detectAvailableShells(refresh = false): Promise<ShellProfile[]> {
+    return invoke<ShellProfile[]>("detect_available_shells", { refresh });
+  },
+
   sessionConnect(params: {
     tabId: string;
     hostId: string;
@@ -15,6 +20,7 @@ export const sessionApi = {
     rows: number;
     conflictStrategy?: ConflictStrategy;
     asAdmin?: boolean;
+    shellProfile?: ShellProfile;
     onOutput: Channel<number[] | Uint8Array>;
   }): Promise<SessionConnectAckDto> {
     return invoke<SessionConnectAckDto>("session_connect", {
@@ -25,6 +31,7 @@ export const sessionApi = {
         rows: params.rows,
         conflict_strategy: params.conflictStrategy ?? "AUTO_SHARE_OR_SKIP",
         as_admin: params.asAdmin,
+        shell_profile: params.shellProfile,
       },
       on_output: params.onOutput,
     });
@@ -70,6 +77,7 @@ export const sessionApi = {
     cols: number;
     rows: number;
     asAdmin?: boolean;
+    shellProfile?: ShellProfile;
     onOutput: Channel<number[] | Uint8Array>;
   }): Promise<SessionConnectAckDto> {
     return invoke<SessionConnectAckDto>("session_reconnect", {
@@ -79,6 +87,7 @@ export const sessionApi = {
         cols: params.cols,
         rows: params.rows,
         as_admin: params.asAdmin,
+        shell_profile: params.shellProfile,
       },
       on_output: params.onOutput,
     });
@@ -106,3 +115,7 @@ export const sessionApi = {
     return listenEvent("session:host_key_prompt", handler);
   },
 };
+
+export function detectAvailableShells(refresh = false): Promise<ShellProfile[]> {
+  return sessionApi.detectAvailableShells(refresh);
+}

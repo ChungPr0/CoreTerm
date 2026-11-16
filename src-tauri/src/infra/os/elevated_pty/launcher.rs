@@ -56,7 +56,12 @@ pub(super) fn quote_win32_arg(arg: &str) -> String {
 }
 
 /// Spawns a hidden UAC-elevated worker of this binary and bridges its ConPTY via Named Pipes.
-pub fn spawn_elevated_pty(cols: u16, rows: u16) -> Result<ElevatedPtyConnection, String> {
+pub fn spawn_elevated_pty(
+    cols: u16,
+    rows: u16,
+    executable: &str,
+    args: &[String],
+) -> Result<ElevatedPtyConnection, String> {
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
     let exe_str = exe_path.to_string_lossy().to_string();
@@ -85,7 +90,13 @@ pub fn spawn_elevated_pty(cols: u16, rows: u16) -> Result<ElevatedPtyConnection,
         secret.clone(),
         "--parent-pid".to_string(),
         std::process::id().to_string(),
+        "--exe".to_string(),
+        quote_win32_arg(executable),
     ];
+    for arg in args {
+        arg_parts.push("--arg".to_string());
+        arg_parts.push(quote_win32_arg(arg));
+    }
     if let Ok(home) = std::env::var("USERPROFILE") {
         if !home.trim().is_empty() {
             arg_parts.push("--cwd".to_string());

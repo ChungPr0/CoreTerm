@@ -68,8 +68,6 @@ CREATE TABLE IF NOT EXISTS ssh_options (
     strict_host_key_checking    TEXT NOT NULL DEFAULT 'ACCEPT_NEW' CHECK (strict_host_key_checking IN ('ACCEPT_NEW', 'YES', 'NO')),
     startup_command             TEXT DEFAULT NULL,
     forward_agent               INTEGER NOT NULL DEFAULT 0 CHECK (forward_agent IN (0, 1)),
-    telemetry_enabled           INTEGER NOT NULL DEFAULT 0 CHECK (telemetry_enabled IN (0, 1)),
-    telemetry_interval_sec      INTEGER NOT NULL DEFAULT 2 CHECK (telemetry_interval_sec BETWEEN 1 AND 60),
     auto_reconnect              INTEGER NOT NULL DEFAULT 0 CHECK (auto_reconnect IN (0, 1)),
     reconnect_interval_sec      INTEGER NOT NULL DEFAULT 2 CHECK (reconnect_interval_sec BETWEEN 1 AND 60),
     updated_at                  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -108,6 +106,17 @@ pub fn configure_and_migrate(conn: &Connection) -> CoreResult<()> {
             "ALTER TABLE host_groups ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
             [],
         )?;
+    }
+    // Drop removed CPU/RAM telemetry columns on existing databases.
+    let ssh_opt_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(ssh_options)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .collect();
+    for legacy_col in ["telemetry_enabled", "telemetry_interval_sec"] {
+        if ssh_opt_cols.iter().any(|c| c == legacy_col) {
+            conn.execute(&format!("ALTER TABLE ssh_options DROP COLUMN {legacy_col}"), [])?;
+        }
     }
     // Settings moved to localStorage; clean up legacy table on existing DBs.
     conn.execute("DROP TABLE IF EXISTS app_settings", [])?;

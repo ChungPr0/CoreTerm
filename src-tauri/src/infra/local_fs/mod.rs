@@ -156,6 +156,17 @@ pub fn create_dir(parent_dir: &str, name: &str) -> CoreResult<String> {
     Ok(clean_display_path(&target))
 }
 
+fn is_same_local_target(src: &Path, dest: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        src.to_string_lossy().to_lowercase() == dest.to_string_lossy().to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        src == dest
+    }
+}
+
 pub fn rename_entry(old_path: &str, new_name: &str) -> CoreResult<String> {
     let valid_name = validate_single_entry_name(new_name)?;
     validate_windows_file_name(valid_name)?;
@@ -164,7 +175,7 @@ pub fn rename_entry(old_path: &str, new_name: &str) -> CoreResult<String> {
         CoreError::Validation(format!("Cannot rename root path: {}", src.display()))
     })?;
     let dest = parent.join(valid_name);
-    if dest.exists() {
+    if !is_same_local_target(src, &dest) && dest.exists() {
         return Err(CoreError::Validation(format!(
             "Target already exists: {}",
             clean_display_path(&dest)
@@ -190,4 +201,25 @@ pub fn delete_entries(paths: &[String]) -> CoreResult<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn rename_allows_case_only_change_but_blocks_existing_sibling() {
+        let dir = tempdir().expect("tempdir");
+        let a = dir.path().join("readme.txt");
+        let b = dir.path().join("other.txt");
+        fs::write(&a, b"hi").unwrap();
+        fs::write(&b, b"yo").unwrap();
+
+        let renamed = rename_entry(&a.to_string_lossy(), "Readme.txt").expect("case rename");
+        assert!(renamed.ends_with("Readme.txt"));
+
+        let conflict = rename_entry(&renamed, "other.txt");
+        assert!(conflict.is_err());
+    }
 }

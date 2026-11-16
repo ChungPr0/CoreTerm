@@ -130,21 +130,34 @@ impl RemoteSftpClient {
             }
         };
 
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|e| map_russh_error("Failed to start SFTP subsystem", e))?;
+        tokio::select! {
+            _ = cancel_token.cancelled() => {
+                return Err(CoreError::Sftp("Connection cancelled".to_string()));
+            }
+            res = channel.request_subsystem(true, "sftp") => {
+                res.map_err(|e| map_russh_error("Failed to start SFTP subsystem", e))?;
+            }
+        }
 
-        let sftp = SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|e| CoreError::Sftp(format!("Failed to initialize SFTP protocol: {e}")))?;
+        let sftp = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                return Err(CoreError::Sftp("Connection cancelled".to_string()));
+            }
+            res = SftpSession::new(channel.into_stream()) => {
+                res.map_err(|e| CoreError::Sftp(format!("Failed to initialize SFTP protocol: {e}")))?
+            }
+        };
         sftp.set_timeout(30);
 
-        let home_path = sftp
-            .canonicalize(".")
-            .await
-            .map(|p| normalize_remote_path(&p))
-            .unwrap_or_else(|_| "/".to_string());
+        let home_path = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                return Err(CoreError::Sftp("Connection cancelled".to_string()));
+            }
+            res = sftp.canonicalize(".") => {
+                res.map(|p| normalize_remote_path(&p))
+                    .unwrap_or_else(|_| "/".to_string())
+            }
+        };
 
         emit_status(
             app,
@@ -381,10 +394,13 @@ impl RemoteSftpClient {
                     )));
                 }
                 None => {
-                    self.sftp
-                        .create_dir(&current)
-                        .await
-                        .map_err(|e| map_sftp_error("Failed to create remote directory", e))?;
+                    if let Err(err) = self.sftp.create_dir(&current).await {
+                        // Re-check once in case a concurrent transfer created the directory first.
+                        match self.try_stat(&current).await? {
+                            Some(attrs) if attrs.file_type().is_dir() => {}
+                            _ => return Err(map_sftp_error("Failed to create remote directory", err)),
+                        }
+                    }
                 }
             }
         }

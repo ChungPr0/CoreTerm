@@ -1,26 +1,28 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FolderSync,
   RotateCw,
   Server,
-  Shield,
-  Terminal as TerminalIcon,
   X,
 } from "lucide-react";
 import type { SessionState, TerminalTabItem } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
+import { ShellIcon } from "./ShellIcon";
 
 interface TabItemProps {
   tab: TerminalTabItem;
   isActive: boolean;
   isDragged: boolean;
   isCompact: boolean;
+  isRenaming?: boolean;
   elRef: (el: HTMLDivElement | null) => void;
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   onSelect: () => void;
   onClose: (e: React.MouseEvent) => void;
   onReconnect: (e: React.MouseEvent) => void;
   onToggleSftp?: (e: React.MouseEvent) => void;
+  onCommitRename?: (title: string) => void;
+  onCancelRename?: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
@@ -69,16 +71,37 @@ export const TabItem: React.FC<TabItemProps> = ({
   isActive,
   isDragged,
   isCompact,
+  isRenaming = false,
   elRef,
   onPointerDown,
   onSelect,
   onClose,
   onReconnect,
   onToggleSftp,
+  onCommitRename,
+  onCancelRename,
   onContextMenu,
 }) => {
   const { t } = useI18n();
   const isLocal = tab.hostId === "local";
+  const [renameDraft, setRenameDraft] = useState(tab.title);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const escCancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (!isRenaming) return;
+    setRenameDraft(tab.title);
+    escCancelledRef.current = false;
+    const raf = window.requestAnimationFrame(() => {
+      const el = renameInputRef.current;
+      if (el) {
+        el.focus();
+        el.select();
+      }
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [isRenaming, tab.title]);
+
   const status = getStatusIndicator(tab.state, t);
   const isOffline =
     tab.state === "DISCONNECTED" ||
@@ -135,11 +158,10 @@ export const TabItem: React.FC<TabItemProps> = ({
 
       <span className="relative inline-flex h-4 w-4 items-center justify-center shrink-0">
         {isLocal ? (
-          tab.isAdmin ? (
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-          ) : (
-            <TerminalIcon className="w-3.5 h-3.5 text-sky-400" />
-          )
+          <ShellIcon
+            profile={tab.shellProfile}
+            isAdmin={Boolean(tab.isAdmin && isCompact)}
+          />
         ) : tab.tabKind === "sftp" ? (
           <FolderSync className="w-3.5 h-3.5 text-sky-400" />
         ) : (
@@ -155,7 +177,37 @@ export const TabItem: React.FC<TabItemProps> = ({
         )}
       </span>
 
-      <span className="truncate font-medium flex-1 min-w-0">{tab.title}</span>
+      {isRenaming ? (
+        <input
+          ref={renameInputRef}
+          type="text"
+          value={renameDraft}
+          onChange={(e) => setRenameDraft(e.target.value)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
+          onBlur={() => {
+            if (escCancelledRef.current) return;
+            onCommitRename?.(renameDraft);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              onCommitRename?.(renameDraft);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              escCancelledRef.current = true;
+              onCancelRename?.();
+            }
+          }}
+          className="flex-1 min-w-0 h-5 px-1.5 rounded bg-slate-950 border border-sky-500/80 text-xs font-medium text-slate-100 outline-none select-text"
+        />
+      ) : (
+        <span className="truncate font-medium flex-1 min-w-0">{tab.title}</span>
+      )}
 
       {tab.isAdmin && !isCompact && (
         <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[9px] font-semibold leading-none text-amber-300 shrink-0">

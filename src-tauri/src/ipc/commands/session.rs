@@ -3,9 +3,20 @@ use tauri::{AppHandle, State};
 
 use crate::ipc::commands::AppState;
 use crate::ipc::dto::{
-    SessionConnectAckDto, SessionConnectRequestDto, SessionReconnectRequestDto,
+    SessionConnectAckDto, SessionConnectRequestDto, SessionReconnectRequestDto, ShellProfile,
 };
 use crate::ipc::error::{AppError, AppResult};
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn detect_available_shells(
+    state: State<'_, AppState>,
+    refresh: Option<bool>,
+) -> AppResult<Vec<ShellProfile>> {
+    Ok(state
+        .pty_manager
+        .detect_available_shells(refresh.unwrap_or(false))
+        .await)
+}
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn session_connect(

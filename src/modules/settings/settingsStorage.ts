@@ -1,7 +1,29 @@
-import type { SftpConflictPolicy } from "@/shared/types/ipc";
+import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
 import type { AppSettingsValues } from "./types";
 
 const SETTINGS_STORAGE_KEY = "coreterm_settings";
+
+function parseShellProfile(value: unknown): ShellProfile | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const obj = value as Record<string, unknown>;
+  if (
+    typeof obj.id !== "string" ||
+    typeof obj.kind !== "string" ||
+    typeof obj.name !== "string" ||
+    typeof obj.executable !== "string" ||
+    !Array.isArray(obj.args) ||
+    !obj.args.every((a) => typeof a === "string")
+  ) {
+    return undefined;
+  }
+  return {
+    id: obj.id,
+    kind: obj.kind,
+    name: obj.name,
+    executable: obj.executable,
+    args: obj.args,
+  };
+}
 
 export function parseConflictPolicy(value: unknown): SftpConflictPolicy {
   if (
@@ -24,15 +46,12 @@ export function loadSettings(): AppSettingsValues {
       return {
         launchCols: Number(parsed.launchCols) || 120,
         launchRows: Number(parsed.launchRows) || 30,
-        showLocalTelemetry:
-          typeof parsed.showLocalTelemetry === "boolean"
-            ? parsed.showLocalTelemetry
-            : false,
-        telemetryIntervalSec: Math.min(
-          Math.max(Number(parsed.telemetryIntervalSec) || 2, 1),
-          60
-        ),
         sftpConflictPolicy: parseConflictPolicy(parsed.sftpConflictPolicy),
+        defaultShellId:
+          typeof parsed.defaultShellId === "string" && parsed.defaultShellId.trim()
+            ? parsed.defaultShellId.trim()
+            : "powershell",
+        defaultShellProfile: parseShellProfile(parsed.defaultShellProfile),
       };
     }
   } catch {
@@ -41,9 +60,8 @@ export function loadSettings(): AppSettingsValues {
   return {
     launchCols: 120,
     launchRows: 30,
-    showLocalTelemetry: false,
-    telemetryIntervalSec: 2,
     sftpConflictPolicy: "ASK",
+    defaultShellId: "powershell",
   };
 }
 

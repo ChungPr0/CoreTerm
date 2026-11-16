@@ -1,22 +1,23 @@
 import React, { useEffect, useState } from "react";
 import {
-  Activity,
   FolderSync,
   Globe,
   Monitor,
   RotateCcw,
   Save,
   Settings,
+  Terminal as TerminalIcon,
   X,
 } from "lucide-react";
 import { type Locale, useI18n } from "@/shared/i18n";
-import type { SftpConflictPolicy } from "@/shared/types/ipc";
+import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
 import { ModalShell } from "@/shared/ui";
 import type { AppSettingsValues } from "../types";
 
 interface SettingsModalProps {
   isOpen: boolean;
   settings: AppSettingsValues;
+  shellProfiles?: ShellProfile[];
   onClose: () => void;
   onSave: (next: AppSettingsValues) => void;
 }
@@ -24,42 +25,40 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   settings,
+  shellProfiles = [],
   onClose,
   onSave,
 }) => {
   const { locale, setLocale, t } = useI18n();
   const [cols, setCols] = useState<number>(settings.launchCols);
   const [rows, setRows] = useState<number>(settings.launchRows);
-  const [telemetry, setTelemetry] = useState<boolean>(settings.showLocalTelemetry);
-  const [telemetryInterval, setTelemetryInterval] = useState<number>(
-    settings.telemetryIntervalSec
-  );
   const [sftpConflictPolicy, setSftpConflictPolicy] =
     useState<SftpConflictPolicy>(settings.sftpConflictPolicy ?? "ASK");
+  const [defaultShellId, setDefaultShellId] = useState<string>(
+    settings.defaultShellId || "powershell"
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setCols(settings.launchCols);
     setRows(settings.launchRows);
-    setTelemetry(settings.showLocalTelemetry);
-    setTelemetryInterval(settings.telemetryIntervalSec);
     setSftpConflictPolicy(settings.sftpConflictPolicy ?? "ASK");
+    setDefaultShellId(settings.defaultShellId || "powershell");
   }, [isOpen, settings]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const validCols = Math.min(Math.max(Number(cols) || 120, 40), 300);
     const validRows = Math.min(Math.max(Number(rows) || 30, 10), 120);
-    const validTelemetrySec = Math.min(
-      Math.max(Number(telemetryInterval) || 2, 1),
-      60
-    );
+    const selectedProfile =
+      shellProfiles.find((s) => s.id === defaultShellId) ??
+      settings.defaultShellProfile;
     onSave({
       launchCols: validCols,
       launchRows: validRows,
-      showLocalTelemetry: telemetry,
-      telemetryIntervalSec: validTelemetrySec,
       sftpConflictPolicy,
+      defaultShellId,
+      defaultShellProfile: selectedProfile,
     });
     onClose();
   };
@@ -176,44 +175,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Local terminal CPU/RAM telemetry */}
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-            <label className="flex items-center justify-between cursor-pointer">
-              <div className="flex items-center gap-2.5">
-                <Activity className="w-4 h-4 text-emerald-400 shrink-0" />
-                <div>
-                  <div className="font-semibold text-slate-200">
-                    {t("settings.show_telemetry")}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {t("settings.show_telemetry_desc")}
-                  </div>
-                </div>
+          {/* Default local shell */}
+          {shellProfiles.length > 0 && (
+            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-slate-300 font-medium">
+                <TerminalIcon className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>{t("settings.default_shell")}</span>
               </div>
-              <input
-                type="checkbox"
-                checked={telemetry}
-                onChange={(e) => setTelemetry(e.target.checked)}
-                className="w-4 h-4 accent-sky-500 cursor-pointer"
-              />
-            </label>
-
-            {telemetry && (
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                <span className="text-slate-400">
-                  {t("settings.telemetry_interval")}
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={telemetryInterval}
-                  onChange={(e) => setTelemetryInterval(Number(e.target.value))}
-                  className="w-20 h-8 px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono text-right"
-                />
-              </div>
-            )}
-          </div>
+              <select
+                value={
+                  shellProfiles.some((s) => s.id === defaultShellId)
+                    ? defaultShellId
+                    : shellProfiles[0].id
+                }
+                onChange={(e) => setDefaultShellId(e.target.value)}
+                className="h-8 max-w-[190px] px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-sky-500"
+              >
+                {shellProfiles.map((shell) => (
+                  <option key={shell.id} value={shell.id}>
+                    {shell.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* SFTP file conflict default policy */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">

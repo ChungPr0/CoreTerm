@@ -3,7 +3,6 @@ pub mod clipboard;
 pub mod elevated_pty;
 pub mod elevation;
 pub mod job_object;
-pub mod system_metrics;
 pub mod window;
 
 #[cfg(windows)]

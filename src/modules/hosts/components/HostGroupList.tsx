@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronDown, ChevronRight, Folder, GripVertical, Server } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, Server } from "lucide-react";
 import type { HostProfileSummaryDto } from "../types";
 import type { HostDragPreview } from "../hooks/useHostDrag";
 import type { GroupDragPreview } from "../hooks/useGroupDrag";
@@ -13,7 +13,6 @@ interface HostGroupListProps {
   collapsedGroups: Record<string, boolean>;
   dragPreview: HostDragPreview | null;
   groupDragPreview: GroupDragPreview | null;
-  canReorderGroups: boolean;
   suppressDblClickRef: React.MutableRefObject<boolean>;
   suppressGroupClickRef: React.MutableRefObject<boolean>;
   onToggleGroup: (group: string, currentCollapsed: boolean) => void;
@@ -50,7 +49,6 @@ export const HostGroupList: React.FC<HostGroupListProps> = ({
   collapsedGroups,
   dragPreview,
   groupDragPreview,
-  canReorderGroups,
   suppressDblClickRef,
   suppressGroupClickRef,
   onToggleGroup,
@@ -116,16 +114,13 @@ export const HostGroupList: React.FC<HostGroupListProps> = ({
                   if (suppressGroupClickRef.current) return;
                   onToggleGroup(groupName, isCollapsed);
                 }}
-                className={`group/hdr w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
                   isDropTarget
                     ? "text-sky-200 bg-sky-500/15"
                     : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                 }`}
               >
                 <div className="flex items-center gap-1.5 truncate">
-                  {canReorderGroups && (
-                    <GripVertical className="w-3 h-3 text-slate-600 group-hover/hdr:text-slate-400 cursor-grab shrink-0 -ml-1 transition-colors" />
-                  )}
                   {isCollapsed ? (
                     <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                   ) : (

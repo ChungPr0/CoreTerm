@@ -4,9 +4,15 @@
     "total_hosts": "Đã lưu",
     "menu": "Danh sách kết nối",
     "local_shell": "PowerShell",
-    "local_admin": "PowerShell (Admin)",
-    "admin_badge": "Admin",
-    "new_tab_menu": "Tùy chọn tab mới"
+    "local_shells": "Shell cục bộ",
+    "local_admin": "PowerShell (Administrator)",
+    "open_shell_admin_name": "Mở {{name}} (Administrator)",
+    "admin_badge": "Administrator",
+    "default_badge": "Mặc định",
+    "new_tab_menu": "Tùy chọn tab mới",
+    "new_tab_tooltip": "Mở tab mới ({{name}})",
+    "ctrl_admin_hint": "Ctrl+Click: Administrator",
+    "running_admin_hint": "Administrator"
   },
   "common": {
     "save": "Lưu",
@@ -115,12 +121,6 @@
     "enabled": "Bật",
     "delete_confirm": "Xóa rule Port Forwarding này?"
   },
-  "telemetry": {
-    "cpu": "CPU",
-    "ram": "RAM",
-    "enabled": "Đo CPU/RAM",
-    "interval": "Chu kỳ (giây)"
-  },
   "hostkey": {
     "title": "Xác nhận Host Key",
     "changed_title": "Host Key đã thay đổi",
@@ -134,9 +134,12 @@
     "reconnect_interval": "Thử lại (giây)"
   },
   "palette": {
-    "search": "Tìm nhanh kết nối (Tên, IP, Nhóm, Tag)...",
-    "empty": "Không tìm thấy kết nối",
-    "connect": "Kết nối"
+    "search": "Tìm nhanh (Shell, Tên, IP, Nhóm, Tag)...",
+    "empty": "Không tìm thấy kết nối hoặc shell",
+    "connect": "Kết nối",
+    "open": "Mở",
+    "local_shell": "Local",
+    "ctrl_admin_hint": "Ctrl+Click / Ctrl+Enter: Administrator"
   },
   "conflict": {
     "title": "Xung đột cổng Local",
@@ -170,10 +173,8 @@
     "cols": "Số cột (Chiều rộng)",
     "rows": "Số dòng (Chiều cao)",
     "reset_win": "Mặc định Windows (120 × 30)",
-    "show_telemetry": "Hiện thanh CPU & RAM",
-    "show_telemetry_desc": "Ẩn hoặc hiện thanh CPU & RAM ở Terminal thường",
-    "telemetry_interval": "Chu kỳ đo (giây)",
     "sftp_conflict_policy": "Khi trùng file SFTP",
+    "default_shell": "Shell mặc định",
     "sftp_conflict_ask": "Luôn hỏi",
     "sftp_conflict_overwrite": "Ghi đè",
     "sftp_conflict_skip": "Bỏ qua",
@@ -181,9 +182,21 @@
     "sftp_conflict_resume": "Truyền tiếp (Resume)"
   },
   "window": {
+    "restore": "Khôi phục",
+    "move": "Di chuyển",
+    "size": "Kích thước",
     "minimize": "Thu nhỏ",
     "maximize": "Phóng to",
     "close": "Đóng"
+  },
+  "terminal": {
+    "find_placeholder": "Tìm kiếm...",
+    "find_no_results": "Không thấy",
+    "find_prev": "Trước (Shift+Enter)",
+    "find_next": "Tiếp (Enter)",
+    "find_case": "Phân biệt hoa/thường",
+    "find_regex": "Regex",
+    "find_invalid_regex": "Regex lỗi"
   },
   "ctx": {
     "copy": "Sao chép",
@@ -191,8 +204,15 @@
     "paste": "Dán",
     "select_all": "Chọn tất cả",
     "clear_terminal": "Xóa màn hình",
+    "find": "Tìm kiếm...",
+    "rename_tab": "Đổi tên Tab",
     "new_tab": "Tab mới",
-    "new_admin_tab": "Tab mới (Admin)",
+    "new_tab_name": "Tab mới ({{name}})",
+    "new_tab_admin_name": "Tab mới ({{name}} - Administrator)",
+    "new_admin_tab": "Tab mới (Administrator)",
+    "open_shell": "Mở Shell",
+    "open_shell_admin": "Mở Shell (Administrator)",
+    "open_shell_admin_name": "Mở {{name}} (Administrator)",
     "new_connection": "Kết nối mới...",
     "new_connection_in_group": "Thêm kết nối vào \"{{group}}\"...",
     "new_group": "Thêm nhóm...",
@@ -203,8 +223,6 @@
     "close_other_tabs": "Đóng các Tab khác",
     "settings": "Cài đặt",
     "saved_hosts": "Kết nối đã lưu",
-    "hide_telemetry": "Ẩn thanh CPU & RAM",
-    "show_telemetry": "Hiện thanh CPU & RAM",
     "sftp_panel": "Khung SFTP",
     "state_on": "ON",
     "state_off": "OFF",
@@ -344,14 +362,14 @@
     "session_conpty_failed": "Không thể khởi tạo Windows ConPTY: {{detail}}",
     "session_spawn_failed": "Không thể khởi chạy tiến trình terminal: {{detail}}",
     "session_resize_failed": "Thay đổi kích thước terminal thất bại: {{detail}}",
-    "session_elevated_windows_only": "Tab quyền Admin chỉ hỗ trợ trên Windows.",
+    "session_elevated_windows_only": "Tab quyền Administrator chỉ hỗ trợ trên Windows.",
     "session_not_found": "Không tìm thấy phiên terminal đang hoạt động.",
     "session_no_host": "Không tìm thấy thông tin kết nối cho tab này.",
     "session_reconnect_missing_host": "Không thể kết nối lại: thiếu thông tin kết nối của tab.",
     "session_exited_code": "Tiến trình đã thoát với mã {{code}}",
     "session_auth_denied": "Xác thực bị từ chối: {{detail}}",
-    "session_uac_cancelled": "Đã hủy hộp thoại cấp quyền Admin (UAC).",
-    "session_elevated_failed": "Khởi tạo phiên Admin thất bại: {{detail}}",
+    "session_uac_cancelled": "Đã hủy hộp thoại cấp quyền Administrator (UAC).",
+    "session_elevated_failed": "Khởi tạo phiên Administrator thất bại: {{detail}}",
     "hostkey_unsupported_action": "Thao tác xác nhận Host Key không được hỗ trợ: {{action}}",
     "group_name_empty": "Tên nhóm không được để trống.",
     "group_name_too_long": "Tên nhóm tối đa {{max}} ký tự.",

@@ -2,8 +2,17 @@ import type {
   SessionState,
   SftpConflictPolicy,
   SftpConnectionState,
+  ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
+
+export const DEFAULT_LOCAL_SHELL: ShellProfile = {
+  id: "powershell",
+  kind: "powershell",
+  name: "PowerShell",
+  executable: "powershell.exe",
+  args: ["-NoLogo"],
+};
 
 export function sftpToTabState(state: SftpConnectionState): SessionState {
   switch (state) {
@@ -29,12 +38,16 @@ export function isTabOffline(tab: TerminalTabItem): boolean {
   );
 }
 
-export function createLocalTab(isAdmin = false): TerminalTabItem {
+export function createLocalTab(
+  profile: ShellProfile = DEFAULT_LOCAL_SHELL,
+  isAdmin = false
+): TerminalTabItem {
   return {
     tabId: crypto.randomUUID(),
     hostId: "local",
-    title: "PowerShell",
+    title: profile.name,
     hostSubtitle: "Local",
+    shellProfile: profile,
     state: "CONNECTING",
     errorMessage: null,
     reconnectToken: 0,

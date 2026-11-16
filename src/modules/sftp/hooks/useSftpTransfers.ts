@@ -37,6 +37,7 @@ export function useSftpTransfers({
   const [transferBusy, setTransferBusy] = useState(false);
 
   const mountedRef = useRef(true);
+  const transferBusyRef = useRef(false);
   const policyRef = useRef(conflictPolicy);
   const alertedJobsRef = useRef(new Set<string>());
   const remoteRef = useRef(remoteBrowser);
@@ -96,13 +97,15 @@ export function useSftpTransfers({
   );
 
   const confirmPendingTransfer = useCallback(async () => {
-    if (!pendingTransfer) return;
+    if (!pendingTransfer || transferBusyRef.current) return;
+    transferBusyRef.current = true;
     setTransferBusy(true);
     try {
       await runTransfer(pendingTransfer);
     } catch (err) {
       if (mountedRef.current) onErrorRef.current(err);
     } finally {
+      transferBusyRef.current = false;
       if (mountedRef.current) {
         setTransferBusy(false);
         setPendingTransfer(null);

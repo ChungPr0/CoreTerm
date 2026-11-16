@@ -3,7 +3,6 @@ pub mod keys;
 pub mod local_fs;
 pub mod session;
 pub mod sftp;
-pub mod telemetry;
 pub mod window;
 
 pub use hosts::*;
@@ -11,7 +10,6 @@ pub use keys::*;
 pub use local_fs::*;
 pub use session::*;
 pub use sftp::*;
-pub use telemetry::*;
 pub use window::*;
 
 use crate::hosts::HostService;

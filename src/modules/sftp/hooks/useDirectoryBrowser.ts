@@ -24,6 +24,7 @@ export function useDirectoryBrowser({
   const [history, setHistory] = useState<DirHistory>(EMPTY_HISTORY);
 
   const mountedRef = useRef(true);
+  const loadSeqRef = useRef(0);
   const cwdRef = useRef(cwd);
   const homeRef = useRef(homeDir);
   const historyRef = useRef(history);
@@ -53,10 +54,11 @@ export function useDirectoryBrowser({
   const loadDir = useCallback(
     async (path: string, isStaleFn?: () => boolean, recordHistory = true) => {
       if (!path) return;
+      const seq = ++loadSeqRef.current;
       setLoading(true);
       try {
         const res = await fetchDirRef.current(path);
-        if (isStaleFn?.() || !mountedRef.current) return;
+        if (loadSeqRef.current !== seq || isStaleFn?.() || !mountedRef.current) return;
         cwdRef.current = res.path;
         setCwd(res.path);
         setItems(res.items);
@@ -69,10 +71,12 @@ export function useDirectoryBrowser({
           });
         }
       } catch (err) {
-        if (isStaleFn?.() || !mountedRef.current) return;
+        if (loadSeqRef.current !== seq || isStaleFn?.() || !mountedRef.current) return;
         onErrorRef.current(err);
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current && loadSeqRef.current === seq) {
+          setLoading(false);
+        }
       }
     },
     []
