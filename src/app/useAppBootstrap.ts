@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
-import { useShellsStore } from "@/modules/terminal";
+import {
+  calcWinSize,
+  mergeShells,
+  useShellsStore,
+  type LaunchWinSize,
+} from "@/modules/terminal";
 import { useTabsStore, windowApi } from "@/modules/workspace";
 
 interface UseAppBootstrapOpts {
@@ -14,25 +19,53 @@ export function useAppBootstrap({
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
-  const shellProfiles = useShellsStore((s) => s.shells);
+  const addCustomShell = useSettingsStore((s) => s.addCustomShell);
+  const detectedShells = useShellsStore((s) => s.shells);
+  const isShellsLoaded = useShellsStore((s) => s.isLoaded);
+  const shellProfiles = useMemo(
+    () => mergeShells(detectedShells, settings.customShells),
+    [detectedShells, settings.customShells]
+  );
   const [isAppElevated, setIsAppElevated] = useState(false);
   const [hasNativeBorder, setHasNativeBorder] = useState(false);
 
-  useEffect(() => {
-    const customSize = settings.launchCols !== 120 || settings.launchRows !== 30;
-    let cancelled = false;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const presentedRef = useRef(false);
+  const fallbackTimerRef = useRef<number | null>(null);
 
-    const presentTimer = window.setTimeout(() => {
-      if (cancelled) return;
-      windowApi
-        .windowPresent(
-          customSize ? { cols: settings.launchCols, rows: settings.launchRows } : undefined
-        )
-        .then(() => {
-          if (!cancelled) onFocusTerminal();
-        })
-        .catch(() => {});
-    }, 0);
+  const presentWindow = useCallback(
+    async (size?: Partial<LaunchWinSize>): Promise<boolean> => {
+      if (presentedRef.current) return false;
+      presentedRef.current = true;
+      if (fallbackTimerRef.current !== null) {
+        window.clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      const cols = size?.cols ?? settingsRef.current.launchCols;
+      const rows = size?.rows ?? settingsRef.current.launchRows;
+      const fallback = calcWinSize(cols, rows);
+      try {
+        await windowApi.windowPresent({
+          cols,
+          rows,
+          width: size?.width ?? fallback.width,
+          height: size?.height ?? fallback.height,
+        });
+        onFocusTerminal();
+      } catch {
+        // Ignore in non-Tauri preview
+      }
+      return true;
+    },
+    [onFocusTerminal]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    fallbackTimerRef.current = window.setTimeout(() => {
+      if (!cancelled) void presentWindow();
+    }, 900);
 
     const preloadTimer = window.setTimeout(() => {
       if (!cancelled) preloaders.forEach((load) => void load().catch(() => {}));
@@ -51,7 +84,10 @@ export function useAppBootstrap({
 
     return () => {
       cancelled = true;
-      window.clearTimeout(presentTimer);
+      if (fallbackTimerRef.current !== null) {
+        window.clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
       window.clearTimeout(preloadTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,7 +96,10 @@ export function useAppBootstrap({
   const saveAndApplySettings = useCallback(
     (next: AppSettingsValues) => {
       updateSettings(next);
-      windowApi.windowSetLaunchSize(next.launchCols, next.launchRows).catch(() => {});
+      const winSize = calcWinSize(next.launchCols, next.launchRows);
+      windowApi
+        .windowSetLaunchSize(next.launchCols, next.launchRows, winSize.width, winSize.height)
+        .catch(() => {});
     },
     [updateSettings]
   );
@@ -68,8 +107,11 @@ export function useAppBootstrap({
   return {
     settings,
     shellProfiles,
+    isShellsLoaded,
     isAppElevated,
     hasNativeBorder,
+    addCustomShell,
+    presentWindow,
     saveAndApplySettings,
   };
 }

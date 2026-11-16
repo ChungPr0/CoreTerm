@@ -15,6 +15,7 @@ interface SftpToolbarProps {
   onOpenInTerminal?: (remotePath: string) => void;
   onToggleLocalPane: () => void;
   onCloseSplit?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const SftpToolbar: React.FC<SftpToolbarProps> = ({
@@ -29,6 +30,7 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
   onOpenInTerminal,
   onToggleLocalPane,
   onCloseSplit,
+  onContextMenu,
 }) => {
   const { t } = useI18n();
 
@@ -40,7 +42,10 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
         : { dot: "bg-red-400", text: "text-red-300", label: t("sftp.disconnected") };
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#21262d] bg-[#161b22] px-3 py-1.5">
+    <div
+      onContextMenu={onContextMenu}
+      className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#21262d] bg-[#161b22] px-3 py-1.5"
+    >
       <div className="flex min-h-6 flex-wrap items-center gap-2.5 text-xs">
         <span className={`h-2 w-2 rounded-full ${statusMeta.dot}`} />
         <span className="font-semibold text-[#e6edf3]">

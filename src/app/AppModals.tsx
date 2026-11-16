@@ -87,7 +87,9 @@ interface AppModalsProps {
   hostKeySource: "pty" | "sftp";
   onCloseAuthPrompt: () => void;
   onCloseHostKeyPrompt: () => void;
+  onAbortAuthTab?: (tabId: string, source: "pty" | "sftp") => void;
   onReconnectTab: (tabId: string) => void;
+  onCancelAutoReconnect?: (tabId: string) => void;
 
   portConflicts: PortProbeResultDto[];
   onSkipPortConflicts: () => void;
@@ -132,7 +134,9 @@ export const AppModals: React.FC<AppModalsProps> = ({
   hostKeySource,
   onCloseAuthPrompt,
   onCloseHostKeyPrompt,
+  onAbortAuthTab,
   onReconnectTab,
+  onCancelAutoReconnect,
   portConflicts,
   onSkipPortConflicts,
   onAbortPortConflicts,
@@ -184,7 +188,9 @@ export const AppModals: React.FC<AppModalsProps> = ({
             hostKeyPromptSource={hostKeySource}
             onCloseAuth={onCloseAuthPrompt}
             onCloseHostKey={onCloseHostKeyPrompt}
+            onAbortTab={onAbortAuthTab}
             onReconnectTab={onReconnectTab}
+            onCancelAutoReconnect={onCancelAutoReconnect}
           />
         )}
 

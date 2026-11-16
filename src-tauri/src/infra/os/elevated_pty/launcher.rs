@@ -16,6 +16,7 @@ use super::pipe::{
 };
 use super::protocol::{FRAME_DATA, FRAME_ERROR};
 use super::ELEVATED_PTY_FLAG;
+use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 
 fn hex_random(bytes_len: usize) -> String {
     let mut raw = vec![0u8; bytes_len];
@@ -83,9 +84,9 @@ pub fn spawn_elevated_pty(
         "--pipe".to_string(),
         quote_win32_arg(&pipe_base),
         "--cols".to_string(),
-        cols.max(10).to_string(),
+        cols.max(MIN_PTY_COLS).to_string(),
         "--rows".to_string(),
-        rows.max(2).to_string(),
+        rows.max(MIN_PTY_ROWS).to_string(),
         "--secret".to_string(),
         secret.clone(),
         "--parent-pid".to_string(),

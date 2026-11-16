@@ -1,4 +1,4 @@
-import type { ConflictStrategy, PortForwardStatusDto, SessionState } from "@/shared/types/ipc";
+import type { ConflictStrategy, PortForwardStatusDto, SessionState, ShellProfile } from "@/shared/types/ipc";
 
 export type { ConflictStrategy, PortForwardStatusDto };
 
@@ -9,6 +9,7 @@ export interface SessionConnectAckDto {
   cli_preview: string;
   status: string;
   is_admin: boolean;
+  shell_profile?: ShellProfile | null;
 }
 
 export interface SessionStatusEventDto {

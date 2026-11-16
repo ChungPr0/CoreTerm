@@ -5,15 +5,22 @@ import { SearchAddon } from "@xterm/addon-search";
 import type { TerminalTabItem } from "@/shared/types/ipc";
 import type { SessionConnectAckDto } from "../types";
 import { sessionApi } from "../api/sessionApi";
+import { DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
 import {
-  attachWebglRenderer,
   bindScrollbackSync,
   bindTerminalShortcuts,
+  calcWinSize,
   createOutputChannel,
   createTerminalInstance,
+  fitTerm,
+  loadWebgl,
+  measureTermMetrics,
+  TERM_MIN_COLS,
+  TERM_MIN_ROWS,
+  waitNextFrame,
 } from "./terminalHelpers";
 
 export interface TerminalContextActions {
@@ -25,6 +32,13 @@ export interface TerminalContextActions {
   focus: () => void;
 }
 
+export interface LaunchWinSize {
+  cols: number;
+  rows: number;
+  width: number;
+  height: number;
+}
+
 const RESIZE_DEBOUNCE_MS = 60;
 
 interface UseTerminalSessionOpts {
@@ -34,6 +48,7 @@ interface UseTerminalSessionOpts {
   launchRows: number;
   focusToken: number;
   suppressAutoFocus: boolean;
+  onPresentWindow?: (size: LaunchWinSize) => Promise<boolean>;
   onSessionAck?: (tabId: string, ack: SessionConnectAckDto) => void;
   onElevationCancelled?: (tabId: string) => void;
 }
@@ -45,12 +60,15 @@ export function useTerminalSession({
   launchRows,
   focusToken,
   suppressAutoFocus,
+  onPresentWindow,
   onSessionAck,
   onElevationCancelled,
 }: UseTerminalSessionOpts) {
   const { t } = useI18n();
   const tRef = useRef(t);
   tRef.current = t;
+  const onPresentWindowRef = useRef(onPresentWindow);
+  onPresentWindowRef.current = onPresentWindow;
   const onSessionAckRef = useRef(onSessionAck);
   onSessionAckRef.current = onSessionAck;
   const onElevationCancelledRef = useRef(onElevationCancelled);
@@ -62,6 +80,8 @@ export function useTerminalSession({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const isActiveRef = useRef<boolean>(isActive);
   const suppressAutoFocusRef = useRef<boolean>(suppressAutoFocus);
+  const connectedRef = useRef<boolean>(false);
+  const readyRef = useRef<boolean>(false);
   const lastDimsRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
   const launchDimsRef = useRef({ cols: launchCols, rows: launchRows });
   const tabMetaRef = useRef({ isAdmin: tab.isAdmin, shellProfile: tab.shellProfile });
@@ -73,6 +93,7 @@ export function useTerminalSession({
 
   const syncPtySize = useCallback(
     (term: Terminal) => {
+      if (!connectedRef.current) return;
       const cols = term.cols;
       const rows = term.rows;
       if (
@@ -85,6 +106,32 @@ export function useTerminalSession({
       }
     },
     [tab.tabId]
+  );
+
+  const fitNow = useCallback(
+    (sync = false) => {
+      const container = containerRef.current;
+      const fitAddon = fitAddonRef.current;
+      const term = terminalRef.current;
+      if (
+        !term ||
+        !fitAddon ||
+        !container ||
+        !readyRef.current ||
+        !isActiveRef.current ||
+        container.clientWidth <= 0 ||
+        container.clientHeight <= 0
+      ) {
+        return;
+      }
+      try {
+        fitTerm(term, container, fitAddon);
+        if (sync) syncPtySize(term);
+      } catch {
+        // Ignore fit during unmount or hidden layout transitions
+      }
+    },
+    [syncPtySize]
   );
 
   useEffect(() => {
@@ -101,25 +148,13 @@ export function useTerminalSession({
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    connectedRef.current = false;
+    readyRef.current = false;
 
     let cancelled = false;
     const isCancelled = () => cancelled || terminalRef.current !== term;
-    const disposeWebgl = attachWebglRenderer(term, isCancelled);
-    const disposeScrollback = bindScrollbackSync(
-      term,
-      container,
-      fitAddon,
-      isActiveRef,
-      syncPtySize
-    );
+    const disposeScrollback = bindScrollbackSync(term, container);
     bindTerminalShortcuts(term, () => cancelled);
-
-    try {
-      fitAddon.fit();
-      lastDimsRef.current = { cols: term.cols, rows: term.rows };
-    } catch {
-      // Ignore initial fit if hidden
-    }
 
     const textEncoder = new TextEncoder();
     const onDataDisposable = term.onData((data) => {
@@ -139,72 +174,86 @@ export function useTerminalSession({
     let fitRafId: number | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      if (!isActiveRef.current) return;
+      if (!isActiveRef.current || !readyRef.current) return;
       if (fitRafId !== null) cancelAnimationFrame(fitRafId);
       fitRafId = requestAnimationFrame(() => {
         fitRafId = null;
-        if (isActiveRef.current && fitAddonRef.current && container.clientWidth > 0 && container.clientHeight > 0) {
-          try { fitAddonRef.current.fit(); } catch { /* Ignore */ }
-        }
+        fitNow(false);
       });
 
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        if (
-          isActiveRef.current &&
-          fitAddonRef.current &&
-          terminalRef.current &&
-          container.clientWidth > 0 &&
-          container.clientHeight > 0
-        ) {
-          try {
-            fitAddonRef.current.fit();
-            syncPtySize(terminalRef.current);
-          } catch {
-            // Ignore
-          }
-        }
-      }, RESIZE_DEBOUNCE_MS);
+      debounceTimer = setTimeout(() => fitNow(true), RESIZE_DEBOUNCE_MS);
     });
     resizeObserver.observe(container);
 
     // Defer session spawn to macrotask so StrictMode double-mount cancels before triggering UAC twice.
     const connectTimer = setTimeout(() => {
-      if (cancelled) return;
-      const initialCols = Math.max(term.cols || launchCols, 20);
-      const initialRows = Math.max(term.rows || launchRows, 5);
-      const outputChannel = createOutputChannel(term, () => cancelled);
-
-      sessionApi
-        .sessionConnect({
-          tabId: tab.tabId,
-          hostId: tab.hostId,
-          cols: initialCols,
-          rows: initialRows,
-          conflictStrategy: tab.conflictStrategy ?? "AUTO_SHARE_OR_SKIP",
-          asAdmin: tab.isAdmin,
-          shellProfile: tab.shellProfile,
-          onOutput: outputChannel,
-        })
-        .then((ack) => {
-          if (cancelled) return;
-          onSessionAckRef.current?.(tab.tabId, ack);
-          if (isActiveRef.current) term.focus();
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          if (extractRawErrorMessage(err).includes("UAC_CANCELLED")) {
-            onElevationCancelledRef.current?.(tab.tabId);
-          }
-          term.writeln(
-            `\r\n\x1b[31m✖ ${formatLocalizedError(err, tRef.current)}\x1b[0m`
-          );
+      void (async () => {
+        if (isCancelled()) return;
+        await loadWebgl(term, isCancelled, () => {
+          if (!isCancelled()) fitNow(true);
         });
+        if (isCancelled()) return;
+
+        const metrics = measureTermMetrics(term, container);
+        if (onPresentWindowRef.current) {
+          const { cols: targetCols, rows: targetRows } = launchDimsRef.current;
+          const winSize = calcWinSize(targetCols, targetRows, metrics);
+          const presented = await onPresentWindowRef.current({
+            cols: targetCols,
+            rows: targetRows,
+            ...winSize,
+          });
+          if (isCancelled()) return;
+          if (presented) {
+            await waitNextFrame();
+            if (isCancelled()) return;
+          }
+        }
+
+        readyRef.current = true;
+        fitNow(false);
+
+        const { cols: defCols, rows: defRows } = launchDimsRef.current;
+        const initialCols = Math.max(term.cols || defCols, TERM_MIN_COLS);
+        const initialRows = Math.max(term.rows || defRows, TERM_MIN_ROWS);
+        lastDimsRef.current = { cols: initialCols, rows: initialRows };
+        const outputChannel = createOutputChannel(term, isCancelled);
+
+        sessionApi
+          .sessionConnect({
+            tabId: tab.tabId,
+            hostId: tab.hostId,
+            cols: initialCols,
+            rows: initialRows,
+            conflictStrategy: tab.conflictStrategy ?? DEFAULT_CONFLICT_STRATEGY,
+            asAdmin: tab.isAdmin,
+            shellProfile: tab.shellProfile,
+            onOutput: outputChannel,
+          })
+          .then((ack) => {
+            if (isCancelled()) return;
+            connectedRef.current = true;
+            fitNow(true);
+            onSessionAckRef.current?.(tab.tabId, ack);
+            if (isActiveRef.current) term.focus();
+          })
+          .catch((err) => {
+            if (isCancelled()) return;
+            if (extractRawErrorMessage(err).includes("UAC_CANCELLED")) {
+              onElevationCancelledRef.current?.(tab.tabId);
+            }
+            term.writeln(
+              `\r\n\x1b[31m✖ ${formatLocalizedError(err, tRef.current)}\x1b[0m`
+            );
+          });
+      })();
     }, 0);
 
     return () => {
       cancelled = true;
-      disposeWebgl();
+      connectedRef.current = false;
+      readyRef.current = false;
       disposeScrollback();
       clearTimeout(connectTimer);
       if (fitRafId !== null) cancelAnimationFrame(fitRafId);
@@ -226,16 +275,14 @@ export function useTerminalSession({
     if (!term) return;
 
     let cancelled = false;
-    try {
-      fitAddonRef.current?.fit();
-    } catch {
-      // Ignore
-    }
+    fitNow(false);
 
     const { cols: defCols, rows: defRows } = launchDimsRef.current;
     const { isAdmin, shellProfile } = tabMetaRef.current;
-    const cols = Math.max(term.cols || defCols, 20);
-    const rows = Math.max(term.rows || defRows, 5);
+    const cols = Math.max(term.cols || defCols, TERM_MIN_COLS);
+    const rows = Math.max(term.rows || defRows, TERM_MIN_ROWS);
+    lastDimsRef.current = { cols, rows };
+    connectedRef.current = false;
     const outputChannel = createOutputChannel(
       term,
       () => cancelled || terminalRef.current !== term
@@ -253,6 +300,8 @@ export function useTerminalSession({
       })
       .then((ack) => {
         if (cancelled || terminalRef.current !== term) return;
+        connectedRef.current = true;
+        fitNow(true);
         onSessionAckRef.current?.(tab.tabId, ack);
         if (isActiveRef.current) term.focus();
       })
@@ -266,7 +315,7 @@ export function useTerminalSession({
     return () => {
       cancelled = true;
     };
-  }, [tab.reconnectToken, tab.tabId, tab.hostId]);
+  }, [tab.reconnectToken, tab.tabId, tab.hostId, fitNow]);
 
   useEffect(() => {
     if (!isActive || suppressAutoFocus) return;
@@ -281,19 +330,14 @@ export function useTerminalSession({
   useEffect(() => {
     if (!isActive) return;
     const timer = setTimeout(() => {
-      if (!fitAddonRef.current || !terminalRef.current) return;
-      try {
-        fitAddonRef.current.fit();
-        syncPtySize(terminalRef.current);
-        if (isActiveRef.current && !suppressAutoFocusRef.current) {
-          terminalRef.current.focus();
-        }
-      } catch {
-        // Ignore
+      if (!readyRef.current) return;
+      fitNow(true);
+      if (isActiveRef.current && !suppressAutoFocusRef.current) {
+        terminalRef.current?.focus();
       }
     }, RESIZE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [isActive, tab.tabId, syncPtySize]);
+  }, [isActive, tab.tabId, fitNow]);
 
   const getContextActions = useCallback((): TerminalContextActions => {
     const term = terminalRef.current;

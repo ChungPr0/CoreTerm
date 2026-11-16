@@ -156,7 +156,6 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
                 type="text"
                 value={privateKeyPath}
                 onChange={(e) => onPrivateKeyPathChange(e.target.value)}
-                required={authMethod === "SSH_KEY" && selectedKeyId === ""}
                 className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
               />
             </div>

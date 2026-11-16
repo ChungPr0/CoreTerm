@@ -49,6 +49,22 @@ describe("formatters & path utils", () => {
     ]);
   });
 
+  it("handles Windows OpenSSH SFTP drive paths without leading slash crumbs", () => {
+    expect(normPosix("/C:/Users/tienc/")).toBe("/C:/Users/tienc");
+    expect(normPosix("/C:")).toBe("/C:/");
+    expect(normPosix("C:\\Users\\tienc")).toBe("/C:/Users/tienc");
+    expect(joinRemote("/C:/", "Users")).toBe("/C:/Users");
+    expect(posixParent("/C:/Users/tienc")).toBe("/C:/Users");
+    expect(posixParent("/C:/Users")).toBe("/C:/");
+    expect(posixParent("/C:/")).toBe("/C:/");
+    expect(splitRemoteCrumbs("/C:/Users/tienc")).toEqual([
+      { label: "C:\\", path: "/C:/" },
+      { label: "Users", path: "/C:/Users" },
+      { label: "tienc", path: "/C:/Users/tienc" },
+    ]);
+    expect(posixCdCmd("/C:/Users/tienc")).toBe('cd "C:\\Users\\tienc"\r');
+  });
+
   it("quotes posix cd command safely", () => {
     expect(posixCdCmd("/var/my 'dir'/")).toBe("cd -- '/var/my '\\''dir'\\'''\r");
   });

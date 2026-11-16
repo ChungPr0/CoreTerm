@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,11 +15,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{
-    join_remote_path, normalize_remote_path, parent_remote_path, validate_octal_mode,
-    validate_single_entry_name,
+    is_win_drive_root, join_remote_path, normalize_remote_path, parent_remote_path,
+    validate_octal_mode, validate_single_entry_name,
 };
 use crate::hosts::HostService;
-use crate::ipc::dto::{HostFullConfigDto, SftpEntryDto, SftpStatusEventDto};
+use crate::ipc::dto::{HostFullConfigDto, LocalDriveDto, SftpEntryDto, SftpStatusEventDto};
 use crate::keys::KeyService;
 
 use super::auth::{
@@ -31,6 +32,7 @@ pub const EVENT_SFTP_STATUS: &str = "sftp:status";
 pub struct RemoteSftpClient {
     pub sftp: Arc<SftpSession>,
     pub home_path: String,
+    pub drives: Vec<LocalDriveDto>,
     handle: AsyncMutex<Option<client::Handle<RusshClientHandler>>>,
 }
 
@@ -105,8 +107,14 @@ impl RemoteSftpClient {
             _ = cancel_token.cancelled() => {
                 return Err(CoreError::Sftp("Connection cancelled".to_string()));
             }
-            res = client::connect(Arc::new(ssh_cfg), (host.as_str(), config.port), handler) => {
-                res.map_err(|e| map_russh_error("SSH connect failed", e))?
+            res = tokio::time::timeout(
+                Duration::from_secs(8),
+                client::connect(Arc::new(ssh_cfg), (host.as_str(), config.port), handler),
+            ) => {
+                match res {
+                    Ok(conn) => conn.map_err(|e| map_russh_error("SSH connect failed", e))?,
+                    Err(_) => return Err(CoreError::Sftp("SSH connection timed out".to_string())),
+                }
             }
         };
 
@@ -159,6 +167,14 @@ impl RemoteSftpClient {
             }
         };
 
+        let sftp = Arc::new(sftp);
+        let drives = tokio::select! {
+            _ = cancel_token.cancelled() => {
+                return Err(CoreError::Sftp("Connection cancelled".to_string()));
+            }
+            list = discover_remote_windows_drives(&sftp, &home_path) => list,
+        };
+
         emit_status(
             app,
             &tab_id,
@@ -169,8 +185,9 @@ impl RemoteSftpClient {
         );
 
         Ok(Self {
-            sftp: Arc::new(sftp),
+            sftp,
             home_path,
+            drives,
             handle: AsyncMutex::new(Some(session)),
         })
     }
@@ -198,19 +215,15 @@ impl RemoteSftpClient {
             .map_err(|e| map_sftp_error("Failed to list remote directory", e))?;
 
         let mut entries = Vec::new();
+        let mut symlink_checks: Vec<(usize, String)> = Vec::new();
         for item in read_dir {
             let name = item.file_name();
             let entry_path = join_remote_path(&normalized, &name)?;
             let attrs = item.metadata();
             let ftype = attrs.file_type();
             let (kind, symlink_target_is_dir) = if ftype.is_symlink() {
-                let target_is_dir = self
-                    .sftp
-                    .metadata(&entry_path)
-                    .await
-                    .map(|m| m.file_type().is_dir())
-                    .unwrap_or(false);
-                ("SYMLINK", target_is_dir)
+                symlink_checks.push((entries.len(), entry_path.clone()));
+                ("SYMLINK", false)
             } else if ftype.is_dir() {
                 ("DIR", true)
             } else if ftype.is_file() {
@@ -231,6 +244,31 @@ impl RemoteSftpClient {
                 owner: attrs.user.clone(),
                 group: attrs.group.clone(),
             });
+        }
+
+        if !symlink_checks.is_empty() {
+            let sem = Arc::new(tokio::sync::Semaphore::new(16));
+            let mut join_set = tokio::task::JoinSet::new();
+            for (idx, path) in symlink_checks {
+                let sftp = Arc::clone(&self.sftp);
+                let sem = Arc::clone(&sem);
+                join_set.spawn(async move {
+                    let _permit = sem.acquire().await.ok();
+                    let is_dir = sftp
+                        .metadata(&path)
+                        .await
+                        .map(|m| m.file_type().is_dir())
+                        .unwrap_or(false);
+                    (idx, is_dir)
+                });
+            }
+            while let Some(res) = join_set.join_next().await {
+                if let Ok((idx, is_dir)) = res {
+                    if let Some(entry) = entries.get_mut(idx) {
+                        entry.symlink_target_is_dir = is_dir;
+                    }
+                }
+            }
         }
 
         entries.sort_by(|a, b| {
@@ -267,7 +305,7 @@ impl RemoteSftpClient {
 
     pub async fn rename_entry(&self, old_path: &str, new_name: &str) -> CoreResult<String> {
         let normalized_old = normalize_remote_path(old_path);
-        if normalized_old == "/" {
+        if normalized_old == "/" || is_win_drive_root(&normalized_old) {
             return Err(CoreError::Validation("Cannot rename root '/'".to_string()));
         }
         let valid_name = validate_single_entry_name(new_name)?;
@@ -305,7 +343,7 @@ impl RemoteSftpClient {
     pub async fn delete_entries(&self, paths: &[String]) -> CoreResult<()> {
         for raw in paths {
             let root = normalize_remote_path(raw);
-            if root == "/" {
+            if root == "/" || is_win_drive_root(&root) {
                 return Err(CoreError::Validation("Refusing to delete '/'".to_string()));
             }
             let lstat = self
@@ -454,6 +492,84 @@ pub fn fmt_sftp_err(err: &SftpClientError) -> String {
     }
 }
 
+fn extract_win_drive_letter(path: &str) -> Option<char> {
+    let trimmed = path.trim().trim_start_matches(['/', '\\']);
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes.len() == 2 || bytes[2] == b'/' || bytes[2] == b'\\')
+    {
+        return Some((bytes[0] as char).to_ascii_uppercase());
+    }
+    None
+}
+
+async fn discover_remote_windows_drives(
+    sftp: &Arc<SftpSession>,
+    home_path: &str,
+) -> Vec<LocalDriveDto> {
+    let home_drive = extract_win_drive_letter(home_path);
+    if home_drive.is_none() && home_path != "/" {
+        return Vec::new();
+    }
+
+    let mut found = BTreeSet::new();
+    if let Ok(Ok(entries)) = tokio::time::timeout(Duration::from_secs(2), sftp.read_dir("/")).await
+    {
+        for item in entries {
+            if let Some(letter) = extract_win_drive_letter(&item.file_name()) {
+                found.insert(letter);
+            }
+        }
+    }
+
+    let Some(home_letter) = home_drive else {
+        return found
+            .into_iter()
+            .map(|ch| LocalDriveDto {
+                name: format!("{ch}:"),
+                path: format!("/{ch}:/"),
+            })
+            .collect();
+    };
+
+    found.insert(home_letter);
+    if found.len() <= 1 {
+        let sem = Arc::new(tokio::sync::Semaphore::new(12));
+        let mut set = tokio::task::JoinSet::new();
+        for ch in 'C'..='Z' {
+            if ch == home_letter {
+                continue;
+            }
+            let sftp = Arc::clone(sftp);
+            let sem = Arc::clone(&sem);
+            set.spawn(async move {
+                let _permit = sem.acquire().await.ok();
+                let root = format!("/{ch}:/");
+                let ok = matches!(
+                    tokio::time::timeout(Duration::from_secs(2), sftp.metadata(&root)).await,
+                    Ok(Ok(_))
+                );
+                ok.then_some(ch)
+            });
+        }
+        while let Some(res) = set.join_next().await {
+            if let Ok(Some(ch)) = res {
+                found.insert(ch);
+            }
+        }
+    }
+
+    found
+        .into_iter()
+        .map(|ch| LocalDriveDto {
+            name: format!("{ch}:"),
+            path: format!("/{ch}:/"),
+        })
+        .collect()
+}
+
 fn map_sftp_error(prefix: &str, err: SftpClientError) -> CoreError {
     CoreError::Sftp(format!("{prefix}: {}", fmt_sftp_err(&err)))
 }
@@ -488,5 +604,15 @@ mod tests {
             language_tag: "en".into(),
         });
         assert_eq!(fmt_sftp_err(&failure_detail), "Disk quota exceeded");
+    }
+
+    #[test]
+    fn extract_win_drive_letter_parses_windows_and_rejects_posix() {
+        assert_eq!(extract_win_drive_letter("/C:/Users/tienc"), Some('C'));
+        assert_eq!(extract_win_drive_letter("d:\\"), Some('D'));
+        assert_eq!(extract_win_drive_letter("E:"), Some('E'));
+        assert_eq!(extract_win_drive_letter("/home/user"), None);
+        assert_eq!(extract_win_drive_letter("etc"), None);
+        assert_eq!(extract_win_drive_letter("c:relative"), None);
     }
 }

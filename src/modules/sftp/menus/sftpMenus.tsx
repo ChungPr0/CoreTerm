@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  RotateCw,
   Shield,
   Trash2,
   Upload,
@@ -34,6 +35,20 @@ interface BuildPaneMenuOpts {
   onCopyPath: (path: string) => void;
   onDelete: (paths: string[]) => void;
   onRefresh: () => void;
+}
+
+export function buildToolbarMenu(opts: {
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onReconnect: () => void;
+}): ContextMenuEntry[] {
+  return [
+    {
+      id: "sftp-reconnect",
+      label: opts.t("sftp.reconnect"),
+      icon: <RotateCw className="h-3.5 w-3.5 text-sky-400" />,
+      onSelect: opts.onReconnect,
+    },
+  ];
 }
 
 export function buildPaneMenu(opts: BuildPaneMenuOpts): ContextMenuEntry[] {

@@ -156,6 +156,7 @@ impl PtySessionManager {
                 cli_preview: format!("{} (Admin)", profile.name),
                 status: "ONLINE".to_string(),
                 is_admin: true,
+                shell_profile: Some(profile.clone()),
             })
         }
     }

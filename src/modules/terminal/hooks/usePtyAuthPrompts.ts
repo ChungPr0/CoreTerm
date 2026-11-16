@@ -12,17 +12,43 @@ import type {
   SessionHostKeyPromptEventDto,
 } from "../types";
 
+type PromptSource = "pty" | "sftp";
+
+interface QueuedPrompt<T> {
+  prompt: T;
+  source: PromptSource;
+}
+
+type AuthPromptDto = SessionAuthPromptEventDto | SftpAuthPromptEventDto;
+type HostKeyPromptDto = SessionHostKeyPromptEventDto | SftpHostKeyPromptEventDto;
+
+export function enqueuePrompt<T extends { tab_id: string }>(
+  prev: QueuedPrompt<T>[],
+  prompt: T,
+  source: PromptSource
+): QueuedPrompt<T>[] {
+  const idx = prev.findIndex((x) => x.prompt.tab_id === prompt.tab_id && x.source === source);
+  if (idx >= 0) {
+    const next = [...prev];
+    next[idx] = { prompt, source };
+    return next;
+  }
+  return [...prev, { prompt, source }];
+}
+
+export function pruneQueueByTabs<T extends { tab_id: string }>(
+  prev: QueuedPrompt<T>[],
+  openTabIds: Set<string>
+): QueuedPrompt<T>[] {
+  const next = prev.filter((item) => openTabIds.has(item.prompt.tab_id));
+  return next.length === prev.length ? prev : next;
+}
+
 export function usePtyAuthPrompts(
   onSpawnHostTab: (host: HostProfileSummaryDto, strategy: ConflictStrategy) => void
 ) {
-  const [authPrompt, setAuthPrompt] = useState<
-    SessionAuthPromptEventDto | SftpAuthPromptEventDto | null
-  >(null);
-  const [authPromptSource, setAuthPromptSource] = useState<"pty" | "sftp">("pty");
-  const [hostKeyPrompt, setHostKeyPrompt] = useState<
-    SessionHostKeyPromptEventDto | SftpHostKeyPromptEventDto | null
-  >(null);
-  const [hostKeySource, setHostKeySource] = useState<"pty" | "sftp">("pty");
+  const [authQueue, setAuthQueue] = useState<QueuedPrompt<AuthPromptDto>[]>([]);
+  const [hostKeyQueue, setHostKeyQueue] = useState<QueuedPrompt<HostKeyPromptDto>[]>([]);
   const [pendingConflictHost, setPendingConflictHost] =
     useState<HostProfileSummaryDto | null>(null);
   const [portConflicts, setPortConflicts] = useState<PortProbeResultDto[]>([]);
@@ -32,22 +58,18 @@ export function usePtyAuthPrompts(
     const unlisteners: Array<() => void> = [];
 
     Promise.all([
-      sessionApi.onAuthPrompt((p) => {
-        setAuthPromptSource("pty");
-        setAuthPrompt(p);
-      }),
-      sessionApi.onHostKeyPrompt((p) => {
-        setHostKeySource("pty");
-        setHostKeyPrompt(p);
-      }),
-      sftpApi.onSftpAuthPrompt((p) => {
-        setAuthPromptSource("sftp");
-        setAuthPrompt(p);
-      }),
-      sftpApi.onSftpHostKeyPrompt((p) => {
-        setHostKeySource("sftp");
-        setHostKeyPrompt(p);
-      }),
+      sessionApi.onAuthPrompt((p) =>
+        setAuthQueue((prev) => enqueuePrompt(prev, p, "pty"))
+      ),
+      sessionApi.onHostKeyPrompt((p) =>
+        setHostKeyQueue((prev) => enqueuePrompt(prev, p, "pty"))
+      ),
+      sftpApi.onSftpAuthPrompt((p) =>
+        setAuthQueue((prev) => enqueuePrompt(prev, p, "sftp"))
+      ),
+      sftpApi.onSftpHostKeyPrompt((p) =>
+        setHostKeyQueue((prev) => enqueuePrompt(prev, p, "sftp"))
+      ),
     ]).then((fns) => {
       if (!active) {
         fns.forEach((fn) => fn());
@@ -60,6 +82,19 @@ export function usePtyAuthPrompts(
       active = false;
       unlisteners.forEach((fn) => fn());
     };
+  }, []);
+
+  const dismissAuthPrompt = useCallback(() => {
+    setAuthQueue((prev) => prev.slice(1));
+  }, []);
+
+  const dismissHostKeyPrompt = useCallback(() => {
+    setHostKeyQueue((prev) => prev.slice(1));
+  }, []);
+
+  const prunePromptsForClosedTabs = useCallback((openTabIds: Set<string>) => {
+    setAuthQueue((prev) => pruneQueueByTabs(prev, openTabIds));
+    setHostKeyQueue((prev) => pruneQueueByTabs(prev, openTabIds));
   }, []);
 
   const connectWithConflictCheck = useCallback(
@@ -95,12 +130,13 @@ export function usePtyAuthPrompts(
   }, []);
 
   return {
-    authPrompt,
-    setAuthPrompt,
-    authPromptSource,
-    hostKeyPrompt,
-    setHostKeyPrompt,
-    hostKeySource,
+    authPrompt: authQueue[0]?.prompt ?? null,
+    authPromptSource: authQueue[0]?.source ?? "pty",
+    hostKeyPrompt: hostKeyQueue[0]?.prompt ?? null,
+    hostKeySource: hostKeyQueue[0]?.source ?? "pty",
+    dismissAuthPrompt,
+    dismissHostKeyPrompt,
+    prunePromptsForClosedTabs,
     portConflicts,
     connectWithConflictCheck,
     skipPortConflictsAndConnect,

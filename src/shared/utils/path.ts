@@ -1,10 +1,27 @@
+function parseWinSftpPath(raw: string): { drive: string; rest: string[] } | null {
+  const m = raw.trim().match(/^\/?([a-zA-Z]:)(?:$|([\\/].*)$)/);
+  if (!m) return null;
+  const drive = m[1];
+  const rest = (m[2] ?? "").split(/[\\/]+/).filter(Boolean);
+  return { drive, rest };
+}
+
 export function normPosix(raw: string): string {
+  const win = parseWinSftpPath(raw);
+  if (win) {
+    return win.rest.length === 0 ? `/${win.drive}/` : `/${win.drive}/${win.rest.join("/")}`;
+  }
   const s = raw.trim().replace(/\/+/g, "/");
   if (!s || s === "/") return "/";
   return s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s;
 }
 
 export function posixParent(raw: string): string {
+  const win = parseWinSftpPath(raw);
+  if (win) {
+    if (win.rest.length <= 1) return `/${win.drive}/`;
+    return `/${win.drive}/${win.rest.slice(0, -1).join("/")}`;
+  }
   const path = normPosix(raw);
   if (path === "/") return "/";
   const idx = path.lastIndexOf("/");
@@ -25,7 +42,7 @@ export function localParent(raw: string): string {
 
 export function joinRemote(dir: string, name: string): string {
   const base = normPosix(dir);
-  return base === "/" ? `/${name}` : `${base}/${name}`;
+  return base.endsWith("/") ? `${base}${name}` : `${base}/${name}`;
 }
 
 export interface PathCrumb {
@@ -34,6 +51,18 @@ export interface PathCrumb {
 }
 
 export function splitRemoteCrumbs(raw: string): PathCrumb[] {
+  const win = parseWinSftpPath(raw);
+  if (win) {
+    const rootPath = `/${win.drive}/`;
+    const crumbs: PathCrumb[] = [{ label: `${win.drive}\\`, path: rootPath }];
+    let acc = `/${win.drive}`;
+    for (const part of win.rest) {
+      acc += `/${part}`;
+      crumbs.push({ label: part, path: acc });
+    }
+    return crumbs;
+  }
+
   const path = normPosix(raw);
   const crumbs: PathCrumb[] = [{ label: "/", path: "/" }];
   if (path === "/") return crumbs;
@@ -64,5 +93,10 @@ export function splitLocalCrumbs(raw: string): PathCrumb[] {
 }
 
 export function posixCdCmd(remotePath: string): string {
+  const win = parseWinSftpPath(remotePath);
+  if (win) {
+    const winPath = `${win.drive}\\${win.rest.join("\\")}`;
+    return `cd "${winPath.replace(/"/g, '\\"')}"\r`;
+  }
   return `cd -- '${normPosix(remotePath).replace(/'/g, `'\\''`)}'\r`;
 }

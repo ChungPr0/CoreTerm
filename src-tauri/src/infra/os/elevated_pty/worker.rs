@@ -9,6 +9,7 @@ mod win_worker {
         OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
     };
 
+    use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, MIN_PTY_COLS, MIN_PTY_ROWS};
     use crate::infra::os::elevated_pty::pipe::{open_client_pipe, OwnedHandle};
     use crate::infra::os::elevated_pty::protocol::{
         read_frame, write_frame, FRAME_CLOSE, FRAME_DATA, FRAME_ERROR, FRAME_EXIT, FRAME_RESIZE,
@@ -66,8 +67,8 @@ mod win_worker {
 
     fn parse_worker_args(args: &[String]) -> WorkerLaunchArgs {
         let mut pipe_base = String::new();
-        let mut cols: u16 = 120;
-        let mut rows: u16 = 30;
+        let mut cols: u16 = DEFAULT_TERM_COLS;
+        let mut rows: u16 = DEFAULT_TERM_ROWS;
         let mut secret = String::new();
         let mut cwd: Option<String> = None;
         let mut parent_pid: Option<u32> = None;
@@ -82,11 +83,11 @@ mod win_worker {
                     i += 2;
                 }
                 "--cols" if i + 1 < args.len() => {
-                    cols = args[i + 1].parse().unwrap_or(120);
+                    cols = args[i + 1].parse().unwrap_or(DEFAULT_TERM_COLS);
                     i += 2;
                 }
                 "--rows" if i + 1 < args.len() => {
-                    rows = args[i + 1].parse().unwrap_or(30);
+                    rows = args[i + 1].parse().unwrap_or(DEFAULT_TERM_ROWS);
                     i += 2;
                 }
                 "--secret" if i + 1 < args.len() => {
@@ -176,8 +177,8 @@ mod win_worker {
         };
 
         let pair = match native_pty_system().openpty(PtySize {
-            rows: rows.max(2),
-            cols: cols.max(10),
+            rows: rows.max(MIN_PTY_ROWS),
+            cols: cols.max(MIN_PTY_COLS),
             pixel_width: 0,
             pixel_height: 0,
         }) {
@@ -242,8 +243,8 @@ mod win_worker {
                         if let Ok(guard) = handles_ctrl.lock() {
                             if let Some(ref m) = guard.master {
                                 let _ = m.resize(PtySize {
-                                    rows: r.max(2),
-                                    cols: c.max(10),
+                                    rows: r.max(MIN_PTY_ROWS),
+                                    cols: c.max(MIN_PTY_COLS),
                                     pixel_width: 0,
                                     pixel_height: 0,
                                 });

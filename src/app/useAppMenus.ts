@@ -15,7 +15,7 @@ interface UseAppMenusOpts {
   allProfiles: HostProfileSummaryDto[];
   isAppElevated: boolean;
   shellProfiles: ShellProfile[];
-  defaultShellProfile: ShellProfile;
+  defaultShellProfile: ShellProfile | null;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
   onNewLocalTab: (opts?: NewLocalTabOpts) => void;
   onRenameTab: (tabId: string) => void;

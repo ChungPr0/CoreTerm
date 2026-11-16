@@ -85,7 +85,7 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
       containerClassName="items-center justify-center p-4"
       panelClassName="bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl w-full max-w-sm p-5 text-xs select-none"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form noValidate onSubmit={handleSubmit} className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Shield className="w-4 h-4 text-sky-400 shrink-0" />

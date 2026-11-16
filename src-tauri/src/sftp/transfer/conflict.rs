@@ -6,7 +6,7 @@ use dashmap::DashMap;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
-use super::engine::{TransferDirection, TransferJobRecord};
+use super::job::{TransferDirection, TransferJobRecord};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{join_remote_path, next_numbered_name, parent_remote_path, remote_leaf_name};
 use crate::infra::local_fs::clean_display_path;

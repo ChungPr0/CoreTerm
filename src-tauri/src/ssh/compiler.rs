@@ -23,8 +23,10 @@ impl SshCommandCompiler {
     ) -> CoreResult<Vec<OsString>> {
         let (host, _) = validate_host_target(config)?;
 
-        let mut args: Vec<OsString> = Vec::with_capacity(24);
+        let mut args: Vec<OsString> = Vec::with_capacity(26);
         push_base_target_args(&mut args, config);
+        args.push(OsString::from("-o"));
+        args.push(OsString::from("ConnectTimeout=8"));
 
         match config.auth_method.as_str() {
             "SSH_KEY" => {
@@ -203,6 +205,8 @@ mod tests {
                 "2222",
                 "-l",
                 "deploy",
+                "-o",
+                "ConnectTimeout=8",
                 "-i",
                 r"C:\Users\Admin\.ssh\id_ed25519",
                 "-o",
@@ -240,6 +244,8 @@ mod tests {
                 "22",
                 "-l",
                 "root",
+                "-o",
+                "ConnectTimeout=8",
                 "-o",
                 "PreferredAuthentications=password,keyboard-interactive",
                 "-o",

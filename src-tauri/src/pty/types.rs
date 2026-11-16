@@ -7,6 +7,7 @@ use portable_pty::{Child, MasterPty, PtySize};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
+use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::elevated_pty;
 
@@ -29,6 +30,7 @@ pub(super) struct AttachedTabTarget {
 }
 
 pub(super) struct PrewarmedLocalSession {
+    pub profile: crate::ipc::dto::ShellProfile,
     pub session: Arc<PtySession>,
     pub pid: Option<u32>,
     pub is_admin: bool,
@@ -106,8 +108,8 @@ impl PtySession {
                     .lock()
                     .map_err(|e| CoreError::Internal(format!("PTY master mutex poisoned: {e}")))?;
                 m.resize(PtySize {
-                    rows: rows.max(2),
-                    cols: cols.max(10),
+                    rows: rows.max(MIN_PTY_ROWS),
+                    cols: cols.max(MIN_PTY_COLS),
                     pixel_width: 0,
                     pixel_height: 0,
                 })

@@ -69,7 +69,7 @@ export const HostModal: React.FC<HostModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={form.handleSubmit} className="p-5 space-y-4 overflow-y-auto text-xs">
+        <form noValidate onSubmit={form.handleSubmit} className="p-5 space-y-4 overflow-y-auto text-xs">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-slate-300 font-medium mb-1">
@@ -80,7 +80,6 @@ export const HostModal: React.FC<HostModalProps> = ({
                 value={form.alias}
                 onChange={(e) => form.setAlias(e.target.value)}
                 className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
-                required
               />
             </div>
 
@@ -115,7 +114,6 @@ export const HostModal: React.FC<HostModalProps> = ({
                 value={form.host}
                 onChange={(e) => form.setHost(e.target.value)}
                 className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
-                required
               />
             </div>
 
@@ -130,7 +128,6 @@ export const HostModal: React.FC<HostModalProps> = ({
                 value={form.port}
                 onChange={(e) => form.setPort(Number(e.target.value))}
                 className="w-full h-8 px-2.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
-                required
               />
             </div>
 
@@ -143,7 +140,6 @@ export const HostModal: React.FC<HostModalProps> = ({
                 value={form.username}
                 onChange={(e) => form.setUsername(e.target.value)}
                 className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
-                required
               />
             </div>
           </div>

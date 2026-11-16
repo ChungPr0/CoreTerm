@@ -10,4 +10,4 @@ mod ssh;
 mod types;
 
 pub use manager::PtySessionManager;
-pub use shells::detect_available_shells;
+pub use shells::{detect_available_shells, resolve_shell_exe};

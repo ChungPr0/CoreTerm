@@ -108,7 +108,7 @@ export function useDirectoryBrowser({
   }, [loadDir]);
 
   const refresh = useCallback(() => {
-    const cur = cwdRef.current;
+    const cur = cwdRef.current || homeRef.current;
     if (cur) void loadDir(cur, undefined, false);
   }, [loadDir]);
 

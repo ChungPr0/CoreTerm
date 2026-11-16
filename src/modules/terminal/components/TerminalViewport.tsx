@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { AlertCircle, RotateCw } from "lucide-react";
-import type { TerminalTabItem } from "@/shared/types/ipc";
+import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import type { SessionConnectAckDto } from "../types";
 import { useI18n } from "@/shared/i18n";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
@@ -9,12 +9,14 @@ import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import {
   useTerminalSession,
+  type LaunchWinSize,
   type TerminalContextActions,
 } from "../hooks/useTerminalSession";
 import { useTerminalFind } from "../hooks/useTerminalFind";
+import { ShellErrorOverlay } from "./ShellErrorOverlay";
 import { TerminalFindBar } from "./TerminalFindBar";
 
-export type { TerminalContextActions };
+export type { LaunchWinSize, TerminalContextActions };
 
 interface TerminalViewportProps {
   tab: TerminalTabItem;
@@ -24,7 +26,15 @@ interface TerminalViewportProps {
   focusToken?: number;
   findToken?: number;
   suppressAutoFocus?: boolean;
+  pauseAutoReconnect?: boolean;
+  availableShells?: ShellProfile[];
+  onPresentWindow?: (size: LaunchWinSize) => Promise<boolean>;
   onReconnect: (tabId: string) => void;
+  onSwitchShell?: (tabId: string, profile: ShellProfile) => void;
+  onPickShell?: (tabId: string) => Promise<void> | void;
+  onRescan?: (tabId: string) => Promise<void> | void;
+  onOpenSettings?: () => void;
+  onOpenSsh?: () => void;
   onToggleAutoReconnect: (tabId: string, enabled: boolean) => void;
   onSessionAck?: (tabId: string, ack: SessionConnectAckDto) => void;
   onElevationCancelled?: (tabId: string) => void;
@@ -44,7 +54,15 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   focusToken = 0,
   findToken = 0,
   suppressAutoFocus = false,
+  pauseAutoReconnect = false,
+  availableShells = [],
+  onPresentWindow,
   onReconnect,
+  onSwitchShell,
+  onPickShell,
+  onRescan,
+  onOpenSettings,
+  onOpenSsh,
   onToggleAutoReconnect,
   onSessionAck,
   onElevationCancelled,
@@ -63,6 +81,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
       launchRows,
       focusToken,
       suppressAutoFocus,
+      onPresentWindow,
       onSessionAck,
       onElevationCancelled,
     });
@@ -74,30 +93,39 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
     findToken,
   });
 
-  useAutoReconnect(
-    tab.hostId !== "local" && Boolean(tab.autoReconnect),
-    tab.state === "DISCONNECTED" || tab.state === "ERROR",
-    tab.reconnectIntervalSec,
-    () => onReconnect(tab.tabId)
-  );
+  useAutoReconnect({
+    enabled: tab.hostId !== "local" && Boolean(tab.autoReconnect),
+    connected: tab.state === "ONLINE",
+    disconnected: tab.state === "DISCONNECTED" || tab.state === "ERROR",
+    paused: pauseAutoReconnect,
+    intervalSec: tab.reconnectIntervalSec,
+    onReconnect: () => onReconnect(tab.tabId),
+  });
 
   const isDisconnected =
     tab.state === "DISCONNECTED" ||
     tab.state === "ERROR" ||
     tab.state === "AUTH_FAILED" ||
     tab.state === "PORT_CONFLICT";
+  const isLocalErr = tab.hostId === "local" && tab.state === "ERROR";
 
   useEffect(() => {
-    if (!isDisconnected) {
+    if (tab.state === "ONLINE") {
       lastAlertErrRef.current = null;
       return;
     }
+    if (!isDisconnected) return;
     const errKey = tab.errorMessage ? `${tab.state}:${tab.errorMessage}` : null;
     if (errKey && lastAlertErrRef.current !== errKey) {
       lastAlertErrRef.current = errKey;
       alert.error(formatLocalizedError(tab.errorMessage, t));
     }
   }, [isDisconnected, tab.state, tab.errorMessage, alert, t]);
+
+  const manualReconnect = () => {
+    lastAlertErrRef.current = null;
+    onReconnect(tab.tabId);
+  };
 
   return (
     <div
@@ -120,7 +148,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
         onClose={find.closeFind}
       />
 
-      {isDisconnected && (
+      {isDisconnected && !isLocalErr && (
         <div
           onContextMenu={(e) => {
             e.preventDefault();
@@ -149,13 +177,31 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
           )}
           <button
             type="button"
-            onClick={() => onReconnect(tab.tabId)}
+            onClick={manualReconnect}
             className="flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium"
           >
             <RotateCw className="w-3 h-3" />
             <span>{t("session.reconnect")}</span>
           </button>
         </div>
+      )}
+
+      {isLocalErr && (
+        <ShellErrorOverlay
+          tab={tab}
+          availableShells={availableShells}
+          onSwitchShell={onSwitchShell}
+          onPickShell={onPickShell}
+          onRescan={onRescan}
+          onOpenSettings={onOpenSettings}
+          onOpenSsh={onOpenSsh}
+          onReconnect={manualReconnect}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onContextMenuBanner?.(e, tab);
+          }}
+        />
       )}
 
       <div

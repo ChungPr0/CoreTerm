@@ -19,7 +19,9 @@ use crate::ssh::ActiveTunnelRegistry;
 
 use super::direct::DirectLaunchSpec;
 use super::events::emit_status;
-use super::shells::{default_shell_profile, detect_available_shells as scan_available_shells};
+use super::shells::{
+    default_shell_profile, detect_available_shells as scan_available_shells, find_default_shell,
+};
 use super::ssh::prepare_ssh_launch;
 use super::types::{InFlightConnectGuard, PrewarmedLocalSession, PtySession};
 
@@ -63,6 +65,22 @@ impl PtySessionManager {
         let detected = scan_available_shells().await;
         *guard = Some(detected.clone());
         detected
+    }
+
+    fn fallback_shell(&self) -> CoreResult<ShellProfile> {
+        if let Some(profile) = find_default_shell() {
+            return Ok(profile);
+        }
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            if let Some(first) = handle
+                .block_on(self.detect_available_shells(false))
+                .into_iter()
+                .next()
+            {
+                return Ok(first);
+            }
+        }
+        Err(CoreError::Pty("No local shell available".to_string()))
     }
 
     pub fn tunnel_registry(&self) -> &ActiveTunnelRegistry {
@@ -117,14 +135,36 @@ impl PtySessionManager {
         self.tab_admin_map.insert(req.tab_id.clone(), is_admin);
 
         let local_profile = if is_local {
-            let profile = req
-                .shell_profile
-                .clone()
-                .unwrap_or_else(default_shell_profile);
+            let profile = match req.shell_profile.clone() {
+                Some(p) => p,
+                None => match self.fallback_shell() {
+                    Ok(p) => p,
+                    Err(err) => {
+                        emit_status(
+                            app,
+                            &req.tab_id,
+                            &req.host_id,
+                            "ERROR",
+                            vec![],
+                            Some(err.to_string()),
+                        );
+                        return Err(err);
+                    }
+                },
+            };
             if profile.executable.trim().is_empty() || profile.name.trim().is_empty() {
-                return Err(CoreError::Validation(
+                let err = CoreError::Validation(
                     "Shell profile name and executable cannot be empty".to_string(),
-                ));
+                );
+                emit_status(
+                    app,
+                    &req.tab_id,
+                    &req.host_id,
+                    "ERROR",
+                    vec![],
+                    Some(err.to_string()),
+                );
+                return Err(err);
             }
             self.tab_shell_map
                 .insert(req.tab_id.clone(), profile.clone());

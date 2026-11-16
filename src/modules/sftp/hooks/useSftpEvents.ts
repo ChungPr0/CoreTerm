@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { sftpApi } from "../api/sftpApi";
 import type {
@@ -30,6 +30,16 @@ export function useSftpEvents({
 }: UseSftpEventsOpts): boolean {
   const [nativeDragActive, setNativeDragActive] = useState(false);
 
+  const onStatusRef = useRef(onStatus);
+  const onProgressRef = useRef(onProgress);
+  const onConflictRef = useRef(onConflict);
+  const onNativeDropRef = useRef(onNativeDrop);
+
+  onStatusRef.current = onStatus;
+  onProgressRef.current = onProgress;
+  onConflictRef.current = onConflict;
+  onNativeDropRef.current = onNativeDrop;
+
   useEffect(() => {
     let active = true;
     const unlisteners: Array<() => void> = [];
@@ -37,13 +47,13 @@ export function useSftpEvents({
     const setup = async () => {
       const fns = await Promise.all([
         sftpApi.onSftpStatus((ev) => {
-          if (ev.tab_id === tabId) onStatus(ev.state, ev.cwd, ev.error_message);
+          if (ev.tab_id === tabId) onStatusRef.current(ev.state, ev.cwd, ev.error_message);
         }),
         sftpApi.onSftpTransferProgress((job) => {
-          if (job.tab_id === tabId) onProgress(job);
+          if (job.tab_id === tabId) onProgressRef.current(job);
         }),
         sftpApi.onSftpTransferConflict((conflict) => {
-          if (conflict.tab_id === tabId) onConflict(conflict);
+          if (conflict.tab_id === tabId) onConflictRef.current(conflict);
         }),
       ]);
       if (!active) {
@@ -58,7 +68,7 @@ export function useSftpEvents({
       active = false;
       unlisteners.forEach((u) => u());
     };
-  }, [tabId, onStatus, onProgress, onConflict]);
+  }, [tabId]);
 
   useEffect(() => {
     if (!isActive || !isVisible) {
@@ -91,7 +101,7 @@ export function useSftpEvents({
           const hit = hitRemote(p.position);
           setNativeDragActive(false);
           if (hit && p.paths.length > 0) {
-            onNativeDrop(p.paths);
+            onNativeDropRef.current(p.paths);
           }
         }
       })
@@ -105,7 +115,7 @@ export function useSftpEvents({
       active = false;
       unlisten?.();
     };
-  }, [isActive, isVisible, remoteDropRef, onNativeDrop]);
+  }, [isActive, isVisible, remoteDropRef]);
 
   return nativeDragActive;
 }

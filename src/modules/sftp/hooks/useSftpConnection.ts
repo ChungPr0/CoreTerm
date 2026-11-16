@@ -11,6 +11,7 @@ interface UseSftpConnectionOptions {
   hostId: string;
   reconnectToken: number;
   autoReconnect?: boolean;
+  pauseAutoReconnect?: boolean;
   reconnectIntervalSec?: number;
   remoteBrowser: DirectoryBrowser;
   localBrowser: DirectoryBrowser;
@@ -24,6 +25,7 @@ export function useSftpConnection({
   hostId,
   reconnectToken,
   autoReconnect,
+  pauseAutoReconnect = false,
   reconnectIntervalSec,
   remoteBrowser,
   localBrowser,
@@ -34,12 +36,14 @@ export function useSftpConnection({
   const [connState, setConnState] = useState<SftpConnectionState>("CONNECTING");
   const [authBlocked, setAuthBlocked] = useState(false);
   const [localDrives, setLocalDrives] = useState<LocalDriveDto[]>([]);
+  const [remoteDrives, setRemoteDrives] = useState<LocalDriveDto[]>([]);
 
   const mountedRef = useRef(true);
   const connStateRef = useRef(connState);
   const connectAttemptRef = useRef(0);
   const connectingAttemptRef = useRef(0);
   const reconnectTokenRef = useRef(reconnectToken);
+  const lastErrRef = useRef<string | null>(null);
 
   const remoteRef = useRef(remoteBrowser);
   const localRef = useRef(localBrowser);
@@ -80,43 +84,37 @@ export function useSftpConnection({
       if (isStale()) return;
 
       setAuthBlocked(false);
-      remoteRef.current.setHomeDir(ack.home_path);
+      lastErrRef.current = null;
+      setRemoteDrives(ack.drives ?? []);
+      const safeHome = ack.home_path || "/";
+      remoteRef.current.setHomeDir(safeHome);
       setConnState("CONNECTED");
       onSftpStateRef.current?.(tabId, "CONNECTED");
 
-      const targetRemote = remoteRef.current.cwdRef.current || ack.cwd || ack.home_path;
-      const [drives, homeDir, existingJobs] = await Promise.all([
-        localFsApi.localListDrives().catch(() => [] as LocalDriveDto[]),
-        localFsApi.localHomeDir().catch(() => ""),
-        sftpApi.sftpListTransfers(tabId).catch(() => [] as SftpTransferJobDto[]),
-      ]);
+      const targetRemote = remoteRef.current.cwdRef.current || ack.cwd || safeHome;
+      const existingJobs = await sftpApi
+        .sftpListTransfers(tabId)
+        .catch(() => [] as SftpTransferJobDto[]);
       if (isStale()) return;
 
-      setLocalDrives(drives);
-      if (homeDir && !localRef.current.homeRef.current) {
-        localRef.current.setHomeDir(homeDir);
-      }
       onHydrateJobsRef.current(existingJobs);
-
-      await Promise.all([
-        remoteRef.current.loadDir(targetRemote, isStale),
-        localRef.current.loadDir(
-          localRef.current.cwdRef.current || homeDir || drives[0]?.path || "",
-          isStale
-        ),
-      ]);
+      await remoteRef.current.loadDir(targetRemote, isStale);
     } catch (err) {
       if (isStale()) return;
+      const rawMsg = extractRawErrorMessage(err);
       if (
         /authentication cancelled|authentication failed|host key verification|known_hosts/i.test(
-          extractRawErrorMessage(err)
+          rawMsg
         )
       ) {
         setAuthBlocked(true);
       }
       setConnState("ERROR");
       onSftpStateRef.current?.(tabId, "ERROR");
-      onErrorRef.current(err);
+      if (!rawMsg || lastErrRef.current !== rawMsg) {
+        lastErrRef.current = rawMsg || "ERROR";
+        onErrorRef.current(err);
+      }
     } finally {
       if (connectingAttemptRef.current === attempt) {
         connectingAttemptRef.current = 0;
@@ -124,9 +122,38 @@ export function useSftpConnection({
     }
   }, [tabId, hostId]);
 
+  const loadLocalFs = useCallback(async () => {
+    const [drives, homeDir] = await Promise.all([
+      localFsApi.localListDrives().catch(() => [] as LocalDriveDto[]),
+      localFsApi.localHomeDir().catch(() => ""),
+    ]);
+    if (!mountedRef.current) return;
+
+    setLocalDrives(drives);
+    if (homeDir && !localRef.current.homeRef.current) {
+      localRef.current.setHomeDir(homeDir);
+    }
+    const targetLocal = localRef.current.cwdRef.current || homeDir || drives[0]?.path || "";
+    if (targetLocal && !localRef.current.cwdRef.current) {
+      await localRef.current.loadDir(targetLocal, () => !mountedRef.current);
+    }
+  }, []);
+
+  // Load local filesystem immediately without waiting on remote SFTP auth/network.
   useEffect(() => {
-    void connectSftp();
+    const timer = window.setTimeout(() => {
+      if (mountedRef.current) void loadLocalFs();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadLocalFs]);
+
+  // Defer initial SFTP connect to a macrotask so React StrictMode double-mount cancels before opening duplicate SSH handshakes.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (mountedRef.current) void connectSftp();
+    }, 0);
     return () => {
+      window.clearTimeout(timer);
       connectAttemptRef.current += 1;
     };
   }, [connectSftp]);
@@ -135,19 +162,26 @@ export function useSftpConnection({
     if (reconnectTokenRef.current === reconnectToken) return;
     reconnectTokenRef.current = reconnectToken;
     setAuthBlocked(false);
+    lastErrRef.current = null;
     void connectSftp();
   }, [reconnectToken, connectSftp]);
 
   const sftpOffline = connState === "DISCONNECTED" || connState === "ERROR";
 
-  useAutoReconnect(
-    hostId !== "local" && Boolean(autoReconnect) && !authBlocked,
-    sftpOffline,
-    reconnectIntervalSec,
-    () => {
+  useAutoReconnect({
+    enabled: hostId !== "local" && Boolean(autoReconnect) && !authBlocked,
+    connected: connState === "CONNECTED",
+    disconnected: sftpOffline,
+    paused: pauseAutoReconnect,
+    intervalSec: reconnectIntervalSec,
+    onReconnect: () => {
       void connectSftp();
-    }
-  );
+    },
+  });
+
+  const clearErrorDedup = useCallback(() => {
+    lastErrRef.current = null;
+  }, []);
 
   const handleStatus = useCallback(
     (state: SftpConnectionState, _cwd?: string | null, err?: string | null) => {
@@ -171,8 +205,11 @@ export function useSftpConnection({
     connStateRef,
     sftpOffline,
     localDrives,
+    remoteDrives,
     setAuthBlocked,
+    clearErrorDedup,
     connectSftp,
+    loadLocalFs,
     handleStatus,
     markDisconnectedOnError,
   };

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
+use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 use crate::infra::os::is_process_elevated;
 use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto, ShellProfile};
 
@@ -11,17 +12,31 @@ use super::events::{
     emit_status, finalize_reader_exit, spawn_output_batcher, ReaderExitCtx, ReaderExitMeta,
 };
 use super::manager::PtySessionManager;
-use super::shells::{default_shell_profile, is_default_powershell};
+use super::shells::{find_default_shell, is_default_powershell};
 use super::spawn::{spawn_pty, PtySpawnConfig};
 use super::types::{
     AttachedTabTarget, PrewarmSink, PrewarmedLocalSession, PREWARM_BUFFER_LIMIT, READ_BUF_SIZE,
 };
 
+fn profile_matches(prewarmed: &ShellProfile, requested: &ShellProfile) -> bool {
+    if prewarmed.id == "powershell" && is_default_powershell(requested) {
+        return true;
+    }
+    if prewarmed.id != requested.id || prewarmed.args != requested.args {
+        return false;
+    }
+    prewarmed.executable.eq_ignore_ascii_case(&requested.executable)
+        || std::path::Path::new(&prewarmed.executable)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case(&requested.executable))
+}
+
 impl PtySessionManager {
-    /// Spawns the initial local PowerShell ConPTY in the background while WebView2 initializes.
+    /// Spawns the highest-priority available local ConPTY in the background while WebView2 initializes.
     pub fn prewarm_local_shell(&self, cols: u16, rows: u16) {
-        let initial_cols = cols.max(10);
-        let initial_rows = rows.max(2);
+        let initial_cols = cols.max(MIN_PTY_COLS);
+        let initial_rows = rows.max(MIN_PTY_ROWS);
         let is_admin = is_process_elevated();
         let manager = self.clone();
 
@@ -32,7 +47,9 @@ impl PtySessionManager {
                     return;
                 }
 
-                let profile = default_shell_profile();
+                let Some(profile) = find_default_shell() else {
+                    return;
+                };
                 let cwd = std::env::var("USERPROFILE").ok();
                 let Ok(spawned) = spawn_pty(
                     PtySpawnConfig {
@@ -62,6 +79,7 @@ impl PtySessionManager {
                 let attached: Arc<Mutex<Option<AttachedTabTarget>>> = Arc::new(Mutex::new(None));
 
                 let prewarmed = PrewarmedLocalSession {
+                    profile,
                     session: session.clone(),
                     pid: spawned.pid,
                     is_admin,
@@ -161,13 +179,12 @@ impl PtySessionManager {
         is_admin: bool,
         on_output: &Channel<Vec<u8>>,
     ) -> Option<SessionConnectAckDto> {
-        if !is_default_powershell(profile) {
-            return None;
-        }
-
         let taken = {
             let mut guard = self.prewarmed_local.lock().ok()?;
-            if !guard.as_ref().is_some_and(|p| p.is_admin == is_admin) {
+            let matches = guard
+                .as_ref()
+                .is_some_and(|p| p.is_admin == is_admin && profile_matches(&p.profile, profile));
+            if !matches {
                 return None;
             }
             self.prewarm_cancelled.store(true, Ordering::SeqCst);
@@ -218,8 +235,8 @@ impl PtySessionManager {
             let _ = tx.send(buffered);
         }
 
-        let target_cols = req.cols.max(10);
-        let target_rows = req.rows.max(2);
+        let target_cols = req.cols.max(MIN_PTY_COLS);
+        let target_rows = req.rows.max(MIN_PTY_ROWS);
         if target_cols != taken.initial_cols || target_rows != taken.initial_rows {
             let _ = taken.session.resize(target_cols, target_rows);
         }
@@ -231,6 +248,7 @@ impl PtySessionManager {
             cli_preview: profile.name.clone(),
             status: "ONLINE".to_string(),
             is_admin: taken.is_admin,
+            shell_profile: Some(profile.clone()),
         })
     }
 }

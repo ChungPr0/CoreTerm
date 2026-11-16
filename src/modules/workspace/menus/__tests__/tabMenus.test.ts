@@ -87,6 +87,17 @@ describe("buildLaunchItems", () => {
     }
     expect(onNewLocalTab).toHaveBeenCalledWith({ profile: PS, asAdmin: true });
   });
+
+  it("returns empty list safely when no local shell profiles exist", () => {
+    const items = buildLaunchItems({
+      t,
+      isAppElevated: false,
+      shellProfiles: [],
+      defaultShellProfile: null,
+      onNewLocalTab: vi.fn(),
+    });
+    expect(items).toEqual([]);
+  });
 });
 
 describe("buildTabContextItems", () => {

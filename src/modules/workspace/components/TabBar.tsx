@@ -16,7 +16,7 @@ interface TabBarProps {
   isModalOpen?: boolean;
   isContextMenuOpen?: boolean;
   shellProfiles: ShellProfile[];
-  defaultShellProfile: ShellProfile;
+  defaultShellProfile: ShellProfile | null;
   profiles: HostProfileSummaryDto[];
   onToggleSidebar: () => void;
   onSelectTab: (tabId: string) => void;
@@ -28,6 +28,7 @@ interface TabBarProps {
   onCommitRenameTab?: (tabId: string, title: string) => void;
   onCancelRenameTab?: () => void;
   onNewTab: (opts?: { profile?: ShellProfile; asAdmin?: boolean }) => void;
+  onRescan?: () => Promise<void> | void;
   onConnectProfile: (host: HostProfileSummaryDto) => void;
   onCreateNewHost: () => void;
   onOpenPalette: () => void;
@@ -56,6 +57,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onCommitRenameTab,
   onCancelRenameTab,
   onNewTab,
+  onRescan,
   onConnectProfile,
   onCreateNewHost,
   onOpenPalette,
@@ -180,6 +182,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           defaultShellProfile={defaultShellProfile}
           profiles={profiles}
           onNewTab={onNewTab}
+          onRescan={onRescan}
           onConnectProfile={onConnectProfile}
           onCreateNewHost={onCreateNewHost}
           onOpenPalette={onOpenPalette}

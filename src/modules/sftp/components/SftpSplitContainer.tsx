@@ -15,6 +15,7 @@ interface SftpSplitContainerProps {
   isActive: boolean;
   sftpEverOpened?: boolean;
   conflictPolicy: SftpConflictPolicy;
+  pauseAutoReconnect?: boolean;
   terminal?: React.ReactNode;
   onStartSplitResize: (tabId: string, e: React.MouseEvent<HTMLDivElement>) => void;
   onToggleSftpSplit: (tabId: string) => void;
@@ -35,6 +36,7 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
   isActive,
   sftpEverOpened = false,
   conflictPolicy,
+  pauseAutoReconnect = false,
   terminal,
   onStartSplitResize,
   onToggleSftpSplit,
@@ -58,6 +60,7 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
             isVisible={isActive}
             mode="full"
             conflictPolicy={conflictPolicy}
+            pauseAutoReconnect={pauseAutoReconnect}
             onShowMenu={onShowMenu}
             onConfirmDelete={onConfirmDelete}
             onModalChange={onModalChange}
@@ -109,6 +112,7 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
               isVisible={sftpVisible}
               mode="split"
               conflictPolicy={conflictPolicy}
+              pauseAutoReconnect={pauseAutoReconnect}
               onOpenInTerminal={(remotePath) => onOpenInTerminal(tab.tabId, remotePath)}
               onShowMenu={onShowMenu}
               onConfirmDelete={onConfirmDelete}

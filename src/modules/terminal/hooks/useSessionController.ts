@@ -16,7 +16,7 @@ export interface NewLocalTabOpts {
 
 interface UseSessionControllerOpts {
   isAppElevated: boolean;
-  defaultShellProfile: ShellProfile;
+  defaultShellProfile: ShellProfile | null;
   allProfiles: HostProfileSummaryDto[];
   t: (key: string, params?: Record<string, string | number>) => string;
   onError: (msg: string) => void;
@@ -141,6 +141,24 @@ export function useSessionController({
     [disposeTab, handleEmptyTabs]
   );
 
+  const abortAuthPromptTab = useCallback(
+    (tabId: string, source: "pty" | "sftp") => {
+      const state = useTabsStore.getState();
+      const target = state.tabs.find((tab) => tab.tabId === tabId);
+      if (!target) return;
+      if (source === "sftp" && target.tabKind !== "sftp") {
+        sftpApi.sftpDisconnect(tabId).catch(() => {});
+        if (target.sftpOpen) state.toggleSftpSplit(tabId);
+        return;
+      }
+      if (state.tabs.length <= 1) {
+        newLocalTab();
+      }
+      closeTabById(tabId);
+    },
+    [closeTabById, newLocalTab]
+  );
+
   const handleCloseTab = useCallback(
     (tabId: string, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -196,8 +214,15 @@ export function useSessionController({
   );
 
   const handleSessionAck = useCallback((tabId: string, ack: SessionConnectAckDto) => {
-    useTabsStore.getState().updateSessionAck(tabId, ack.is_admin);
+    useTabsStore.getState().updateSessionAck(tabId, ack.is_admin, ack.shell_profile);
   }, []);
+
+  const switchTabShell = useCallback(
+    (tabId: string, profile: ShellProfile) => {
+      useTabsStore.getState().setTabShell(tabId, profile, true);
+    },
+    []
+  );
 
   const syncHostConfigInTabs = useCallback((saved: HostFullConfigDto) => {
     useTabsStore.getState().syncHostConfig(saved);
@@ -225,7 +250,9 @@ export function useSessionController({
     closeTabById,
     handleCloseTab,
     closeOtherTabs,
+    abortAuthPromptTab,
     reconnectTab,
+    switchTabShell,
     toggleSftpSplit,
     openSftpInTerminal,
     startSplitResize,

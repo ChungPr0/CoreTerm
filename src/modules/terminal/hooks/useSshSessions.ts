@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { ShellProfile } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useTabsStore } from "@/modules/workspace";
@@ -7,7 +7,7 @@ import { useSessionController } from "./useSessionController";
 
 interface UseSshSessionsOpts {
   isAppElevated: boolean;
-  defaultShellProfile: ShellProfile;
+  defaultShellProfile: ShellProfile | null;
   allProfiles: HostProfileSummaryDto[];
   t: (key: string, params?: Record<string, string | number>) => string;
   onError: (msg: string) => void;
@@ -33,6 +33,11 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
 
   const controller = useSessionController(opts);
   const prompts = usePtyAuthPrompts(controller.spawnHostTab);
+  const { prunePromptsForClosedTabs } = prompts;
+
+  useEffect(() => {
+    prunePromptsForClosedTabs(new Set(tabs.map((t) => t.tabId)));
+  }, [tabs, prunePromptsForClosedTabs]);
 
   const stableTabs = useMemo(
     () => [...tabs].sort((a, b) => a.tabId.localeCompare(b.tabId)),
@@ -56,10 +61,10 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     cancelRenamingTab,
     renameTab,
     authPrompt: prompts.authPrompt,
-    setAuthPrompt: prompts.setAuthPrompt,
+    dismissAuthPrompt: prompts.dismissAuthPrompt,
     authPromptSource: prompts.authPromptSource,
     hostKeyPrompt: prompts.hostKeyPrompt,
-    setHostKeyPrompt: prompts.setHostKeyPrompt,
+    dismissHostKeyPrompt: prompts.dismissHostKeyPrompt,
     hostKeySource: prompts.hostKeySource,
     portConflicts: prompts.portConflicts,
     skipPortConflictsAndConnect: prompts.skipPortConflictsAndConnect,
@@ -69,11 +74,13 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     connectHost: prompts.connectWithConflictCheck,
     openSftpTab: controller.openSftpTab,
     closeTabById: controller.closeTabById,
+    abortAuthTab: controller.abortAuthPromptTab,
     handleCloseTab: controller.handleCloseTab,
     reorderTab,
     closeOtherTabs: controller.closeOtherTabs,
     duplicateTab,
     reconnectTab: controller.reconnectTab,
+    switchTabShell: controller.switchTabShell,
     toggleSftpSplit: controller.toggleSftpSplit,
     openSftpInTerminal: controller.openSftpInTerminal,
     handleSftpModalChange: setSftpModalOpen,

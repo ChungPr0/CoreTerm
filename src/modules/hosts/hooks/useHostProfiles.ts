@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_HOST_GROUP } from "@/shared/defaults";
 import { hostsApi } from "../api/hostsApi";
 import type { HostFullConfigDto, HostProfileSummaryDto } from "../types";
 import { formatLocalizedError } from "@/shared/utils/formatError";
@@ -82,14 +83,14 @@ export function useHostProfiles({
       if (!map.has(key)) map.set(key, clean);
     };
     dbGroups.forEach(push);
-    push("Default");
+    push(DEFAULT_HOST_GROUP);
     allProfiles.forEach((p) => p.group_name && push(p.group_name));
     return Array.from(map.values());
   }, [dbGroups, allProfiles]);
 
-  const openNewHost = useCallback((initialGroup = "Default") => {
+  const openNewHost = useCallback((initialGroup = DEFAULT_HOST_GROUP) => {
     setEditingHost(null);
-    setHostInitialGroup(initialGroup.trim() || "Default");
+    setHostInitialGroup(initialGroup.trim() || DEFAULT_HOST_GROUP);
     setIsHostModalOpen(true);
   }, []);
 
@@ -139,7 +140,11 @@ export function useHostProfiles({
   const duplicateHost = useCallback(
     async (host: HostProfileSummaryDto) => {
       try {
-        await hostsApi.hostDuplicate(host.id, `${host.alias} (Copy)`, host.host);
+        await hostsApi.hostDuplicate(
+          host.id,
+          t("host.copy_name", { alias: host.alias }),
+          host.host
+        );
         await loadProfiles();
       } catch (err) {
         onError(formatLocalizedError(err, t));

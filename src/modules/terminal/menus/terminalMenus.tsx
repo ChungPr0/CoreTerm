@@ -22,7 +22,7 @@ interface UseTerminalMenusOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
   isAppElevated: boolean;
   shellProfiles: ShellProfile[];
-  defaultShellProfile: ShellProfile;
+  defaultShellProfile: ShellProfile | null;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
   onNewLocalTab: (opts?: LocalTabLaunchOpts) => void;
   onFindInTab: (tabId: string) => void;
@@ -99,17 +99,17 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
         }
       }
 
-      items.push(
-        { type: "separator", id: "sep-term-launch" },
-        ...buildLaunchItems({
-          t,
-          isAppElevated,
-          shellProfiles,
-          defaultShellProfile,
-          contextShell: tab.hostId === "local" ? tab.shellProfile : undefined,
-          onNewLocalTab,
-        })
-      );
+      const launchItems = buildLaunchItems({
+        t,
+        isAppElevated,
+        shellProfiles,
+        defaultShellProfile,
+        contextShell: tab.hostId === "local" ? tab.shellProfile : undefined,
+        onNewLocalTab,
+      });
+      if (launchItems.length > 0) {
+        items.push({ type: "separator", id: "sep-term-launch" }, ...launchItems);
+      }
 
       setContextMenu({ x: e.clientX, y: e.clientY, items });
     },

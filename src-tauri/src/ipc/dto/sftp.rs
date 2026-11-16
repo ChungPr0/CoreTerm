@@ -1,11 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+use super::local_fs::LocalDriveDto;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SftpConnectAckDto {
     pub tab_id: String,
     pub host_id: String,
     pub home_path: String,
     pub cwd: String,
+    #[serde(default)]
+    pub drives: Vec<LocalDriveDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

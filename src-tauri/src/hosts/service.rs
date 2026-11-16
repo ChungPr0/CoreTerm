@@ -1,19 +1,20 @@
-use std::path::Path;
-
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::db::host_repo::HostRowWrite;
-use crate::infra::db::{group_repo, host_repo, key_repo, port_forward_repo, SqliteDb};
-use crate::infra::os::restrict_private_key_acl;
+use crate::infra::db::{group_repo, host_repo, port_forward_repo, SqliteDb};
 use crate::infra::security::SecretVault;
 use crate::ipc::dto::{
     CreateHostRequestDto, DeleteResultDto, HostFullConfigDto, HostProfileSummaryDto,
-    PortForwardRuleDto, PortForwardToggleResultDto, SavePortForwardDto, UpdateHostRequestDto,
+    PortForwardRuleDto, PortForwardToggleResultDto, UpdateHostRequestDto,
     UpsertPortForwardRequestDto,
 };
-use crate::keys::normalize_key_path_input;
+
+use super::policy::{
+    plan_password_binding, resolve_host_key_binding, validate_host_fields, validate_port_forwards,
+    PendingVaultOp,
+};
 
 #[derive(Clone)]
 pub struct HostService {
@@ -42,13 +43,13 @@ impl HostService {
     }
 
     pub fn create(&self, req: CreateHostRequestDto) -> CoreResult<HostFullConfigDto> {
-        Self::validate_host_fields(&req.alias, &req.host, req.port, &req.username, &req.auth_method)?;
+        validate_host_fields(&req.alias, &req.host, req.port, &req.username, &req.auth_method)?;
         if let Some(ref rules) = req.port_forwards {
-            Self::validate_port_forwards(rules)?;
+            validate_port_forwards(rules)?;
         }
 
         let mut conn = self.db.lock_conn()?;
-        let (resolved_key_id, resolved_key_path) = Self::resolve_host_key_binding(
+        let (resolved_key_id, resolved_key_path) = resolve_host_key_binding(
             &conn,
             &req.auth_method,
             req.ssh_key_id.as_deref(),
@@ -56,7 +57,7 @@ impl HostService {
         )?;
 
         let host_id = Uuid::new_v4().to_string();
-        let (password_mode, secret_ref_id, pending_vault) = Self::plan_password_binding(
+        let (password_mode, secret_ref_id, pending_vault) = plan_password_binding(
             &host_id,
             &req.auth_method,
             req.password_mode.as_deref(),
@@ -97,23 +98,23 @@ impl HostService {
     }
 
     pub fn update(&self, req: UpdateHostRequestDto) -> CoreResult<HostFullConfigDto> {
-        Self::validate_host_fields(&req.alias, &req.host, req.port, &req.username, &req.auth_method)?;
+        validate_host_fields(&req.alias, &req.host, req.port, &req.username, &req.auth_method)?;
         if let Some(ref rules) = req.port_forwards {
-            Self::validate_port_forwards(rules)?;
+            validate_port_forwards(rules)?;
         }
 
         let mut conn = self.db.lock_conn()?;
         let old_secret_ref = host_repo::find_secret_ref(&conn, &req.id)?
             .ok_or_else(|| CoreError::NotFound(format!("Host profile not found: {}", req.id)))?;
 
-        let (resolved_key_id, resolved_key_path) = Self::resolve_host_key_binding(
+        let (resolved_key_id, resolved_key_path) = resolve_host_key_binding(
             &conn,
             &req.auth_method,
             req.ssh_key_id.as_deref(),
             req.private_key_path.as_deref(),
         )?;
 
-        let (password_mode, new_secret_ref, pending_vault) = Self::plan_password_binding(
+        let (password_mode, new_secret_ref, pending_vault) = plan_password_binding(
             &req.id,
             &req.auth_method,
             req.password_mode.as_deref(),
@@ -318,131 +319,6 @@ impl HostService {
         host_repo::set_saved_secret(&conn, host_id, &ref_id)
     }
 
-    fn validate_host_fields(
-        alias: &str,
-        host: &str,
-        port: u16,
-        username: &str,
-        auth_method: &str,
-    ) -> CoreResult<()> {
-        if alias.trim().is_empty() {
-            return Err(CoreError::Validation("Alias cannot be empty".to_string()));
-        }
-        if host.trim().is_empty() {
-            return Err(CoreError::Validation("Host/IP cannot be empty".to_string()));
-        }
-        if port == 0 {
-            return Err(CoreError::Validation(
-                "Port must be between 1 and 65535".to_string(),
-            ));
-        }
-        if username.trim().is_empty() {
-            return Err(CoreError::Validation("Username cannot be empty".to_string()));
-        }
-        if auth_method != "SSH_KEY" && auth_method != "PASSWORD" {
-            return Err(CoreError::Validation(format!(
-                "Invalid auth_method '{auth_method}'"
-            )));
-        }
-        Ok(())
-    }
-
-    fn validate_port_forwards(rules: &[SavePortForwardDto]) -> CoreResult<()> {
-        for rule in rules {
-            if rule.bind_port == 0 {
-                return Err(CoreError::Validation(
-                    "Bind port must be between 1 and 65535".to_string(),
-                ));
-            }
-            port_forward_repo::normalize_targets(
-                &rule.forward_type,
-                rule.target_host.clone(),
-                rule.target_port,
-            )?;
-        }
-        Ok(())
-    }
-
-    /// Resolves key binding without auto-importing raw paths into `ssh_keys`.
-    fn resolve_host_key_binding(
-        conn: &rusqlite::Connection,
-        auth_method: &str,
-        ssh_key_id: Option<&str>,
-        private_key_path: Option<&str>,
-    ) -> CoreResult<(Option<String>, Option<String>)> {
-        if auth_method != "SSH_KEY" {
-            return Ok((None, None));
-        }
-
-        if let Some(id) = ssh_key_id.map(str::trim).filter(|s| !s.is_empty()) {
-            if !key_repo::exists(conn, id)? {
-                return Err(CoreError::NotFound(format!(
-                    "SSH key not found in Vault: {id}"
-                )));
-            }
-            return Ok((Some(id.to_string()), None));
-        }
-
-        let clean_path = private_key_path
-            .map(normalize_key_path_input)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| {
-                CoreError::Validation(
-                    "SSH Key authentication requires selecting a key or providing a Key Path."
-                        .to_string(),
-                )
-            })?;
-
-        let key_path = Path::new(&clean_path);
-        if key_path.exists() {
-            let _ = restrict_private_key_acl(key_path);
-        }
-
-        Ok((None, Some(clean_path)))
-    }
-
-    fn plan_password_binding(
-        host_id: &str,
-        auth_method: &str,
-        password_mode: Option<&str>,
-        password: Option<&str>,
-        existing_secret_ref: Option<String>,
-    ) -> (String, Option<String>, PendingVaultOp) {
-        if auth_method != "PASSWORD" {
-            return (
-                "NONE".to_string(),
-                None,
-                existing_secret_ref
-                    .map(PendingVaultOp::Delete)
-                    .unwrap_or(PendingVaultOp::None),
-            );
-        }
-        let mode = password_mode.unwrap_or("PROMPT_EVERY_TIME");
-        if mode == "SAVED" {
-            if let Some(pw) = password.filter(|p| !p.is_empty()) {
-                let ref_id = SecretVault::host_password_ref(host_id);
-                return (
-                    "SAVED".to_string(),
-                    Some(ref_id.clone()),
-                    PendingVaultOp::Store {
-                        ref_id,
-                        secret: Zeroizing::new(pw.to_string()),
-                    },
-                );
-            }
-            if existing_secret_ref.is_some() {
-                return ("SAVED".to_string(), existing_secret_ref, PendingVaultOp::None);
-            }
-        } else if let Some(old_ref) = existing_secret_ref {
-            return (
-                "PROMPT_EVERY_TIME".to_string(),
-                None,
-                PendingVaultOp::Delete(old_ref),
-            );
-        }
-        ("PROMPT_EVERY_TIME".to_string(), None, PendingVaultOp::None)
-    }
-
     fn apply_vault_after_db(&self, db_res: CoreResult<()>, op: PendingVaultOp) -> CoreResult<()> {
         db_res?;
         match op {
@@ -454,15 +330,6 @@ impl HostService {
             }
         }
     }
-}
-
-enum PendingVaultOp {
-    None,
-    Store {
-        ref_id: String,
-        secret: Zeroizing<String>,
-    },
-    Delete(String),
 }
 
 #[cfg(test)]

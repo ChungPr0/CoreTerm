@@ -23,6 +23,7 @@ interface FileListProps {
   actions?: React.ReactNode;
   dropActive?: boolean;
   dropLabel?: string;
+  emptyMessage?: string;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onChangeFilter: (v: string) => void;
@@ -59,6 +60,7 @@ export const FileList: React.FC<FileListProps> = ({
   actions,
   dropActive = false,
   dropLabel,
+  emptyMessage,
   canGoBack = false,
   canGoForward = false,
   onChangeFilter,
@@ -240,7 +242,7 @@ export const FileList: React.FC<FileListProps> = ({
             }}
             className="flex h-32 items-center justify-center text-xs text-[#6e7681]"
           >
-            {t("sftp.empty_dir")}
+            {emptyMessage || t("sftp.empty_dir")}
           </div>
         )}
       </div>

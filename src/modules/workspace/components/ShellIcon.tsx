@@ -32,8 +32,15 @@ export const ShellIcon: React.FC<ShellIconProps> = ({
       return <GitBranch className={`${className} text-orange-400`} />;
     case "wsl":
       return <Box className={`${className} text-emerald-400`} />;
+    case "custom":
+      return <SquareTerminal className={`${className} text-violet-400`} />;
     case "powershell":
-    default:
       return <TerminalIcon className={`${className} text-sky-400`} />;
+    default:
+      return (
+        <TerminalIcon
+          className={`${className} ${profile ? "text-sky-400" : "text-slate-400"}`}
+        />
+      );
   }
 };

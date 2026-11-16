@@ -6,4 +6,5 @@ export interface AppSettingsValues {
   sftpConflictPolicy: SftpConflictPolicy;
   defaultShellId: string;
   defaultShellProfile?: ShellProfile;
+  customShells: ShellProfile[];
 }

@@ -39,15 +39,15 @@ export function isTabOffline(tab: TerminalTabItem): boolean {
 }
 
 export function createLocalTab(
-  profile: ShellProfile = DEFAULT_LOCAL_SHELL,
+  profile: ShellProfile | null = DEFAULT_LOCAL_SHELL,
   isAdmin = false
 ): TerminalTabItem {
   return {
     tabId: crypto.randomUUID(),
     hostId: "local",
-    title: profile.name,
+    title: profile?.name ?? "Terminal",
     hostSubtitle: "Local",
-    shellProfile: profile,
+    shellProfile: profile ?? undefined,
     state: "CONNECTING",
     errorMessage: null,
     reconnectToken: 0,

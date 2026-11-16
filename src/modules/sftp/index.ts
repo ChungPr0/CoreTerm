@@ -17,7 +17,11 @@ export {
   type SftpDragPreview,
   type SftpPaneKind,
 } from "./hooks/useSftpFileDrag";
-export { buildPaneMenu, buildQueueMenu } from "./menus/sftpMenus";
+export {
+  buildPaneMenu,
+  buildQueueMenu,
+  buildToolbarMenu,
+} from "./menus/sftpMenus";
 export type {
   LocalDriveDto,
   LocalFsEntryDto,

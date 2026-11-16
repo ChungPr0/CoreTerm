@@ -1,18 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FolderSync,
   Globe,
   Monitor,
+  RefreshCw,
   RotateCcw,
   Save,
   Settings,
   Terminal as TerminalIcon,
   X,
 } from "lucide-react";
+import {
+  clampLaunchCols,
+  clampLaunchRows,
+  DEFAULT_CONFLICT_POLICY,
+  DEFAULT_SHELL_ID,
+  LAUNCH_COLS_DEFAULT,
+  LAUNCH_COLS_MAX,
+  LAUNCH_COLS_MIN,
+  LAUNCH_ROWS_DEFAULT,
+  LAUNCH_ROWS_MAX,
+  LAUNCH_ROWS_MIN,
+} from "@/shared/defaults";
 import { type Locale, useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
 import { ModalShell } from "@/shared/ui";
+import {
+  mergeShells,
+  resolveDefaultShell,
+  useShellsStore,
+} from "@/modules/terminal";
 import type { AppSettingsValues } from "../types";
+import { CustomShellsSection } from "./CustomShellsSection";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,35 +49,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSave,
 }) => {
   const { locale, setLocale, t } = useI18n();
+  const detectedFromStore = useShellsStore((s) => s.shells);
+  const detectShells = useShellsStore((s) => s.detectShells);
+
   const [cols, setCols] = useState<number>(settings.launchCols);
   const [rows, setRows] = useState<number>(settings.launchRows);
   const [sftpConflictPolicy, setSftpConflictPolicy] =
     useState<SftpConflictPolicy>(settings.sftpConflictPolicy ?? "ASK");
+  const [customShells, setCustomShells] = useState<ShellProfile[]>(
+    settings.customShells ?? []
+  );
   const [defaultShellId, setDefaultShellId] = useState<string>(
-    settings.defaultShellId || "powershell"
+    settings.defaultShellId || DEFAULT_SHELL_ID
+  );
+  const [isScanning, setIsScanning] = useState(false);
+
+  const systemShells = useMemo(() => {
+    if (detectedFromStore.length > 0) return detectedFromStore;
+    const savedCustomIds = new Set((settings.customShells ?? []).map((c) => c.id));
+    return shellProfiles.filter((s) => !savedCustomIds.has(s.id));
+  }, [detectedFromStore, shellProfiles, settings.customShells]);
+
+  const availableShells = useMemo(
+    () => mergeShells(systemShells, customShells),
+    [systemShells, customShells]
+  );
+
+  const effectiveDefaultShell = useMemo(
+    () => resolveDefaultShell(availableShells, defaultShellId),
+    [availableShells, defaultShellId]
   );
 
   useEffect(() => {
     if (!isOpen) return;
     setCols(settings.launchCols);
     setRows(settings.launchRows);
-    setSftpConflictPolicy(settings.sftpConflictPolicy ?? "ASK");
-    setDefaultShellId(settings.defaultShellId || "powershell");
+    setSftpConflictPolicy(settings.sftpConflictPolicy ?? DEFAULT_CONFLICT_POLICY);
+    setCustomShells(settings.customShells ?? []);
+    setDefaultShellId(settings.defaultShellId || DEFAULT_SHELL_ID);
   }, [isOpen, settings]);
+
+  const handleRescan = async () => {
+    setIsScanning(true);
+    try {
+      await detectShells(true);
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const validCols = Math.min(Math.max(Number(cols) || 120, 40), 300);
-    const validRows = Math.min(Math.max(Number(rows) || 30, 10), 120);
-    const selectedProfile =
-      shellProfiles.find((s) => s.id === defaultShellId) ??
-      settings.defaultShellProfile;
+    const validCols = clampLaunchCols(cols);
+    const validRows = clampLaunchRows(rows);
+    const selectedProfile = effectiveDefaultShell ?? undefined;
     onSave({
       launchCols: validCols,
       launchRows: validRows,
       sftpConflictPolicy,
-      defaultShellId,
+      defaultShellId: selectedProfile?.id ?? "",
       defaultShellProfile: selectedProfile,
+      customShells,
     });
     onClose();
   };
@@ -71,7 +122,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     <ModalShell
       isOpen={isOpen}
       onClose={onClose}
-      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-hidden flex flex-col text-xs select-none"
+      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-full overflow-hidden flex flex-col text-xs select-none"
     >
         <div
           data-tauri-drag-region="deep"
@@ -92,7 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto">
+        <form noValidate onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto">
           {/* Language selection */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-slate-300 font-semibold">
@@ -135,13 +186,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCols(120);
-                  setRows(30);
+                  setCols(LAUNCH_COLS_DEFAULT);
+                  setRows(LAUNCH_ROWS_DEFAULT);
                 }}
                 className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>{t("settings.reset_win")}</span>
+                <span>
+                  {t("settings.reset_win", {
+                    cols: LAUNCH_COLS_DEFAULT,
+                    rows: LAUNCH_ROWS_DEFAULT,
+                  })}
+                </span>
               </button>
             </div>
 
@@ -152,8 +208,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  min={40}
-                  max={300}
+                  min={LAUNCH_COLS_MIN}
+                  max={LAUNCH_COLS_MAX}
                   value={cols}
                   onChange={(e) => setCols(Number(e.target.value))}
                   className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
@@ -165,8 +221,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  min={10}
-                  max={120}
+                  min={LAUNCH_ROWS_MIN}
+                  max={LAUNCH_ROWS_MAX}
                   value={rows}
                   onChange={(e) => setRows(Number(e.target.value))}
                   className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
@@ -176,29 +232,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Default local shell */}
-          {shellProfiles.length > 0 && (
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-slate-300 font-medium">
                 <TerminalIcon className="w-4 h-4 text-sky-400 shrink-0" />
                 <span>{t("settings.default_shell")}</span>
               </div>
-              <select
-                value={
-                  shellProfiles.some((s) => s.id === defaultShellId)
-                    ? defaultShellId
-                    : shellProfiles[0].id
-                }
-                onChange={(e) => setDefaultShellId(e.target.value)}
-                className="h-8 max-w-[190px] px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-sky-500"
-              >
-                {shellProfiles.map((shell) => (
-                  <option key={shell.id} value={shell.id}>
-                    {shell.name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-1.5">
+                {availableShells.length > 0 && (
+                  <select
+                    value={effectiveDefaultShell?.id ?? ""}
+                    onChange={(e) => setDefaultShellId(e.target.value)}
+                    className="h-8 max-w-[180px] px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-sky-500"
+                  >
+                    {availableShells.map((shell) => (
+                      <option key={shell.id} value={shell.id}>
+                        {shell.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  disabled={isScanning}
+                  onClick={() => void handleRescan()}
+                  title={t("app.rescan")}
+                  className="h-8 px-2.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-sky-300 inline-flex items-center gap-1 text-[11px] transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
+                  {availableShells.length === 0 && <span>{t("app.rescan")}</span>}
+                </button>
+              </div>
             </div>
-          )}
+            {availableShells.length === 0 && (
+              <p className="text-[11px] text-amber-300/90">
+                {t("settings.no_shells")}
+              </p>
+            )}
+          </div>
+
+          <CustomShellsSection
+            customShells={customShells}
+            onChange={setCustomShells}
+            onFirstAdd={(profile) => {
+              if (availableShells.length === 0) setDefaultShellId(profile.id);
+            }}
+          />
 
           {/* SFTP file conflict default policy */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">

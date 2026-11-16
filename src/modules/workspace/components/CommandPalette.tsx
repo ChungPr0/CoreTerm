@@ -251,7 +251,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-sky-500/20 border border-slate-700 hover:border-sky-500/40 text-sky-300"
                       >
                         <FolderSync className="w-3 h-3" />
-                        <span>SFTP</span>
+                        <span>{t("sftp.title")}</span>
                       </button>
                     )}
                     <div className="flex items-center gap-1 text-sky-400">

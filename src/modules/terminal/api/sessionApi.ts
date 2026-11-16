@@ -1,4 +1,6 @@
+import { open as openNativeDialog } from "@tauri-apps/plugin-dialog";
 import { Channel, invoke, listenEvent, type UnlistenFn } from "@/shared/api/tauriClient";
+import { DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
 import type { ShellProfile } from "@/shared/types/ipc";
 import type {
   ConflictStrategy,
@@ -11,6 +13,31 @@ import type {
 export const sessionApi = {
   detectAvailableShells(refresh = false): Promise<ShellProfile[]> {
     return invoke<ShellProfile[]>("detect_available_shells", { refresh });
+  },
+
+  checkShellExe(path: string): Promise<string | null> {
+    return invoke<string | null>("check_shell_exe", { path });
+  },
+
+  async pickShellExe(
+    defaultPath?: string,
+    filterLabels?: { executable: string; allFiles: string }
+  ): Promise<string | null> {
+    const isWindows = navigator.userAgent.toLowerCase().includes("windows");
+    const picked = await openNativeDialog({
+      multiple: false,
+      directory: false,
+      defaultPath: defaultPath || undefined,
+      filters:
+        isWindows && filterLabels
+          ? [
+              { name: filterLabels.executable, extensions: ["exe", "cmd", "bat", "com", "ps1"] },
+              { name: filterLabels.allFiles, extensions: ["*"] },
+            ]
+          : undefined,
+    });
+    if (!picked) return null;
+    return Array.isArray(picked) ? (picked[0] ?? null) : picked;
   },
 
   sessionConnect(params: {
@@ -29,7 +56,7 @@ export const sessionApi = {
         host_id: params.hostId,
         cols: params.cols,
         rows: params.rows,
-        conflict_strategy: params.conflictStrategy ?? "AUTO_SHARE_OR_SKIP",
+        conflict_strategy: params.conflictStrategy ?? DEFAULT_CONFLICT_STRATEGY,
         as_admin: params.asAdmin,
         shell_profile: params.shellProfile,
       },

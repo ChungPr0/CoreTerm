@@ -10,15 +10,16 @@ pub mod ssh;
 use tauri::{Manager, RunEvent};
 use tracing::info;
 
+use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS};
 use crate::hosts::HostService;
 use crate::infra::db::SqliteDb;
 use crate::infra::security::SecretVault;
 use crate::keys::KeyService;
 use crate::ipc::commands::{
-    app_get_status, clipboard_read_text, clipboard_write_text, detect_available_shells,
-    host_create, host_delete, host_duplicate, host_get_detail, host_group_create,
-    host_group_delete, host_group_list, host_group_reorder, host_list, host_move_group,
-    host_update, key_delete, key_generate, key_get_default, key_import, key_list,
+    app_get_status, check_shell_exe, clipboard_read_text, clipboard_write_text,
+    detect_available_shells, host_create, host_delete, host_duplicate, host_get_detail,
+    host_group_create, host_group_delete, host_group_list, host_group_reorder, host_list,
+    host_move_group, host_update, key_delete, key_generate, key_get_default, key_import, key_list,
     key_set_default, local_create_dir, local_delete, local_home_dir, local_list_dir,
     local_list_drives, local_rename, port_forward_delete, port_forward_probe,
     port_forward_toggle, port_forward_upsert, session_connect, session_disconnect,
@@ -77,7 +78,7 @@ pub fn run() {
                 .expect("Failed to initialize SSH key storage");
 
             let pty_manager = PtySessionManager::new(job_supervisor.clone());
-            pty_manager.prewarm_local_shell(120, 30);
+            pty_manager.prewarm_local_shell(DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS);
             let shell_scan_manager = pty_manager.clone();
             tauri::async_runtime::spawn(async move {
                 let _ = shell_scan_manager.detect_available_shells(false).await;
@@ -126,6 +127,7 @@ pub fn run() {
             port_forward_delete,
             port_forward_probe,
             detect_available_shells,
+            check_shell_exe,
             session_connect,
             session_write_stdin,
             session_resize_pty,

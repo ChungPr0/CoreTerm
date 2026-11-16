@@ -1,3 +1,4 @@
+import { DEFAULT_HOST_GROUP } from "@/shared/defaults";
 import type {
   AuthMethod,
   CreateHostRequestDto,
@@ -42,7 +43,7 @@ export function createHostFormFields(
       host: editingHost.host,
       port: editingHost.port,
       username: editingHost.username,
-      groupName: editingHost.group_name || "Default",
+      groupName: editingHost.group_name || DEFAULT_HOST_GROUP,
       tagsInput: editingHost.tags.join(", "),
       authMethod: editingHost.auth_method,
       passwordMode: editingHost.password_mode === "SAVED" ? "SAVED" : "PROMPT_EVERY_TIME",
@@ -74,7 +75,7 @@ export function createHostFormFields(
     host: "",
     port: 22,
     username: "root",
-    groupName: initialGroupName?.trim() || "Default",
+    groupName: initialGroupName?.trim() || DEFAULT_HOST_GROUP,
     tagsInput: "",
     authMethod: "PASSWORD",
     passwordMode: "PROMPT_EVERY_TIME",
@@ -123,7 +124,7 @@ export function validateAndBuildHostPayload(fields: HostFormFields): HostPayload
       host: cleanHost,
       port: portNum,
       username: cleanUsername,
-      group_name: fields.groupName.trim() || "Default",
+      group_name: fields.groupName.trim() || DEFAULT_HOST_GROUP,
       tags: fields.tagsInput
         .split(",")
         .map((s) => s.trim())

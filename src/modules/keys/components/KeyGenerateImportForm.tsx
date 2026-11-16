@@ -80,6 +80,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
       </div>
 
       <form
+        noValidate
         onSubmit={onSubmit}
         className="p-3.5 rounded-lg bg-slate-950/80 border border-slate-800 space-y-3"
       >
@@ -97,7 +98,6 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100"
-              required
             />
           </div>
 
@@ -125,7 +125,6 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
                 value={sourcePath}
                 onChange={(e) => onSourcePathChange(e.target.value)}
                 className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
-                required
               />
             </div>
           )}

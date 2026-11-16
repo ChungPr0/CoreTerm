@@ -141,6 +141,7 @@ impl SftpSessionManager {
         match connect_result {
             Ok(client) => {
                 let home_path = client.home_path.clone();
+                let drives = client.drives.clone();
                 let client = Arc::new(client);
                 let transfers = TransferEngine::new(
                     trimmed_tab.to_string(),
@@ -183,6 +184,7 @@ impl SftpSessionManager {
                     host_id: trimmed_host.to_string(),
                     home_path: home_path.clone(),
                     cwd: home_path,
+                    drives,
                 })
             }
             Err(err) => {

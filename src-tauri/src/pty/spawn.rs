@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
+use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::JobObjectSupervisor;
 use crate::ipc::dto::ShellProfile;
@@ -48,8 +49,8 @@ pub(super) fn spawn_pty(
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
-            rows: cfg.rows.max(2),
-            cols: cfg.cols.max(10),
+            rows: cfg.rows.max(MIN_PTY_ROWS),
+            cols: cfg.cols.max(MIN_PTY_COLS),
             pixel_width: 0,
             pixel_height: 0,
         })

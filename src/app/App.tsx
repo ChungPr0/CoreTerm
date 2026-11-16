@@ -4,11 +4,16 @@ import { useGlobalShortcuts } from "@/shared/hooks/useGlobalShortcuts";
 import { useAlert, useContextMenu } from "@/shared/ui";
 import { HostSidebar, useHostProfiles, type DeletePromptState, type HostFullConfigDto } from "@/modules/hosts";
 import { SftpSplitContainer } from "@/modules/sftp";
-import { resolveDefaultShell, TerminalViewport, useSshSessions } from "@/modules/terminal";
+import {
+  resolveDefaultShell,
+  TerminalViewport,
+  useSshSessions,
+} from "@/modules/terminal";
 import { TabBar } from "@/modules/workspace";
 import { APP_PRELOADERS, AppModals } from "./AppModals";
 import { useAppBootstrap } from "./useAppBootstrap";
 import { useAppMenus } from "./useAppMenus";
+import { useShellActions } from "./useShellActions";
 
 const loadContextMenu = () => import("@/shared/ui/ContextMenu");
 const ContextMenu = lazy(() => loadContextMenu().then((m) => ({ default: m.ContextMenu })));
@@ -41,16 +46,26 @@ export const App: React.FC = () => {
     });
   }, [focusTerminal]);
 
-  const { settings, shellProfiles, isAppElevated, hasNativeBorder, saveAndApplySettings } =
-    useAppBootstrap({
-      preloaders: PRELOADERS,
-      onFocusTerminal: focusTerminal,
-    });
+  const {
+    settings,
+    shellProfiles,
+    isShellsLoaded,
+    isAppElevated,
+    hasNativeBorder,
+    addCustomShell,
+    presentWindow,
+    saveAndApplySettings,
+  } = useAppBootstrap({
+    preloaders: PRELOADERS,
+    onFocusTerminal: focusTerminal,
+  });
 
-  const defaultShellProfile = useMemo(
-    () => resolveDefaultShell(shellProfiles, settings.defaultShellId),
-    [shellProfiles, settings.defaultShellId]
-  );
+  const defaultShellProfile = useMemo(() => {
+    if (!isShellsLoaded && settings.defaultShellProfile) {
+      return settings.defaultShellProfile;
+    }
+    return resolveDefaultShell(shellProfiles, settings.defaultShellId);
+  }, [isShellsLoaded, shellProfiles, settings.defaultShellId, settings.defaultShellProfile]);
 
   const hosts = useHostProfiles({ t, onError: alert.error, onRequestDelete: setDeletePrompt });
 
@@ -154,6 +169,17 @@ export const App: React.FC = () => {
     sessions.syncHostConfigInTabs(saved);
   };
 
+  const { rescanShells, pickShellForTab } = useShellActions({
+    t,
+    settings,
+    shellProfiles,
+    defaultShellProfile,
+    addCustomShell,
+    switchTabShell: sessions.switchTabShell,
+    reconnectTab: sessions.reconnectTab,
+    onError: alert.error,
+  });
+
   return (
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden bg-[#090d16] text-slate-100 ${
@@ -180,6 +206,7 @@ export const App: React.FC = () => {
         onCommitRenameTab={sessions.renameTab}
         onCancelRenameTab={sessions.cancelRenamingTab}
         onNewTab={sessions.newLocalTab}
+        onRescan={() => rescanShells()}
         onConnectProfile={sessions.connectHost}
         onCreateNewHost={() => hosts.openNewHost("Default")}
         onOpenPalette={() => setIsPaletteOpen(true)}
@@ -191,6 +218,10 @@ export const App: React.FC = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
           const isTabActive = tab.tabId === sessions.activeTabId;
+          const pauseAutoReconnect =
+            sessions.authPrompt?.tab_id === tab.tabId ||
+            sessions.hostKeyPrompt?.tab_id === tab.tabId ||
+            sessions.portConflicts.length > 0;
 
           const terminalNode =
             tab.tabKind === "sftp" ? undefined : (
@@ -203,7 +234,15 @@ export const App: React.FC = () => {
                 focusToken={focusToken}
                 findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
                 suppressAutoFocus={suppressFocus}
+                pauseAutoReconnect={pauseAutoReconnect}
+                availableShells={shellProfiles}
+                onPresentWindow={isTabActive ? presentWindow : undefined}
                 onReconnect={sessions.reconnectTab}
+                onSwitchShell={sessions.switchTabShell}
+                onPickShell={pickShellForTab}
+                onRescan={rescanShells}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSsh={() => setIsSidebarOpen(true)}
                 onToggleAutoReconnect={sessions.toggleAutoReconnect}
                 onSessionAck={sessions.handleSessionAck}
                 onElevationCancelled={sessions.handleElevationCancelled}
@@ -223,6 +262,7 @@ export const App: React.FC = () => {
               isActive={isTabActive}
               sftpEverOpened={Boolean(sessions.openedSftpTabs[tab.tabId])}
               conflictPolicy={settings.sftpConflictPolicy}
+              pauseAutoReconnect={pauseAutoReconnect}
               terminal={terminalNode}
               onStartSplitResize={sessions.startSplitResize}
               onToggleSftpSplit={sessions.toggleSftpSplit}
@@ -303,9 +343,11 @@ export const App: React.FC = () => {
           authPromptSource={sessions.authPromptSource}
           hostKeyPrompt={sessions.hostKeyPrompt}
           hostKeySource={sessions.hostKeySource}
-          onCloseAuthPrompt={() => sessions.setAuthPrompt(null)}
-          onCloseHostKeyPrompt={() => sessions.setHostKeyPrompt(null)}
+          onCloseAuthPrompt={sessions.dismissAuthPrompt}
+          onCloseHostKeyPrompt={sessions.dismissHostKeyPrompt}
+          onAbortAuthTab={sessions.abortAuthTab}
           onReconnectTab={sessions.reconnectTab}
+          onCancelAutoReconnect={(tabId) => sessions.toggleAutoReconnect(tabId, false)}
           portConflicts={sessions.portConflicts}
           onSkipPortConflicts={sessions.skipPortConflictsAndConnect}
           onAbortPortConflicts={sessions.abortPortConflicts}

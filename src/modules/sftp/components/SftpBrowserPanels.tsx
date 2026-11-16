@@ -5,7 +5,7 @@ import type { ContextMenuEntry } from "@/shared/ui";
 import type { DirectoryBrowser } from "../hooks/useDirectoryBrowser";
 import type { useSftpFileDrag } from "../hooks/useSftpFileDrag";
 import { buildPaneMenu } from "../menus/sftpMenus";
-import type { FileItem, LocalDriveDto } from "../types";
+import type { FileItem, LocalDriveDto, SftpConnectionState } from "../types";
 import { FileList } from "./FileList";
 import type { NamePromptState } from "./SftpOverlays";
 
@@ -15,11 +15,13 @@ interface SftpBrowserPanelsProps {
   activePaneRef: React.MutableRefObject<"local" | "remote">;
   showLocal: boolean;
   splitRatio: number;
+  connState: SftpConnectionState;
   connected: boolean;
   nativeDragActive: boolean;
   local: DirectoryBrowser;
   remote: DirectoryBrowser;
   localDrives: LocalDriveDto[];
+  remoteDrives: LocalDriveDto[];
   fileDrag: ReturnType<typeof useSftpFileDrag>;
   onResetSplit: () => void;
   onStartSplitDrag: (e: React.MouseEvent) => void;
@@ -31,6 +33,7 @@ interface SftpBrowserPanelsProps {
   onRequestUpload: (paths: string[]) => void;
   onRequestDownload: (paths: string[]) => void;
   onUploadDialog: (directory: boolean) => void;
+  onReloadLocal: () => void;
 }
 
 export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
@@ -39,11 +42,13 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
   activePaneRef,
   showLocal,
   splitRatio,
+  connState,
   connected,
   nativeDragActive,
   local,
   remote,
   localDrives,
+  remoteDrives,
   fileDrag,
   onResetSplit,
   onStartSplitDrag,
@@ -55,8 +60,26 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
   onRequestUpload,
   onRequestDownload,
   onUploadDialog,
+  onReloadLocal,
 }) => {
   const { t } = useI18n();
+
+  const refreshLocal = () => {
+    if (local.cwdRef.current || local.homeRef.current) local.refresh();
+    else onReloadLocal();
+  };
+
+  const refreshRemote = () => {
+    if (remote.cwdRef.current || remote.homeRef.current) remote.refresh();
+    else if (connected) void remote.loadDir("/");
+  };
+
+  const remoteEmptyMessage =
+    connState === "CONNECTING"
+      ? t("sftp.connecting")
+      : !connected
+      ? t("sftp.disconnected")
+      : undefined;
 
   const sharedProps = (kind: "local" | "remote", browser: DirectoryBrowser) => ({
     kind,
@@ -99,6 +122,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
           >
             <FileList
               {...sharedProps("local", local)}
+              onRefresh={refreshLocal}
               title={t("sftp.local_pane")}
               drives={localDrives}
               dropActive={fileDrag.dragPreview?.targetKind === "local"}
@@ -122,7 +146,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                       onNamePrompt({ kind: "rename", targetKind: "local", item: it }),
                     onCopyPath,
                     onDelete: (paths) => onRequestDelete("local", paths),
-                    onRefresh: local.refresh,
+                    onRefresh: refreshLocal,
                   })
                 )
               }
@@ -153,8 +177,11 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
       <div ref={remoteDropRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <FileList
           {...sharedProps("remote", remote)}
+          onRefresh={refreshRemote}
           title={t("sftp.remote_pane")}
+          drives={remoteDrives}
           showPerms
+          emptyMessage={remoteEmptyMessage}
           dropActive={nativeDragActive || fileDrag.dragPreview?.targetKind === "remote"}
           dropLabel={nativeDragActive ? t("sftp.drop_hint") : t("sftp.drop_to_upload")}
           onContextMenuItem={(item, e) =>
@@ -179,7 +206,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 onChmod,
                 onCopyPath,
                 onDelete: (paths) => onRequestDelete("remote", paths),
-                onRefresh: remote.refresh,
+                onRefresh: refreshRemote,
               })
             )
           }

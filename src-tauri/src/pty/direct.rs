@@ -171,6 +171,7 @@ impl PtySessionManager {
             cli_preview,
             status: "ONLINE".to_string(),
             is_admin: spec.is_admin,
+            shell_profile: if spec.is_local { Some(profile) } else { None },
         })
     }
 

@@ -11,7 +11,8 @@ use super::conflict::{
     find_non_colliding_dest, resolve_destination_conflict, ConflictContext, ConflictDetails,
     ConflictPolicy,
 };
-use super::engine::{TransferDirection, TransferJobRecord, EVENT_SFTP_TRANSFER_PROGRESS};
+use super::engine::EVENT_SFTP_TRANSFER_PROGRESS;
+use super::job::{TransferDirection, TransferJobRecord};
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::core::path_guard::remote_leaf_name;
 

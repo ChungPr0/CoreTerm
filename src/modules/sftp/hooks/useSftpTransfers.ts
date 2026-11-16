@@ -39,12 +39,16 @@ export function useSftpTransfers({
   const mountedRef = useRef(true);
   const transferBusyRef = useRef(false);
   const policyRef = useRef(conflictPolicy);
+  const conflictsRef = useRef(conflicts);
   const alertedJobsRef = useRef(new Set<string>());
+  const remoteRefreshTimerRef = useRef<number | null>(null);
+  const localRefreshTimerRef = useRef<number | null>(null);
   const remoteRef = useRef(remoteBrowser);
   const localRef = useRef(localBrowser);
   const onErrorRef = useRef(onError);
 
   policyRef.current = conflictPolicy;
+  conflictsRef.current = conflicts;
   remoteRef.current = remoteBrowser;
   localRef.current = localBrowser;
   onErrorRef.current = onError;
@@ -53,7 +57,23 @@ export function useSftpTransfers({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (remoteRefreshTimerRef.current !== null) {
+        window.clearTimeout(remoteRefreshTimerRef.current);
+      }
+      if (localRefreshTimerRef.current !== null) {
+        window.clearTimeout(localRefreshTimerRef.current);
+      }
     };
+  }, []);
+
+  const scheduleDirRefresh = useCallback((direction: "UPLOAD" | "DOWNLOAD") => {
+    const timerRef = direction === "UPLOAD" ? remoteRefreshTimerRef : localRefreshTimerRef;
+    const browserRef = direction === "UPLOAD" ? remoteRef : localRef;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      if (mountedRef.current) browserRef.current.refresh();
+    }, 250);
   }, []);
 
   const runTransfer = useCallback(
@@ -114,8 +134,8 @@ export function useSftpTransfers({
   }, [pendingTransfer, runTransfer]);
 
   const cancelPendingTransfer = useCallback(() => {
-    if (!transferBusy) setPendingTransfer(null);
-  }, [transferBusy]);
+    if (!transferBusyRef.current) setPendingTransfer(null);
+  }, []);
 
   const uploadViaDialog = useCallback(
     async (directory: boolean) => {
@@ -139,10 +159,11 @@ export function useSftpTransfers({
       alertedJobsRef.current.add(job.job_id);
       onErrorRef.current(job.error_message);
     } else if (job.status === "COMPLETED") {
-      if (job.direction === "UPLOAD") remoteRef.current.refresh();
-      else if (job.direction === "DOWNLOAD") localRef.current.refresh();
+      if (job.direction === "UPLOAD" || job.direction === "DOWNLOAD") {
+        scheduleDirRefresh(job.direction);
+      }
     }
-  }, []);
+  }, [scheduleDirRefresh]);
 
   const handleConflict = useCallback((conflict: SftpTransferConflictEventDto) => {
     setConflicts((prev) =>
@@ -152,16 +173,16 @@ export function useSftpTransfers({
 
   const resolveConflict = useCallback(
     async (action: ConflictAction, applyAll: boolean) => {
-      const active = conflicts[0];
+      const active = conflictsRef.current[0];
       if (!active) return;
-      setConflicts((prev) => prev.slice(1));
+      setConflicts((prev) => prev.filter((c) => c.conflict_id !== active.conflict_id));
       try {
         await sftpApi.sftpResolveConflict(tabId, active.conflict_id, action, applyAll);
       } catch (err) {
         onErrorRef.current(err);
       }
     },
-    [conflicts, tabId]
+    [tabId]
   );
 
   const pauseTransfer = useCallback(
@@ -179,11 +200,18 @@ export function useSftpTransfers({
   const clearFinished = useCallback(() => {
     void sftpApi
       .sftpClearFinishedTransfers(tabId)
-      .then(() =>
-        setJobs((prev) =>
-          prev.filter((j) => j.status === "QUEUED" || j.status === "RUNNING" || j.status === "PAUSED")
-        )
-      )
+      .then(() => {
+        setJobs((prev) => {
+          const active = prev.filter(
+            (j) => j.status === "QUEUED" || j.status === "RUNNING" || j.status === "PAUSED"
+          );
+          const activeIds = new Set(active.map((j) => j.job_id));
+          for (const id of alertedJobsRef.current) {
+            if (!activeIds.has(id)) alertedJobsRef.current.delete(id);
+          }
+          return active;
+        });
+      })
       .catch(onErrorRef.current);
   }, [tabId]);
 

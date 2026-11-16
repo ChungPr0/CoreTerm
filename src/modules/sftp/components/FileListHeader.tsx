@@ -67,7 +67,16 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
   const driveBtnRef = useRef<HTMLButtonElement>(null);
 
   const crumbs = kind === "local" ? splitLocalCrumbs(cwd) : splitRemoteCrumbs(cwd);
-  const activeDrive = drives?.find((d) => cwd.toLowerCase().startsWith(d.path.toLowerCase()));
+  const lowerCwd = cwd.toLowerCase();
+  const activeDrive = drives?.find(
+    (d) =>
+      lowerCwd.startsWith(d.path.toLowerCase()) ||
+      `${lowerCwd.replace(/\/+$/, "")}/` === d.path.toLowerCase()
+  );
+  const cwdWinDrive =
+    kind === "remote"
+      ? cwd.match(/^\/([a-zA-Z]:)(?:\/|$)/)?.[1]?.toUpperCase()
+      : undefined;
 
   const badgeCls =
     kind === "remote"
@@ -100,7 +109,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
             {title}
           </span>
 
-          {kind === "local" && drives && drives.length > 0 && (
+          {drives && drives.length > 0 && (
             <div className="relative">
               <button
                 ref={driveBtnRef}
@@ -109,7 +118,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
                 className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd]"
               >
                 <HardDrive className="h-3 w-3 text-[#8b949e]" />
-                <span>{activeDrive?.name ?? drives[0].name}</span>
+                <span>{activeDrive?.name ?? cwdWinDrive ?? drives[0].name}</span>
                 <ChevronDown className="h-3 w-3 text-[#8b949e]" />
               </button>
 
@@ -190,7 +199,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
 
       <div className="flex h-[41px] shrink-0 min-w-0 items-center gap-2 border-b border-[#21262d] bg-[#0d1117] px-2.5">
         {editingPath ? (
-          <form onSubmit={submitPathEditor} className="flex h-7 min-w-0 flex-1 items-center">
+          <form noValidate onSubmit={submitPathEditor} className="flex h-7 min-w-0 flex-1 items-center">
             <input
               ref={pathInputRef}
               value={pathDraft}

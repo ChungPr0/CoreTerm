@@ -44,7 +44,8 @@ export const NameModal: React.FC<NameModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!trimmed || saving) return;
+    if (saving) return;
+    if (!trimmed) return void alert.error(t("sftp.name_required"));
     setSaving(true);
     try {
       await onSubmit(trimmed);
@@ -80,7 +81,7 @@ export const NameModal: React.FC<NameModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 p-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-3 p-4">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-[#8b949e]">{label}</label>
             <input
@@ -104,7 +105,7 @@ export const NameModal: React.FC<NameModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={!trimmed || saving}
+              disabled={saving}
               className="rounded border border-[#1f6feb] bg-[#1f6feb] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#388bfd] disabled:opacity-50"
             >
               {saving ? "..." : confirmLabel}

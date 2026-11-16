@@ -17,7 +17,9 @@ interface AuthPromptModalProps {
   hostKeyPromptSource?: "pty" | "sftp";
   onCloseAuth: () => void;
   onCloseHostKey: () => void;
+  onAbortTab?: (tabId: string, source: "pty" | "sftp") => void;
   onReconnectTab: (tabId: string) => void;
+  onCancelAutoReconnect?: (tabId: string) => void;
 }
 
 export const AuthPromptModal: React.FC<AuthPromptModalProps> = ({
@@ -27,7 +29,9 @@ export const AuthPromptModal: React.FC<AuthPromptModalProps> = ({
   hostKeyPromptSource = "pty",
   onCloseAuth,
   onCloseHostKey,
+  onAbortTab,
   onReconnectTab,
+  onCancelAutoReconnect,
 }) => {
   if (hostKeyPrompt) {
     return (
@@ -35,7 +39,9 @@ export const AuthPromptModal: React.FC<AuthPromptModalProps> = ({
         prompt={hostKeyPrompt}
         source={hostKeyPromptSource}
         onClose={onCloseHostKey}
+        onAbortTab={onAbortTab}
         onReconnectTab={onReconnectTab}
+        onCancelAutoReconnect={onCancelAutoReconnect}
       />
     );
   }
@@ -45,6 +51,8 @@ export const AuthPromptModal: React.FC<AuthPromptModalProps> = ({
       prompt={authPrompt}
       source={authPromptSource}
       onClose={onCloseAuth}
+      onAbortTab={onAbortTab}
+      onCancelAutoReconnect={onCancelAutoReconnect}
     />
   );
 };

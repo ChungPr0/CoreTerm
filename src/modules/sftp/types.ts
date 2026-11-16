@@ -16,6 +16,7 @@ export interface SftpConnectAckDto {
   host_id: string;
   home_path: string;
   cwd: string;
+  drives?: LocalDriveDto[];
 }
 
 export interface SftpStatusEventDto {

@@ -20,6 +20,8 @@ pub struct SessionConnectAckDto {
     pub cli_preview: String,
     pub status: String,
     pub is_admin: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_profile: Option<ShellProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

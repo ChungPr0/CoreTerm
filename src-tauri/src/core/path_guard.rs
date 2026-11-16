@@ -7,6 +7,16 @@ const WIN_RESERVED: &[&str] = &[
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
+fn is_win_drive_seg(seg: &str) -> bool {
+    let b = seg.as_bytes();
+    b.len() == 2 && b[0].is_ascii_alphabetic() && b[1] == b':'
+}
+
+pub fn is_win_drive_root(normalized: &str) -> bool {
+    let trimmed = normalized.trim_end_matches('/');
+    trimmed.starts_with('/') && is_win_drive_seg(&trimmed[1..])
+}
+
 pub fn normalize_remote_path(raw: &str) -> String {
     let unified = raw.replace('\\', "/");
     let mut stack: Vec<&str> = Vec::new();
@@ -14,13 +24,17 @@ pub fn normalize_remote_path(raw: &str) -> String {
         match seg {
             "" | "." => {}
             ".." => {
-                stack.pop();
+                if !(stack.len() == 1 && is_win_drive_seg(stack[0])) {
+                    stack.pop();
+                }
             }
             s => stack.push(s),
         }
     }
     if stack.is_empty() {
         "/".to_string()
+    } else if stack.len() == 1 && is_win_drive_seg(stack[0]) {
+        format!("/{}/", stack[0])
     } else {
         format!("/{}", stack.join("/"))
     }
@@ -72,8 +86,8 @@ pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
 pub fn join_remote_path(base: &str, name: &str) -> CoreResult<String> {
     let valid = validate_single_entry_name(name)?;
     let normalized = normalize_remote_path(base);
-    if normalized == "/" {
-        Ok(format!("/{valid}"))
+    if normalized.ends_with('/') {
+        Ok(format!("{normalized}{valid}"))
     } else {
         Ok(format!("{normalized}/{valid}"))
     }
@@ -81,12 +95,18 @@ pub fn join_remote_path(base: &str, name: &str) -> CoreResult<String> {
 
 pub fn parent_remote_path(path: &str) -> String {
     let normalized = normalize_remote_path(path);
-    if normalized == "/" {
-        return "/".to_string();
+    if normalized == "/" || is_win_drive_root(&normalized) {
+        return normalized;
     }
     match normalized.rsplit_once('/') {
         Some(("", _)) | None => "/".to_string(),
-        Some((parent, _)) => parent.to_string(),
+        Some((parent, _)) => {
+            if is_win_drive_root(parent) {
+                format!("{}/", parent.trim_end_matches('/'))
+            } else {
+                parent.to_string()
+            }
+        }
     }
 }
 
@@ -134,6 +154,13 @@ mod tests {
         assert_eq!(normalize_remote_path("///"), "/");
         assert_eq!(normalize_remote_path("/var/log/../www/./html/"), "/var/www/html");
         assert_eq!(normalize_remote_path("/../../etc"), "/etc");
+        assert_eq!(normalize_remote_path("/C:/Users/demo"), "/C:/Users/demo");
+        assert_eq!(normalize_remote_path("/C:/"), "/C:/");
+        assert_eq!(normalize_remote_path("/C:"), "/C:/");
+        assert_eq!(normalize_remote_path("/C:/../.."), "/C:/");
+        assert_eq!(join_remote_path("/C:/", "Users").unwrap(), "/C:/Users");
+        assert_eq!(parent_remote_path("/C:/Users"), "/C:/");
+        assert_eq!(parent_remote_path("/C:/"), "/C:/");
     }
 
     #[test]

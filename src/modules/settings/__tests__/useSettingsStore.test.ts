@@ -45,5 +45,17 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().settings).toEqual(updated);
     expect(Array.from(storeMap.values()).some((v) => v.includes('"launchCols":120'))).toBe(true);
     expect(Array.from(storeMap.values()).some((v) => v.includes('"defaultShellId":"cmd"'))).toBe(true);
+
+    const customShell = {
+      id: "custom:nu",
+      kind: "custom",
+      name: "Nushell",
+      executable: "D:\\Tools\\nu.exe",
+      args: ["--login"],
+    };
+    useSettingsStore.getState().addCustomShell(customShell, true);
+    expect(useSettingsStore.getState().settings.customShells).toEqual([customShell]);
+    expect(useSettingsStore.getState().settings.defaultShellId).toBe("custom:nu");
+    expect(useSettingsStore.getState().settings.defaultShellProfile).toEqual(customShell);
   });
 });

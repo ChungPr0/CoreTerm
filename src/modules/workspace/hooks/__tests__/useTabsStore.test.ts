@@ -162,4 +162,46 @@ describe("useTabsStore", () => {
     expect(useTabsStore.getState().tabs[1].title).toBe("prod-ssh");
     expect(useTabsStore.getState().tabs[2].title).toBe("SFTP");
   });
+
+  it("syncs resolved fallback shell from session ack and allows switching shell profile", () => {
+    const autoTab = createLocalTab(null);
+    expect(autoTab.title).toBe("Terminal");
+    expect(autoTab.shellProfile).toBeUndefined();
+
+    const cmdShell = {
+      id: "cmd",
+      kind: "cmd",
+      name: "CMD",
+      executable: "C:\\Windows\\System32\\cmd.exe",
+      args: [],
+    };
+    const customShell = {
+      id: "custom:1",
+      kind: "custom",
+      name: "Nushell",
+      executable: "D:\\Tools\\nu.exe",
+      args: [],
+    };
+
+    useTabsStore.setState({
+      tabs: [autoTab],
+      activeTabId: autoTab.tabId,
+      renamingTabId: null,
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().updateSessionAck(autoTab.tabId, true, cmdShell);
+    let current = useTabsStore.getState().tabs[0];
+    expect(current.isAdmin).toBe(true);
+    expect(current.title).toBe("CMD");
+    expect(current.shellProfile).toEqual(cmdShell);
+
+    useTabsStore.getState().setTabShell(autoTab.tabId, customShell, true);
+    current = useTabsStore.getState().tabs[0];
+    expect(current.shellProfile).toEqual(customShell);
+    expect(current.title).toBe("Nushell");
+    expect(current.reconnectToken).toBe(1);
+    expect(current.state).toBe("CONNECTING");
+  });
 });

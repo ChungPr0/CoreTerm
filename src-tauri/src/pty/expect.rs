@@ -25,6 +25,63 @@ pub enum ExpectSignal {
     },
 }
 
+fn strip_ansi(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0x1B {
+            i += 1;
+            if i >= bytes.len() {
+                break;
+            }
+            if bytes[i] == b'[' {
+                i += 1;
+                while i < bytes.len() && !(0x40..=0x7E).contains(&bytes[i]) {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    // Preserve line separation on ConPTY cursor-position / next-line sequences.
+                    if matches!(bytes[i], b'H' | b'f' | b'E' | b'G') && !out.ends_with('\n') {
+                        out.push('\n');
+                    }
+                    i += 1;
+                }
+            } else if bytes[i] == b']' {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == 0x07 {
+                        i += 1;
+                        break;
+                    }
+                    if bytes[i] == 0x1B && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                        i += 2;
+                        break;
+                    }
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'\r' {
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            i += 1;
+            if i < bytes.len() && bytes[i] == b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        let ch = raw[i..].chars().next().unwrap_or('\0');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Inspects raw ConPTY output during SSH handshake to detect password, passphrase, or host key prompts.
 pub struct ExpectStateMachine {
     phase: ExpectPhase,
@@ -80,14 +137,15 @@ impl ExpectStateMachine {
             self.rolling_buf.drain(..valid_idx);
         }
 
-        let lower = self.rolling_buf.to_lowercase();
+        let clean = strip_ansi(&self.rolling_buf);
+        let lower = clean.to_lowercase();
 
         if !self.host_key_changed_detected
             && lower.contains("remote host identification has changed")
             && (lower.contains("host key verification failed") || lower.contains("sha256:"))
         {
             self.host_key_changed_detected = true;
-            let (alg, fp) = Self::extract_algo_and_fingerprint(&self.rolling_buf);
+            let (alg, fp) = Self::extract_algo_and_fingerprint(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::HostKeyPrompt {
                 algorithm: alg,
@@ -98,7 +156,7 @@ impl ExpectStateMachine {
 
         if !self.host_key_prompted && lower.contains("continue connecting (yes/no") {
             self.host_key_prompted = true;
-            let (alg, fp) = Self::extract_algo_and_fingerprint(&self.rolling_buf);
+            let (alg, fp) = Self::extract_algo_and_fingerprint(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::HostKeyPrompt {
                 algorithm: alg,
@@ -107,8 +165,11 @@ impl ExpectStateMachine {
             };
         }
 
-        if lower.contains("permission denied (") {
-            let reason = self.extract_last_line();
+        if lower.contains("permission denied (")
+            || lower.contains("too many authentication failures")
+            || lower.contains("no more authentication methods to try")
+        {
+            let reason = Self::extract_last_line(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::AuthFailed { reason };
         }
@@ -117,7 +178,7 @@ impl ExpectStateMachine {
             let trimmed = lower.trim_end();
             if trimmed.ends_with(':') {
                 self.passphrase_attempts = self.passphrase_attempts.saturating_add(1);
-                let prompt_text = self.extract_last_line();
+                let prompt_text = Self::extract_last_line(&clean);
                 self.rolling_buf.clear();
                 return ExpectSignal::PassphrasePrompt {
                     prompt_text,
@@ -130,7 +191,7 @@ impl ExpectStateMachine {
             let trimmed = lower.trim_end();
             if trimmed.ends_with("password:") {
                 self.password_attempts = self.password_attempts.saturating_add(1);
-                let prompt_text = self.extract_last_line();
+                let prompt_text = Self::extract_last_line(&clean);
                 self.rolling_buf.clear();
                 return ExpectSignal::PasswordPrompt {
                     prompt_text,
@@ -141,8 +202,8 @@ impl ExpectStateMachine {
 
         if lower.contains("last login:")
             || lower.contains("welcome to ")
-            || self.rolling_buf.ends_with("$ ")
-            || self.rolling_buf.ends_with("# ")
+            || clean.ends_with("$ ")
+            || clean.ends_with("# ")
         {
             self.set_passthrough();
         }
@@ -150,9 +211,8 @@ impl ExpectStateMachine {
         ExpectSignal::None
     }
 
-    fn extract_last_line(&self) -> String {
-        self.rolling_buf
-            .lines()
+    fn extract_last_line(buf: &str) -> String {
+        buf.lines()
             .rev()
             .find(|l| !l.trim().is_empty())
             .unwrap_or("")
@@ -180,5 +240,60 @@ impl ExpectStateMachine {
             }
         }
         (algo.to_string(), fp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_password_and_passphrase_through_conpty_vt_sequences() {
+        let mut sm = ExpectStateMachine::new();
+        let sig = sm.feed(b"\x1b[?25l\x1b[2;1Hroot@10.0.0.1's password: \x1b[?25h");
+        match sig {
+            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+                assert_eq!(prompt_text, "root@10.0.0.1's password:");
+                assert_eq!(attempt, 1);
+            }
+            other => panic!("expected PasswordPrompt, got {other:?}"),
+        }
+
+        let sig2 = sm.feed(b"\x1b]0;ssh.exe\x07Enter passphrase for key '/id_ed25519'");
+        assert!(matches!(sig2, ExpectSignal::None));
+        let sig3 = sm.feed(b": \x1b[?25h");
+        assert!(matches!(sig3, ExpectSignal::PassphrasePrompt { attempt: 1, .. }));
+
+        let sig4 = sm.feed(b"Permission denied, please try again.\r\nroot@10.0.0.1's password: ");
+        assert!(matches!(sig4, ExpectSignal::PasswordPrompt { attempt: 2, .. }));
+
+        let sig5 = sm.feed(b"Too many authentication failures\r\n");
+        assert!(matches!(sig5, ExpectSignal::AuthFailed { .. }));
+    }
+
+    #[test]
+    fn detects_host_key_auth_failed_and_passthrough() {
+        let mut sm = ExpectStateMachine::new();
+        let hk = sm.feed(
+            b"ED25519 key fingerprint is SHA256:abc123.\r\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ",
+        );
+        match hk {
+            ExpectSignal::HostKeyPrompt {
+                algorithm,
+                fingerprint,
+                reason,
+            } => {
+                assert_eq!(algorithm, "ED25519");
+                assert_eq!(fingerprint, "SHA256:abc123");
+                assert_eq!(reason, "FIRST_TIME_CONNECT");
+            }
+            other => panic!("expected HostKeyPrompt, got {other:?}"),
+        }
+
+        let denied = sm.feed(b"\x1b[31mPermission denied (publickey,password).\x1b[m\r\n");
+        assert!(matches!(denied, ExpectSignal::AuthFailed { .. }));
+
+        let _ = sm.feed(b"Last login: Mon Nov 16 12:00:00 2026\r\n");
+        assert_eq!(sm.phase(), &ExpectPhase::Passthrough);
     }
 }

@@ -3,11 +3,12 @@ import type {
   PortForwardStatusDto,
   SessionState,
   SftpConnectionState,
+  ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
 import type { HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
-import { DEFAULT_LOCAL_SHELL, createLocalTab, sftpToTabState } from "../utils/tabHelpers";
+import { createLocalTab, sftpToTabState } from "../utils/tabHelpers";
 
 export type TabDisposeCallback = (tab: TerminalTabItem, hadSftp: boolean) => void;
 
@@ -40,14 +41,16 @@ interface TabsStoreState {
     errorMessage: string | null,
     activeForwards: PortForwardStatusDto[]
   ) => void;
-  updateSessionAck: (tabId: string, isAdmin: boolean) => void;
+  updateSessionAck: (tabId: string, isAdmin: boolean, shellProfile?: ShellProfile | null) => void;
+  setTabShell: (tabId: string, shellProfile: ShellProfile, reconnect?: boolean) => void;
   removeTabIfMultiple: (tabId: string) => void;
   toggleAutoReconnect: (tabId: string, enabled: boolean) => void;
   syncHostConfig: (saved: HostFullConfigDto) => void;
   markLocalTabsAdmin: () => void;
 }
 
-const initialShell = loadSettings().defaultShellProfile ?? DEFAULT_LOCAL_SHELL;
+const initialSettings = loadSettings();
+const initialShell = initialSettings.defaultShellProfile ?? null;
 const initialTab = createLocalTab(initialShell);
 
 export const useTabsStore = create<TabsStoreState>((set, get) => ({
@@ -239,11 +242,42 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       ),
     })),
 
-  updateSessionAck: (tabId, isAdmin) =>
+  updateSessionAck: (tabId, isAdmin, shellProfile) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) =>
-        tab.tabId === tabId ? { ...tab, isAdmin } : tab
-      ),
+      tabs: s.tabs.map((tab) => {
+        if (tab.tabId !== tabId) return tab;
+        const shouldSyncTitle =
+          shellProfile &&
+          tab.hostId === "local" &&
+          (!tab.shellProfile || tab.title === "Terminal" || tab.title === tab.shellProfile.name);
+        return {
+          ...tab,
+          isAdmin,
+          ...(shellProfile && tab.hostId === "local" ? { shellProfile } : {}),
+          ...(shouldSyncTitle && shellProfile ? { title: shellProfile.name } : {}),
+        };
+      }),
+    })),
+
+  setTabShell: (tabId, shellProfile, reconnect = false) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => {
+        if (tab.tabId !== tabId || tab.hostId !== "local") return tab;
+        const shouldSyncTitle =
+          !tab.shellProfile || tab.title === "Terminal" || tab.title === tab.shellProfile.name;
+        return {
+          ...tab,
+          shellProfile,
+          ...(shouldSyncTitle ? { title: shellProfile.name } : {}),
+          ...(reconnect
+            ? {
+                state: "CONNECTING" as const,
+                errorMessage: null,
+                reconnectToken: tab.reconnectToken + 1,
+              }
+            : {}),
+        };
+      }),
     })),
 
   removeTabIfMultiple: (tabId) =>

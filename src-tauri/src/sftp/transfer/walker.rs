@@ -2,10 +2,11 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 
-use super::engine::{TransferDirection, TransferJobSpec};
+use super::job::{TransferDirection, TransferJobSpec};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{
-    join_remote_path, normalize_remote_path, remote_leaf_name, safe_join_windows_relative,
+    is_win_drive_root, join_remote_path, normalize_remote_path, remote_leaf_name,
+    safe_join_windows_relative,
 };
 use crate::infra::local_fs::clean_display_path;
 use crate::sftp::session::{fmt_sftp_err, RemoteSftpClient};
@@ -108,7 +109,7 @@ pub async fn collect_download_plan(
             .map_err(|e| CoreError::Sftp(format!("Stat '{norm_remote}': {}", fmt_sftp_err(&e))))?;
 
         let leaf = remote_leaf_name(&norm_remote).to_string();
-        if leaf.is_empty() {
+        if leaf.is_empty() || is_win_drive_root(&norm_remote) {
             return Err(CoreError::Validation("Cannot download root '/'".to_string()));
         }
 

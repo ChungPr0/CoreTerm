@@ -1,3 +1,7 @@
+use crate::core::defaults::{
+    DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, MAX_LAUNCH_COLS, MAX_LAUNCH_ROWS, MIN_LAUNCH_COLS,
+    MIN_LAUNCH_ROWS,
+};
 use crate::infra::os;
 use crate::ipc::dto::AppStatusDto;
 use crate::ipc::error::{AppError, AppResult};
@@ -20,12 +24,34 @@ pub async fn clipboard_write_text(text: String) -> AppResult<()> {
     os::clipboard::write_text(&text).map_err(AppError::Internal)
 }
 
-fn apply_launch_size(window: &tauri::WebviewWindow, cols: u16, rows: u16) {
-    let clamped_cols = cols.clamp(40, 300) as f64;
-    let clamped_rows = rows.clamp(10, 120) as f64;
-    let width = (clamped_cols * 8.45 + 20.0).round();
-    let height = (clamped_rows * 17.0 + 48.0).round();
-    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+fn calc_launch_dims(cols: u16, rows: u16, width: Option<f64>, height: Option<f64>) -> (f64, f64) {
+    let clamped_cols = cols.clamp(MIN_LAUNCH_COLS, MAX_LAUNCH_COLS) as f64;
+    let clamped_rows = rows.clamp(MIN_LAUNCH_ROWS, MAX_LAUNCH_ROWS) as f64;
+    let target_w = width
+        .filter(|w| w.is_finite() && *w > 0.0)
+        .unwrap_or_else(|| (clamped_cols * 9.4 + 19.0).round())
+        .clamp(640.0, 4096.0);
+    let target_h = height
+        .filter(|h| h.is_finite() && *h > 0.0)
+        .unwrap_or_else(|| (clamped_rows * 19.2 + 50.0).round())
+        .clamp(380.0, 4096.0);
+    (target_w, target_h)
+}
+
+fn apply_launch_size(
+    window: &tauri::WebviewWindow,
+    cols: u16,
+    rows: u16,
+    width: Option<f64>,
+    height: Option<f64>,
+) {
+    if window.is_maximized().unwrap_or(false) {
+        return;
+    }
+    let (target_w, target_h) = calc_launch_dims(cols, rows, width, height);
+    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
+        target_w, target_h,
+    )));
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -33,8 +59,10 @@ pub async fn window_set_launch_size(
     window: tauri::WebviewWindow,
     cols: u16,
     rows: u16,
+    width: Option<f64>,
+    height: Option<f64>,
 ) -> AppResult<()> {
-    apply_launch_size(&window, cols, rows);
+    apply_launch_size(&window, cols, rows, width, height);
     Ok(())
 }
 
@@ -43,9 +71,17 @@ pub async fn window_present(
     window: tauri::WebviewWindow,
     cols: Option<u16>,
     rows: Option<u16>,
+    width: Option<f64>,
+    height: Option<f64>,
 ) -> AppResult<()> {
-    if let (Some(c), Some(r)) = (cols, rows) {
-        apply_launch_size(&window, c, r);
+    if cols.is_some() || rows.is_some() || width.is_some() || height.is_some() {
+        apply_launch_size(
+        &window,
+        cols.unwrap_or(DEFAULT_TERM_COLS),
+        rows.unwrap_or(DEFAULT_TERM_ROWS),
+        width,
+        height,
+    );
     }
     if !window.is_visible().unwrap_or(false) {
         let _ = window.show();
@@ -87,4 +123,27 @@ pub async fn window_sys_command(
     action: String,
 ) -> AppResult<()> {
     os::window::dispatch_window_sys_command(&window, &action).map_err(AppError::Os)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calc_launch_dims;
+    use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS};
+
+    #[test]
+    fn calc_launch_dims_uses_measured_or_clamped_fallback() {
+        assert_eq!(calc_launch_dims(DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, None, None), (1147.0, 626.0));
+        assert_eq!(
+            calc_launch_dims(DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, Some(1075.0), Some(626.0)),
+            (1075.0, 626.0)
+        );
+        assert_eq!(
+            calc_launch_dims(DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, Some(-10.0), Some(f64::NAN)),
+            (1147.0, 626.0)
+        );
+        assert_eq!(
+            calc_launch_dims(20, 5, Some(200.0), Some(100.0)),
+            (640.0, 380.0)
+        );
+    }
 }

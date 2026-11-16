@@ -10,7 +10,7 @@ use crate::ipc::dto::ShellProfile;
 const WSL_LIST_TIMEOUT: Duration = Duration::from_millis(1500);
 
 fn is_usable_file(path: &Path) -> bool {
-    path.is_file()
+    path.is_file() || std::fs::symlink_metadata(path).is_ok_and(|m| !m.is_dir())
 }
 
 fn find_in_path(exe_name: &str) -> Option<PathBuf> {
@@ -22,6 +22,31 @@ fn find_in_path(exe_name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Validates a user-supplied executable path or command name on PATH.
+pub fn resolve_shell_exe(input: &str) -> Option<String> {
+    let trimmed = input.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let candidate = Path::new(trimmed);
+    let has_path_hint = trimmed.contains('\\') || trimmed.contains('/') || trimmed.contains(':');
+    if has_path_hint {
+        return is_usable_file(candidate).then(|| trimmed.to_string());
+    }
+
+    if let Some(found) = find_in_path(trimmed) {
+        return Some(found.to_string_lossy().into_owned());
+    }
+    #[cfg(windows)]
+    if candidate.extension().is_none() {
+        if let Some(found) = find_in_path(&format!("{trimmed}.exe")) {
+            return Some(found.to_string_lossy().into_owned());
+        }
+    }
+    is_usable_file(candidate).then(|| trimmed.to_string())
 }
 
 fn find_executable(exe_name: &str, fallbacks: &[PathBuf]) -> Option<String> {
@@ -145,30 +170,133 @@ async fn detect_wsl_distros(wsl_exe: &str) -> Vec<String> {
     parse_wsl_distro_list(&output.stdout)
 }
 
-pub fn default_shell_profile() -> ShellProfile {
-    #[cfg(windows)]
-    let executable = find_executable(
-        "powershell.exe",
-        &env_path("SystemRoot", r"System32\WindowsPowerShell\v1.0\powershell.exe")
+#[cfg(windows)]
+fn ps_profile() -> Option<ShellProfile> {
+    let fallbacks: Vec<PathBuf> =
+        env_path("SystemRoot", r"System32\WindowsPowerShell\v1.0\powershell.exe")
             .into_iter()
-            .collect::<Vec<_>>(),
-    )
-    .unwrap_or_else(|| "powershell.exe".to_string());
-
-    #[cfg(not(windows))]
-    let executable = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-
-    ShellProfile {
+            .collect();
+    find_executable("powershell.exe", &fallbacks).map(|exe| ShellProfile {
         id: "powershell".to_string(),
         kind: "powershell".to_string(),
         name: "PowerShell".to_string(),
-        executable,
-        args: if cfg!(windows) {
-            vec!["-NoLogo".to_string()]
-        } else {
-            Vec::new()
-        },
+        executable: exe,
+        args: vec!["-NoLogo".to_string()],
+    })
+}
+
+#[cfg(windows)]
+fn pwsh_profile() -> Option<ShellProfile> {
+    let fallbacks: Vec<PathBuf> = [
+        env_path("ProgramFiles", r"PowerShell\7\pwsh.exe"),
+        env_path("ProgramFiles", r"PowerShell\7-preview\pwsh.exe"),
+        env_path("ProgramFiles(x86)", r"PowerShell\7\pwsh.exe"),
+        env_path("LOCALAPPDATA", r"Microsoft\PowerShell\pwsh.exe"),
+        env_path("USERPROFILE", r".dotnet\tools\pwsh.exe"),
+        env_path("USERPROFILE", r"scoop\apps\pwsh\current\pwsh.exe"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    find_executable("pwsh.exe", &fallbacks).map(|exe| ShellProfile {
+        id: "pwsh".to_string(),
+        kind: "pwsh".to_string(),
+        name: "PowerShell 7".to_string(),
+        executable: exe,
+        args: vec!["-NoLogo".to_string()],
+    })
+}
+
+#[cfg(windows)]
+fn cmd_profile() -> Option<ShellProfile> {
+    let mut fallbacks = Vec::new();
+    if let Some(comspec) = std::env::var_os("ComSpec").map(PathBuf::from) {
+        if comspec
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.eq_ignore_ascii_case("cmd.exe"))
+        {
+            fallbacks.push(comspec);
+        }
     }
+    if let Some(sys_cmd) = env_path("SystemRoot", r"System32\cmd.exe") {
+        fallbacks.push(sys_cmd);
+    }
+    find_executable("cmd.exe", &fallbacks).map(|exe| ShellProfile {
+        id: "cmd".to_string(),
+        kind: "cmd".to_string(),
+        name: "CMD".to_string(),
+        executable: exe,
+        args: Vec::new(),
+    })
+}
+
+#[cfg(windows)]
+fn git_bash_profile() -> Option<ShellProfile> {
+    find_git_bash().map(|exe| ShellProfile {
+        id: "git-bash".to_string(),
+        kind: "git-bash".to_string(),
+        name: "Git Bash".to_string(),
+        executable: exe,
+        args: vec!["--login".to_string(), "-i".to_string()],
+    })
+}
+
+fn first_profile<I>(candidates: I) -> Option<ShellProfile>
+where
+    I: IntoIterator<Item = Option<ShellProfile>>,
+{
+    candidates.into_iter().flatten().next()
+}
+
+fn placeholder_shell() -> ShellProfile {
+    #[cfg(windows)]
+    {
+        ShellProfile {
+            id: "powershell".to_string(),
+            kind: "powershell".to_string(),
+            name: "PowerShell".to_string(),
+            executable: "powershell.exe".to_string(),
+            args: vec!["-NoLogo".to_string()],
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        ShellProfile {
+            id: "sh".to_string(),
+            kind: "powershell".to_string(),
+            name: "Shell".to_string(),
+            executable: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()),
+            args: Vec::new(),
+        }
+    }
+}
+
+/// Returns the highest-priority local shell present on disk without spawning subprocesses.
+pub fn find_default_shell() -> Option<ShellProfile> {
+    #[cfg(windows)]
+    {
+        first_profile([ps_profile(), pwsh_profile(), cmd_profile(), git_bash_profile()])
+    }
+    #[cfg(not(windows))]
+    {
+        let exe = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        resolve_shell_exe(&exe).map(|resolved| ShellProfile {
+            id: "powershell".to_string(),
+            kind: "powershell".to_string(),
+            name: Path::new(&resolved)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Shell")
+                .to_string(),
+            executable: resolved,
+            args: Vec::new(),
+        })
+    }
+}
+
+pub fn default_shell_profile() -> ShellProfile {
+    find_default_shell().unwrap_or_else(placeholder_shell)
 }
 
 pub(crate) fn is_default_powershell(profile: &ShellProfile) -> bool {
@@ -189,74 +317,10 @@ pub async fn detect_available_shells() -> Vec<ShellProfile> {
     #[cfg(windows)]
     {
         let mut profiles = Vec::new();
-
-        let ps_fallbacks: Vec<PathBuf> =
-            env_path("SystemRoot", r"System32\WindowsPowerShell\v1.0\powershell.exe")
-                .into_iter()
-                .collect();
-        if let Some(exe) = find_executable("powershell.exe", &ps_fallbacks) {
-            profiles.push(ShellProfile {
-                id: "powershell".to_string(),
-                kind: "powershell".to_string(),
-                name: "PowerShell".to_string(),
-                executable: exe,
-                args: vec!["-NoLogo".to_string()],
-            });
-        }
-
-        let pwsh_fallbacks: Vec<PathBuf> = [
-            env_path("ProgramFiles", r"PowerShell\7\pwsh.exe"),
-            env_path("ProgramFiles", r"PowerShell\7-preview\pwsh.exe"),
-            env_path("ProgramFiles(x86)", r"PowerShell\7\pwsh.exe"),
-            env_path("LOCALAPPDATA", r"Microsoft\PowerShell\pwsh.exe"),
-            env_path("USERPROFILE", r".dotnet\tools\pwsh.exe"),
-            env_path("USERPROFILE", r"scoop\apps\pwsh\current\pwsh.exe"),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        if let Some(exe) = find_executable("pwsh.exe", &pwsh_fallbacks) {
-            profiles.push(ShellProfile {
-                id: "pwsh".to_string(),
-                kind: "pwsh".to_string(),
-                name: "PowerShell 7".to_string(),
-                executable: exe,
-                args: vec!["-NoLogo".to_string()],
-            });
-        }
-
-        let mut cmd_fallbacks = Vec::new();
-        if let Some(comspec) = std::env::var_os("ComSpec").map(PathBuf::from) {
-            if comspec
-                .file_name()
-                .and_then(|s| s.to_str())
-                .is_some_and(|n| n.eq_ignore_ascii_case("cmd.exe"))
-            {
-                cmd_fallbacks.push(comspec);
-            }
-        }
-        if let Some(sys_cmd) = env_path("SystemRoot", r"System32\cmd.exe") {
-            cmd_fallbacks.push(sys_cmd);
-        }
-        if let Some(exe) = find_executable("cmd.exe", &cmd_fallbacks) {
-            profiles.push(ShellProfile {
-                id: "cmd".to_string(),
-                kind: "cmd".to_string(),
-                name: "CMD".to_string(),
-                executable: exe,
-                args: Vec::new(),
-            });
-        }
-
-        if let Some(exe) = find_git_bash() {
-            profiles.push(ShellProfile {
-                id: "git-bash".to_string(),
-                kind: "git-bash".to_string(),
-                name: "Git Bash".to_string(),
-                executable: exe,
-                args: vec!["--login".to_string(), "-i".to_string()],
-            });
-        }
+        profiles.extend(ps_profile());
+        profiles.extend(pwsh_profile());
+        profiles.extend(cmd_profile());
+        profiles.extend(git_bash_profile());
 
         let wsl_fallbacks: Vec<PathBuf> = env_path("SystemRoot", r"System32\wsl.exe")
             .into_iter()
@@ -278,7 +342,7 @@ pub async fn detect_available_shells() -> Vec<ShellProfile> {
 
     #[cfg(not(windows))]
     {
-        vec![default_shell_profile()]
+        find_default_shell().into_iter().collect()
     }
 }
 
@@ -322,6 +386,48 @@ mod tests {
         fs::write(&bash_exe, b"").unwrap();
 
         assert_eq!(git_bash_from_git_exe(&git_exe), Some(bash_exe));
+    }
+
+    #[test]
+    fn first_profile_falls_back_by_priority() {
+        let cmd = ShellProfile {
+            id: "cmd".into(),
+            kind: "cmd".into(),
+            name: "CMD".into(),
+            executable: "cmd.exe".into(),
+            args: Vec::new(),
+        };
+        let bash = ShellProfile {
+            id: "git-bash".into(),
+            kind: "git-bash".into(),
+            name: "Git Bash".into(),
+            executable: "bash.exe".into(),
+            args: vec!["--login".into(), "-i".into()],
+        };
+
+        assert_eq!(first_profile([None, None, Some(cmd.clone()), Some(bash)]), Some(cmd));
+        assert_eq!(first_profile([None, None]), None);
+    }
+
+    #[test]
+    fn resolve_shell_exe_validates_files_and_rejects_dirs() {
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let dir_path = tmp.path().join("bin");
+        fs::create_dir_all(&dir_path).unwrap();
+        let exe_path = dir_path.join("custom.exe");
+        fs::write(&exe_path, b"").unwrap();
+
+        let exe_str = exe_path.to_string_lossy().to_string();
+        assert_eq!(
+            resolve_shell_exe(&format!("  \"{exe_str}\"  ")),
+            Some(exe_str)
+        );
+        assert_eq!(resolve_shell_exe(&dir_path.to_string_lossy()), None);
+        assert_eq!(
+            resolve_shell_exe(&dir_path.join("missing.exe").to_string_lossy()),
+            None
+        );
+        assert_eq!(resolve_shell_exe("   "), None);
     }
 
     #[tokio::test]

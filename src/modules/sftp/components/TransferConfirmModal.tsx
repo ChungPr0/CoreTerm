@@ -49,6 +49,7 @@ export const TransferConfirmModal: React.FC<TransferConfirmModalProps> = ({
     >
       {transfer && (
         <form
+          noValidate
           role="dialog"
           aria-modal="true"
           onSubmit={(e) => {

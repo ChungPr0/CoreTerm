@@ -11,14 +11,18 @@ interface HostKeyPromptModalProps {
   prompt: SessionHostKeyPromptEventDto | SftpHostKeyPromptEventDto | null;
   source: "pty" | "sftp";
   onClose: () => void;
+  onAbortTab?: (tabId: string, source: "pty" | "sftp") => void;
   onReconnectTab: (tabId: string) => void;
+  onCancelAutoReconnect?: (tabId: string) => void;
 }
 
 export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
   prompt,
   source,
   onClose,
+  onAbortTab,
   onReconnectTab,
+  onCancelAutoReconnect,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -37,6 +41,17 @@ export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
   ) => {
     setSubmitting(true);
     try {
+      if (action === "REJECT") {
+        await (source === "sftp"
+          ? sftpApi.sftpSubmitHostKey(prompt.tab_id, action)
+          : sessionApi.sessionSubmitHostKey(prompt.tab_id, action)
+        ).catch(() => {});
+        onCancelAutoReconnect?.(prompt.tab_id);
+        onAbortTab?.(prompt.tab_id, source);
+        onClose();
+        return;
+      }
+
       if (source === "sftp") {
         await sftpApi.sftpSubmitHostKey(prompt.tab_id, action);
         onClose();
@@ -55,11 +70,7 @@ export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
   };
 
   const handleDismiss = () => {
-    if (source === "sftp") {
-      void handleDecision("REJECT");
-      return;
-    }
-    onClose();
+    void handleDecision("REJECT");
   };
 
   return (

@@ -46,7 +46,13 @@ pub(super) fn prepare_ssh_launch(
     host_id: &str,
     conflict_strategy: Option<&str>,
 ) -> CoreResult<SshLaunchPlan> {
-    let config = hosts.get_detail(host_id)?;
+    let config = match hosts.get_detail(host_id) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            emit_status(app, tab_id, host_id, "ERROR", vec![], Some(err.to_string()));
+            return Err(err);
+        }
+    };
     let strategy = conflict_strategy.unwrap_or("AUTO_SHARE_OR_SKIP");
     let probe_results = tunnel_registry.probe_host_rules(host_id, &config.port_forwards);
     let mut skipped_rule_ids: HashSet<String> = HashSet::new();
@@ -72,7 +78,14 @@ pub(super) fn prepare_ssh_launch(
         }
     }
 
-    let args = SshCommandCompiler::compile_args_with_skipped_rules(&config, &skipped_rule_ids)?;
+    let args = match SshCommandCompiler::compile_args_with_skipped_rules(&config, &skipped_rule_ids)
+    {
+        Ok(a) => a,
+        Err(err) => {
+            emit_status(app, tab_id, host_id, "ERROR", vec![], Some(err.to_string()));
+            return Err(err);
+        }
+    };
     let cli_preview = SshCommandCompiler::format_cli_preview(&args);
     let active_forwards = tunnel_registry.build_session_forward_statuses(
         tab_id,

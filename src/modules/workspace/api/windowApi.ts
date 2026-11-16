@@ -22,14 +22,31 @@ export const windowApi = {
     return invoke<void>("clipboard_write_text", { text });
   },
 
-  windowSetLaunchSize(cols: number, rows: number): Promise<void> {
-    return invoke<void>("window_set_launch_size", { cols, rows });
+  windowSetLaunchSize(
+    cols: number,
+    rows: number,
+    width?: number,
+    height?: number
+  ): Promise<void> {
+    return invoke<void>("window_set_launch_size", {
+      cols,
+      rows,
+      width: width ?? null,
+      height: height ?? null,
+    });
   },
 
-  windowPresent(params?: { cols?: number; rows?: number }): Promise<void> {
+  windowPresent(params?: {
+    cols?: number;
+    rows?: number;
+    width?: number;
+    height?: number;
+  }): Promise<void> {
     return invoke<void>("window_present", {
       cols: params?.cols ?? null,
       rows: params?.rows ?? null,
+      width: params?.width ?? null,
+      height: params?.height ?? null,
     });
   },
 

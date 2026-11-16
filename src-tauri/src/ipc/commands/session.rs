@@ -19,6 +19,13 @@ pub async fn detect_available_shells(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+pub async fn check_shell_exe(path: String) -> AppResult<Option<String>> {
+    tokio::task::spawn_blocking(move || crate::pty::resolve_shell_exe(&path))
+        .await
+        .map_err(|e| AppError::Internal(format!("Shell validation task panicked: {e}")))
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub async fn session_connect(
     app: AppHandle,
     state: State<'_, AppState>,

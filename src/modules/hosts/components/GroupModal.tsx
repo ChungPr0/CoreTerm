@@ -79,7 +79,7 @@ export const GroupModal: React.FC<GroupModalProps> = ({
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+      <form noValidate onSubmit={handleSubmit} className="p-5 space-y-4">
         <div>
           <label className="block text-slate-300 font-medium mb-1.5">
             {t("group.name")} *

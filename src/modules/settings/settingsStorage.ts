@@ -1,28 +1,60 @@
 import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
 import type { AppSettingsValues } from "./types";
 
+import {
+  clampLaunchCols,
+  clampLaunchRows,
+  DEFAULT_CONFLICT_POLICY,
+  DEFAULT_SHELL_ID,
+  LAUNCH_COLS_DEFAULT,
+  LAUNCH_ROWS_DEFAULT,
+} from "@/shared/defaults";
+
 const SETTINGS_STORAGE_KEY = "coreterm_settings";
 
-function parseShellProfile(value: unknown): ShellProfile | undefined {
+function parseShellProfile(
+  value: unknown,
+  fallbackKind?: string
+): ShellProfile | undefined {
   if (!value || typeof value !== "object") return undefined;
   const obj = value as Record<string, unknown>;
+  const id = typeof obj.id === "string" ? obj.id.trim() : "";
+  const name = typeof obj.name === "string" ? obj.name.trim() : "";
+  const executable = typeof obj.executable === "string" ? obj.executable.trim() : "";
+  const kind =
+    typeof obj.kind === "string" && obj.kind.trim()
+      ? obj.kind.trim()
+      : fallbackKind ?? "";
   if (
-    typeof obj.id !== "string" ||
-    typeof obj.kind !== "string" ||
-    typeof obj.name !== "string" ||
-    typeof obj.executable !== "string" ||
+    !id ||
+    !kind ||
+    !name ||
+    !executable ||
     !Array.isArray(obj.args) ||
     !obj.args.every((a) => typeof a === "string")
   ) {
     return undefined;
   }
   return {
-    id: obj.id,
-    kind: obj.kind,
-    name: obj.name,
-    executable: obj.executable,
+    id,
+    kind,
+    name,
+    executable,
     args: obj.args,
   };
+}
+
+function parseCustomShells(value: unknown): ShellProfile[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: ShellProfile[] = [];
+  for (const item of value) {
+    const profile = parseShellProfile(item, "custom");
+    if (!profile || seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    out.push(profile);
+  }
+  return out;
 }
 
 export function parseConflictPolicy(value: unknown): SftpConflictPolicy {
@@ -44,24 +76,26 @@ export function loadSettings(): AppSettingsValues {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        launchCols: Number(parsed.launchCols) || 120,
-        launchRows: Number(parsed.launchRows) || 30,
+        launchCols: clampLaunchCols(parsed.launchCols),
+        launchRows: clampLaunchRows(parsed.launchRows),
         sftpConflictPolicy: parseConflictPolicy(parsed.sftpConflictPolicy),
         defaultShellId:
           typeof parsed.defaultShellId === "string" && parsed.defaultShellId.trim()
             ? parsed.defaultShellId.trim()
-            : "powershell",
+            : DEFAULT_SHELL_ID,
         defaultShellProfile: parseShellProfile(parsed.defaultShellProfile),
+        customShells: parseCustomShells(parsed.customShells),
       };
     }
   } catch {
     // Fallback to defaults
   }
   return {
-    launchCols: 120,
-    launchRows: 30,
-    sftpConflictPolicy: "ASK",
-    defaultShellId: "powershell",
+    launchCols: LAUNCH_COLS_DEFAULT,
+    launchRows: LAUNCH_ROWS_DEFAULT,
+    sftpConflictPolicy: DEFAULT_CONFLICT_POLICY,
+    defaultShellId: DEFAULT_SHELL_ID,
+    customShells: [],
   };
 }
 

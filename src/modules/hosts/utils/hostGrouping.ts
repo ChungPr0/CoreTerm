@@ -1,3 +1,4 @@
+import { DEFAULT_HOST_GROUP } from "@/shared/defaults";
 import type { HostProfileSummaryDto } from "../types";
 
 export function groupAndSortProfiles(
@@ -17,8 +18,10 @@ export function groupAndSortProfiles(
     if (!rankByLower.has(key)) rankByLower.set(key, idx);
   });
 
+  const defaultKey = DEFAULT_HOST_GROUP.toLowerCase();
+
   const ensureGroup = (rawName: string): string => {
-    const cleaned = rawName.trim() || "Default";
+    const cleaned = rawName.trim() || DEFAULT_HOST_GROUP;
     const key = cleaned.toLowerCase();
     const canonical = canonByLower.get(key) ?? cleaned;
     canonByLower.set(key, canonical);
@@ -30,15 +33,15 @@ export function groupAndSortProfiles(
     for (const g of groups) ensureGroup(g);
   }
   for (const p of profiles) {
-    map.get(ensureGroup(p.group_name || "Default"))!.push(p);
+    map.get(ensureGroup(p.group_name || DEFAULT_HOST_GROUP))!.push(p);
   }
 
   return Array.from(map.entries()).sort(([a], [b]) => {
     const rankA = rankByLower.get(a.toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
     const rankB = rankByLower.get(b.toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
     if (rankA !== rankB) return rankA - rankB;
-    const aDef = a.toLowerCase() === "default";
-    const bDef = b.toLowerCase() === "default";
+    const aDef = a.toLowerCase() === defaultKey;
+    const bDef = b.toLowerCase() === defaultKey;
     if (aDef !== bDef) return aDef ? -1 : 1;
     return a.localeCompare(b, undefined, { sensitivity: "base" });
   });

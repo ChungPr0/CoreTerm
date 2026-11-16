@@ -1,7 +1,7 @@
 export type SftpConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME" | "RESUME";
 export type ForwardType = "LOCAL" | "REMOTE" | "DYNAMIC";
 export type ConflictStrategy = "AUTO_SHARE_OR_SKIP" | "OVERRIDE_PORT" | "ABORT";
-export type ShellKind = "powershell" | "pwsh" | "cmd" | "git-bash" | "wsl";
+export type ShellKind = "powershell" | "pwsh" | "cmd" | "git-bash" | "wsl" | "custom";
 
 export interface ShellProfile {
   id: string;

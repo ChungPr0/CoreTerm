@@ -293,16 +293,19 @@ async fn load_private_key_with_prompts(
         }
     }
 
+    let mut saved_failed = false;
     if let Some(ref key_id) = ctx.config.ssh_key_id {
         if let Ok(Some(saved_pass)) = ctx.keys.get_secret(key_id) {
             if let Ok(key) = keys::load_secret_key(key_path, Some(saved_pass.as_str())) {
                 return Ok(key);
             }
+            saved_failed = true;
         }
     }
 
-    for attempt in 1..=3u8 {
+    for retry in 1..=3u8 {
         let prompt_text = format!("Enter passphrase for key {key_path}");
+        let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
         let Some((secret, save_to_vault)) =
             request_secret_from_user(ctx, "KEY_PASSPHRASE", &prompt_text, attempt).await?
         else {
@@ -331,19 +334,22 @@ async fn authenticate_password_with_prompts(
     ctx: &SftpAuthContext<'_>,
 ) -> CoreResult<()> {
     let username = ctx.config.username.trim();
+    let mut saved_failed = false;
     if let Ok(Some(saved_pw)) = ctx.hosts.get_secret(&ctx.config.id) {
         if try_password_and_kbd(session, username, saved_pw.as_str()).await? {
             return Ok(());
         }
+        saved_failed = true;
     }
 
-    for attempt in 1..=3u8 {
+    for retry in 1..=3u8 {
         let prompt_text = format!(
             "{}@{}:{} password:",
             username,
             ctx.config.host.trim(),
             ctx.config.port
         );
+        let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
         let Some((secret, save_to_vault)) =
             request_secret_from_user(ctx, "PASSWORD", &prompt_text, attempt).await?
         else {
