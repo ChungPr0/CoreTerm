@@ -7,16 +7,9 @@ interface AppErrorLike {
   message?: unknown;
 }
 
-const ERROR_WRAPPER_PREFIXES = [
-  // Backend category prefixes
-  /^(?:Validation error|Resource not found|Database error|PTY error|SFTP error|OS\/Process error|I\/O error|Internal error):\s*/i,
-  // SSH / Protocol wrapper prefixes
-  /^(?:banner exchange|kex_exchange_identification|ssh):\s*/i,
-  /^(?:SSH connect(?:ion)? failed|Failed to connect|Connection failed):\s*/i,
-  /^(?:Failed to open SSH session channel|Failed to start SFTP subsystem|Failed to initialize SFTP protocol):\s*/i,
-  /^(?:Failed to negotiate RSA hash|Public key authentication failed|Password authentication error|Keyboard-interactive (?:auth|response) error):\s*/i,
-  /^(?:Error|IO error|Network error|Transport error):\s*/i,
-];
+/** Redundant wrapper prefixes (both backend categories and protocol handshake noises) */
+const WRAPPER_PREFIX_RE =
+  /^(?:(?:Validation error|Resource not found|Database error|PTY error|SFTP error|OS\/Process error|I\/O error|Internal error|SSH connect(?:ion)? failed|banner exchange|kex_exchange_identification|ssh|Failed to connect|Connection failed):\s*)+/i;
 
 interface ErrorMatcher {
   pattern: RegExp;
@@ -24,7 +17,7 @@ interface ErrorMatcher {
   params?: (match: RegExpMatchArray) => TranslationParams;
 }
 
-/** App UI & CRUD validation matchers; system/protocol/OS/shell errors pass through raw. */
+/** App UI & CRUD validation matchers; system/protocol/OS/shell errors pass through clean. */
 const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   { pattern: /^Key name cannot be empty$/i, key: "errors.key_name_empty" },
   {
@@ -84,15 +77,8 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
 
 export function stripErrorPrefixes(raw: string): string {
   let cleaned = dedupeErrorText(raw);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const re of ERROR_WRAPPER_PREFIXES) {
-      if (re.test(cleaned)) {
-        cleaned = cleaned.replace(re, "").trim();
-        changed = true;
-      }
-    }
+  while (WRAPPER_PREFIX_RE.test(cleaned)) {
+    cleaned = cleaned.replace(WRAPPER_PREFIX_RE, "").trim();
   }
   return dedupeErrorText(cleaned);
 }

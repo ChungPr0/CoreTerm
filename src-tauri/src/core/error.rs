@@ -2,28 +2,28 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
-    #[error("Database error: {0}")]
+    #[error("{0}")]
     Database(#[from] rusqlite::Error),
 
-    #[error("Validation error: {0}")]
+    #[error("{0}")]
     Validation(String),
 
-    #[error("Resource not found: {0}")]
+    #[error("{0}")]
     NotFound(String),
 
-    #[error("PTY error: {0}")]
+    #[error("{0}")]
     Pty(String),
 
-    #[error("SFTP error: {0}")]
+    #[error("{0}")]
     Sftp(String),
 
-    #[error("OS/Process error: {0}")]
+    #[error("{0}")]
     Os(String),
 
-    #[error("I/O error: {0}")]
+    #[error("{0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Internal error: {0}")]
+    #[error("{0}")]
     Internal(String),
 }
 
@@ -70,12 +70,12 @@ mod tests {
     #[test]
     fn dedupes_repeated_error_segments() {
         assert_eq!(
-            dedupe_error_text("SFTP error: Failed to update permissions: Permission denied: Permission denied"),
-            "SFTP error: Failed to update permissions: Permission denied"
+            dedupe_error_text("Failed to update permissions: Permission denied: Permission denied"),
+            "Failed to update permissions: Permission denied"
         );
         assert_eq!(
-            dedupe_error_text("SFTP error: SFTP error: Timeout"),
-            "SFTP error: Timeout"
+            dedupe_error_text("Timeout: Timeout"),
+            "Timeout"
         );
     }
 }
