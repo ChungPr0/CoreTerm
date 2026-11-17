@@ -6,7 +6,7 @@ import type {
   ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
-import type { HostFullConfigDto } from "@/modules/hosts";
+import { isAutoReconnectAllowed, type HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
 import { createLocalTab, sftpToTabState } from "../utils/tabHelpers";
 
@@ -197,6 +197,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
             ? {
                 ...tab,
                 sftpOpen: willOpen,
+                sftpState: willOpen ? tab.sftpState : "DISCONNECTED",
                 sftpSplitRatio: tab.sftpSplitRatio ?? 0.45,
               }
             : tab
@@ -299,22 +300,31 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
   toggleAutoReconnect: (tabId, enabled) =>
     set((s) => ({
       tabs: s.tabs.map((tab) =>
-        tab.tabId === tabId ? { ...tab, autoReconnect: enabled } : tab
-      ),
-    })),
-
-  syncHostConfig: (saved) =>
-    set((s) => ({
-      tabs: s.tabs.map((tab) =>
-        tab.hostId === saved.id
+        tab.tabId === tabId
           ? {
               ...tab,
-              autoReconnect: saved.options.auto_reconnect,
-              reconnectIntervalSec: saved.options.reconnect_interval_sec,
+              autoReconnect: tab.canAutoReconnect !== false ? enabled : false,
             }
           : tab
       ),
     })),
+
+  syncHostConfig: (saved) =>
+    set((s) => {
+      const canAuto = isAutoReconnectAllowed(saved.auth_method, saved.password_mode);
+      return {
+        tabs: s.tabs.map((tab) =>
+          tab.hostId === saved.id
+            ? {
+                ...tab,
+                canAutoReconnect: canAuto,
+                autoReconnect: canAuto ? saved.options.auto_reconnect : false,
+                reconnectIntervalSec: saved.options.reconnect_interval_sec,
+              }
+            : tab
+        ),
+      };
+    }),
 
   markLocalTabsAdmin: () =>
     set((s) => ({

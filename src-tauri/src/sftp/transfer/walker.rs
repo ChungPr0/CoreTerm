@@ -127,11 +127,14 @@ pub async fn collect_download_plan(
                     .await
                     .map_err(|e| CoreError::Sftp(format!("Read '{cur_remote}': {}", fmt_sftp_err(&e))))?;
                 for child in children {
+                    let cname = child.file_name();
+                    if cname == "." || cname == ".." {
+                        continue;
+                    }
                     let ctype = child.file_type();
                     if ctype.is_symlink() {
                         continue;
                     }
-                    let cname = child.file_name();
                     let Ok(child_remote) = join_remote_path(&cur_remote, &cname) else {
                         continue;
                     };

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
-import { useAlert, type ContextMenuEntry } from "@/shared/ui";
+import { ReconnectBanner, useAlert, type ContextMenuEntry } from "@/shared/ui";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import { copyText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
@@ -55,7 +55,6 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   onConfirmDelete,
   onModalChange,
   onSftpState,
-  onToggleAutoReconnect,
   onCloseSplit,
 }) => {
   const { t } = useI18n();
@@ -81,7 +80,7 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   );
 
   const remote = useDirectoryBrowser({
-    defaultHome: "/",
+    defaultHome: "",
     parentPath: posixParent,
     fetchDir: async (path) => {
       const res = await sftpApi.sftpListDir(tab.tabId, path);
@@ -114,15 +113,20 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     onError: notifyError,
   });
 
+  const isSplit = mode === "split";
+  const canConnect = isSplit ? tab.state === "ONLINE" : true;
+
   const conn = useSftpConnection({
     tabId: tab.tabId,
     hostId: tab.hostId,
     reconnectToken: tab.reconnectToken,
     autoReconnect: tab.autoReconnect,
+    canAutoReconnect: tab.canAutoReconnect,
     pauseAutoReconnect,
     reconnectIntervalSec: tab.reconnectIntervalSec,
     remoteBrowser: remote,
     localBrowser: local,
+    enabled: canConnect,
     onSftpState,
     onHydrateJobs: transfers.setJobs,
     onError: notifyError,
@@ -238,13 +242,14 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   };
 
   const reconnectSftp = useCallback(() => {
+    if (!canConnect) return;
     conn.setAuthBlocked(false);
     conn.clearErrorDedup();
     void conn.connectSftp();
     if (!local.cwdRef.current) {
       void conn.loadLocalFs();
     }
-  }, [conn, local.cwdRef]);
+  }, [canConnect, conn, local.cwdRef]);
 
   return (
     <div
@@ -254,24 +259,13 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         e.stopPropagation();
         onShowMenu(e.clientX, e.clientY, []);
       }}
-      className="flex h-full min-h-0 select-none flex-col bg-[#0d1117] text-[#c9d1d9]"
+      className="relative flex h-full min-h-0 select-none flex-col bg-[#0d1117] text-[#c9d1d9]"
     >
       <SftpToolbar
         hostLabel={tab.title.replace(/^SFTP:\s*/i, "")}
         connState={conn.connState}
-        sftpOffline={conn.sftpOffline}
         remoteCwd={remote.cwd}
         showLocal={showLocal}
-        autoReconnect={tab.autoReconnect}
-        onReconnect={reconnectSftp}
-        onToggleAutoReconnect={
-          onToggleAutoReconnect
-            ? (enabled) => {
-                if (enabled) conn.setAuthBlocked(false);
-                onToggleAutoReconnect(tab.tabId, enabled);
-              }
-            : undefined
-        }
         onOpenInTerminal={onOpenInTerminal}
         onToggleLocalPane={() => setShowLocal((v) => !v)}
         onCloseSplit={onCloseSplit}
@@ -362,6 +356,23 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         }}
         dragPreview={fileDrag.dragPreview}
       />
+
+      {mode === "full" && (
+        <ReconnectBanner
+          isDisconnected={conn.sftpOffline}
+          isConnecting={conn.connState === "CONNECTING"}
+          onReconnect={reconnectSftp}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onShowMenu(
+              e.clientX,
+              e.clientY,
+              buildToolbarMenu({ t, onReconnect: reconnectSftp })
+            );
+          }}
+        />
+      )}
     </div>
   );
 };

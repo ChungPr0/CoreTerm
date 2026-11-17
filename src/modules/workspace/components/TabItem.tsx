@@ -103,6 +103,8 @@ export const TabItem: React.FC<TabItemProps> = ({
   }, [isRenaming, tab.title]);
 
   const status = getStatusIndicator(tab.state, t);
+  const isConnecting =
+    tab.state === "CONNECTING" || tab.state === "HANDSHAKING";
   const isOffline =
     tab.state === "DISCONNECTED" ||
     tab.state === "ERROR" ||
@@ -245,14 +247,17 @@ export const TabItem: React.FC<TabItemProps> = ({
         <button
           type="button"
           onClick={onReconnect}
-          title={t("common.reconnect")}
+          disabled={isConnecting}
+          title={isConnecting ? t("status.connecting") : t("common.reconnect")}
           className={`inline-flex h-5 w-5 items-center justify-center rounded hover:bg-slate-700/70 transition-colors shrink-0 ${
-            isOffline
-              ? "text-sky-400 hover:text-sky-300"
-              : "text-slate-400 hover:text-sky-300"
+            isConnecting
+              ? "text-amber-400 cursor-wait"
+              : isOffline
+                ? "text-sky-400 hover:text-sky-300"
+                : "text-slate-400 hover:text-sky-300"
           }`}
         >
-          <RotateCw className="w-3 h-3" />
+          <RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />
         </button>
       )}
 

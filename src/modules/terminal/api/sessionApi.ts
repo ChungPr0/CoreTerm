@@ -79,12 +79,14 @@ export const sessionApi = {
   sessionSubmitSecret(
     tabId: string,
     secret: string,
-    saveToVault: boolean
+    saveToVault: boolean,
+    autoReconnect?: boolean
   ): Promise<void> {
     return invoke<void>("session_submit_secret", {
       tab_id: tabId,
       secret,
       save_to_vault: saveToVault,
+      auto_reconnect: autoReconnect,
     });
   },
 

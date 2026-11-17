@@ -28,6 +28,7 @@ pub(super) struct ReaderExitMeta {
     pub was_manual: bool,
     pub exit_code: Option<u32>,
     pub auth_failed_reason: Option<String>,
+    pub connect_failed_reason: Option<String>,
 }
 
 pub(super) fn emit_status(
@@ -119,6 +120,8 @@ pub(super) fn finalize_reader_exit(ctx: ReaderExitCtx<'_>, meta: ReaderExitMeta)
     if !meta.was_manual {
         let (final_state, err_msg) = if let Some(reason) = meta.auth_failed_reason {
             ("AUTH_FAILED", Some(reason))
+        } else if let Some(reason) = meta.connect_failed_reason {
+            ("ERROR", Some(reason))
         } else {
             match meta.exit_code {
                 Some(0) | None => ("DISCONNECTED", None),

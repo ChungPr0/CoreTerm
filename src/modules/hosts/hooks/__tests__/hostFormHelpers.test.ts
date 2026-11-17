@@ -64,6 +64,16 @@ describe("hostFormHelpers", () => {
     }
   });
 
+  it("deduplicates tags and trims whitespace", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.tagsInput = "api, eu, api, prod,  eu ";
+    const built = validateAndBuildHostPayload(fields);
+    expect(built.ok).toBe(true);
+    if (built.ok) {
+      expect(built.payload.tags).toEqual(["api", "eu", "prod"]);
+    }
+  });
+
   it("rejects out-of-range ports and unbound SSH_KEY profiles", () => {
     const fields = createHostFormFields(SAMPLE_HOST);
     expect(validateAndBuildHostPayload({ ...fields, port: 70000 })).toEqual({

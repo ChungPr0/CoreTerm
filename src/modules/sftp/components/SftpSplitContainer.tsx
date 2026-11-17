@@ -13,7 +13,6 @@ const SftpPane = lazy(() =>
 interface SftpSplitContainerProps {
   tab: TerminalTabItem;
   isActive: boolean;
-  sftpEverOpened?: boolean;
   conflictPolicy: SftpConflictPolicy;
   pauseAutoReconnect?: boolean;
   terminal?: React.ReactNode;
@@ -34,7 +33,6 @@ interface SftpSplitContainerProps {
 export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
   tab,
   isActive,
-  sftpEverOpened = false,
   conflictPolicy,
   pauseAutoReconnect = false,
   terminal,
@@ -97,10 +95,9 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
         </div>
       )}
 
-      {sftpEverOpened && (
+      {sftpOpen && (
         <div
           style={{
-            display: sftpOpen ? "flex" : "none",
             height: `${Math.round(ratio * 1000) / 10}%`,
           }}
           className="flex min-h-0 flex-col overflow-hidden"

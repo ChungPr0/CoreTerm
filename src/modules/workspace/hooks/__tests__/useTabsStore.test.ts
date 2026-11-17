@@ -204,4 +204,34 @@ describe("useTabsStore", () => {
     expect(current.reconnectToken).toBe(1);
     expect(current.state).toBe("CONNECTING");
   });
+
+  it("enforces canAutoReconnect policy on toggleAutoReconnect and syncHostConfig", () => {
+    useTabsStore.setState({
+      tabs: [
+        makeTab({ tabId: "t1", hostId: "h1", canAutoReconnect: false, autoReconnect: false }),
+        makeTab({ tabId: "t2", hostId: "h2", canAutoReconnect: true, autoReconnect: false }),
+      ],
+      activeTabId: "t1",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().toggleAutoReconnect("t1", true);
+    expect(useTabsStore.getState().tabs[0].autoReconnect).toBe(false);
+
+    useTabsStore.getState().toggleAutoReconnect("t2", true);
+    expect(useTabsStore.getState().tabs[1].autoReconnect).toBe(true);
+
+    // syncHostConfig with password prompt (should disable auto_reconnect)
+    useTabsStore.getState().syncHostConfig({
+      id: "h2",
+      auth_method: "PASSWORD",
+      password_mode: "PROMPT_EVERY_TIME",
+      options: { auto_reconnect: true, reconnect_interval_sec: 5 } as any,
+    } as any);
+
+    const h2Tab = useTabsStore.getState().tabs.find((t) => t.tabId === "t2");
+    expect(h2Tab?.canAutoReconnect).toBe(false);
+    expect(h2Tab?.autoReconnect).toBe(false);
+  });
 });

@@ -25,12 +25,14 @@ export const sftpApi = {
   sftpSubmitSecret(
     tabId: string,
     secret: string,
-    saveToVault: boolean
+    saveToVault: boolean,
+    autoReconnect?: boolean
   ): Promise<void> {
     return invoke<void>("sftp_submit_secret", {
       tab_id: tabId,
       secret,
       save_to_vault: saveToVault,
+      auto_reconnect: autoReconnect,
     });
   },
 

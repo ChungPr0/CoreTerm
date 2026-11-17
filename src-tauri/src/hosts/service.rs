@@ -84,7 +84,10 @@ impl HostService {
                 secret_ref_id: secret_ref_id.as_deref(),
             };
             host_repo::insert_profile(&tx, &row)?;
-            let opts = req.options.unwrap_or_default();
+            let mut opts = req.options.unwrap_or_default();
+            if req.auth_method == "PASSWORD" && password_mode != "SAVED" {
+                opts.auto_reconnect = Some(false);
+            }
             host_repo::insert_options(&tx, &host_id, &opts)?;
             if let Some(ref rules) = req.port_forwards {
                 port_forward_repo::replace_for_host(&tx, &host_id, rules)?;
@@ -141,7 +144,10 @@ impl HostService {
                 secret_ref_id: new_secret_ref.as_deref(),
             };
             host_repo::update_profile(&tx, &row)?;
-            if let Some(opts) = req.options {
+            if let Some(mut opts) = req.options {
+                if req.auth_method == "PASSWORD" && password_mode != "SAVED" {
+                    opts.auto_reconnect = Some(false);
+                }
                 host_repo::update_options(&tx, &req.id, opts)?;
             }
             if let Some(ref rules) = req.port_forwards {
@@ -204,7 +210,11 @@ impl HostService {
             secret_ref_id: None,
         };
         host_repo::insert_profile(&tx, &row)?;
-        host_repo::insert_cloned_options(&tx, &new_id, &source.options)?;
+        let mut cloned_opts = source.options.clone();
+        if source.auth_method == "PASSWORD" && pw_mode != "SAVED" {
+            cloned_opts.auto_reconnect = false;
+        }
+        host_repo::insert_cloned_options(&tx, &new_id, &cloned_opts)?;
         for pf in &source.port_forwards {
             port_forward_repo::upsert(
                 &tx,
@@ -312,11 +322,18 @@ impl HostService {
         Ok(None)
     }
 
-    pub fn save_secret(&self, host_id: &str, secret: &str) -> CoreResult<()> {
+    pub fn save_secret(&self, host_id: &str, secret: &str, auto_reconnect: Option<bool>) -> CoreResult<()> {
         let ref_id = SecretVault::host_password_ref(host_id);
         self.vault.store_secret(&ref_id, secret)?;
         let conn = self.db.lock_conn()?;
-        host_repo::set_saved_secret(&conn, host_id, &ref_id)
+        host_repo::set_saved_secret(&conn, host_id, &ref_id)?;
+        if let Some(ar) = auto_reconnect {
+            conn.execute(
+                "UPDATE ssh_options SET auto_reconnect = ?2 WHERE host_id = ?1",
+                rusqlite::params![host_id, if ar { 1 } else { 0 }],
+            )?;
+        }
+        Ok(())
     }
 
     fn apply_vault_after_db(&self, db_res: CoreResult<()>, op: PendingVaultOp) -> CoreResult<()> {

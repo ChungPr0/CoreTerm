@@ -164,6 +164,7 @@ impl PtySessionManager {
                                     was_manual,
                                     exit_code,
                                     auth_failed_reason: None,
+                                    connect_failed_reason: None,
                                 },
                             );
                         }

@@ -247,6 +247,7 @@ impl SftpSessionManager {
         tab_id: &str,
         secret: String,
         save_to_vault: bool,
+        auto_reconnect: Option<bool>,
     ) -> CoreResult<()> {
         let entry = self
             .sessions
@@ -256,7 +257,7 @@ impl SftpSessionManager {
             .clone();
         match entry.as_ref() {
             TabSessionEntry::Connecting { prompts, .. } => {
-                deliver_secret_decision(prompts, Some((Zeroizing::new(secret), save_to_vault)))
+                deliver_secret_decision(prompts, Some((Zeroizing::new(secret), save_to_vault, auto_reconnect)))
             }
             TabSessionEntry::Connected { .. } => Err(CoreError::Validation(
                 "SFTP session is already authenticated".to_string(),

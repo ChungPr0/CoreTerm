@@ -20,7 +20,7 @@ use crate::ssh::ActiveTunnelRegistry;
 use super::direct::DirectLaunchSpec;
 use super::events::emit_status;
 use super::shells::{
-    default_shell_profile, detect_available_shells as scan_available_shells, find_default_shell,
+    default_shell_profile, detect_available_shells as scan_available_shells,
 };
 use super::ssh::prepare_ssh_launch;
 use super::types::{InFlightConnectGuard, PrewarmedLocalSession, PtySession};
@@ -68,19 +68,7 @@ impl PtySessionManager {
     }
 
     fn fallback_shell(&self) -> CoreResult<ShellProfile> {
-        if let Some(profile) = find_default_shell() {
-            return Ok(profile);
-        }
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            if let Some(first) = handle
-                .block_on(self.detect_available_shells(false))
-                .into_iter()
-                .next()
-            {
-                return Ok(first);
-            }
-        }
-        Err(CoreError::Pty("No local shell available".to_string()))
+        Ok(default_shell_profile())
     }
 
     pub fn tunnel_registry(&self) -> &ActiveTunnelRegistry {
@@ -235,6 +223,7 @@ impl PtySessionManager {
         tab_id: &str,
         secret: String,
         save_to_vault: bool,
+        auto_reconnect: Option<bool>,
     ) -> CoreResult<()> {
         let zeroized_secret = Zeroizing::new(secret);
         let session = self
@@ -258,7 +247,7 @@ impl PtySessionManager {
                     let _ = keys.save_secret(key_id, &zeroized_secret);
                 }
             } else {
-                let _ = hosts.save_secret(&session.host_id, &zeroized_secret);
+                let _ = hosts.save_secret(&session.host_id, &zeroized_secret, auto_reconnect);
             }
         }
 

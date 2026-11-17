@@ -23,6 +23,7 @@ describe("formatters & path utils", () => {
   it("normalizes and joins posix paths", () => {
     expect(normPosix("//var///log/")).toBe("/var/log");
     expect(normPosix("/")).toBe("/");
+    expect(normPosix("")).toBe("");
     expect(posixParent("/var/log")).toBe("/var");
     expect(posixParent("/var")).toBe("/");
     expect(joinRemote("/", "etc")).toBe("/etc");
@@ -42,6 +43,9 @@ describe("formatters & path utils", () => {
       { label: "var", path: "/var" },
       { label: "log", path: "/var/log" },
     ]);
+    expect(splitRemoteCrumbs("")).toEqual([]);
+    expect(splitRemoteCrumbs("   ")).toEqual([]);
+    expect(splitLocalCrumbs("")).toEqual([]);
     expect(splitLocalCrumbs("C:\\Users\\dev")).toEqual([
       { label: "C:\\", path: "C:\\" },
       { label: "Users", path: "C:\\Users" },

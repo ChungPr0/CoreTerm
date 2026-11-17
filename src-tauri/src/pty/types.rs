@@ -1,9 +1,10 @@
 use std::io::Write;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use dashmap::DashMap;
-use portable_pty::{Child, MasterPty, PtySize};
+use portable_pty::{ChildKiller, MasterPty, PtySize};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
@@ -40,11 +41,26 @@ pub(super) struct PrewarmedLocalSession {
     pub attached: Arc<Mutex<Option<AttachedTabTarget>>>,
 }
 
+pub(super) struct ExitStatusSlot {
+    pub lock: Mutex<Option<Option<u32>>>,
+    pub cv: Condvar,
+}
+
+impl ExitStatusSlot {
+    pub fn new() -> Self {
+        Self {
+            lock: Mutex::new(None),
+            cv: Condvar::new(),
+        }
+    }
+}
+
 pub(super) enum PtyBackend {
     Direct {
-        master: Mutex<Box<dyn MasterPty + Send>>,
-        writer: Mutex<Box<dyn Write + Send>>,
-        child: Mutex<Box<dyn Child + Send + Sync>>,
+        master: Mutex<Option<Box<dyn MasterPty + Send>>>,
+        writer: Mutex<Option<Box<dyn Write + Send>>>,
+        killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+        exit_slot: Arc<ExitStatusSlot>,
     },
     #[cfg(windows)]
     Elevated {
@@ -80,9 +96,12 @@ impl PtySession {
     pub(super) fn write_bytes(&self, data: &[u8]) -> CoreResult<()> {
         match &self.backend {
             PtyBackend::Direct { writer, .. } => {
-                let mut w = writer
+                let mut guard = writer
                     .lock()
                     .map_err(|e| CoreError::Internal(format!("PTY writer mutex poisoned: {e}")))?;
+                let Some(ref mut w) = *guard else {
+                    return Err(CoreError::Pty("PTY session is closed".to_string()));
+                };
                 w.write_all(data)?;
                 w.flush()?;
                 Ok(())
@@ -104,9 +123,12 @@ impl PtySession {
         }
         match &self.backend {
             PtyBackend::Direct { master, .. } => {
-                let m = master
+                let guard = master
                     .lock()
                     .map_err(|e| CoreError::Internal(format!("PTY master mutex poisoned: {e}")))?;
+                let Some(ref m) = *guard else {
+                    return Ok(());
+                };
                 m.resize(PtySize {
                     rows: rows.max(MIN_PTY_ROWS),
                     cols: cols.max(MIN_PTY_COLS),
@@ -130,12 +152,25 @@ impl PtySession {
         }
     }
 
+    /// Drops ConPTY master/writer handles so Windows ConPTY flushes and signals pipe EOF cleanly.
+    pub(super) fn close_pty_handles(&self) {
+        if let PtyBackend::Direct { master, writer, .. } = &self.backend {
+            if let Ok(mut w) = writer.lock() {
+                drop(w.take());
+            }
+            if let Ok(mut m) = master.lock() {
+                drop(m.take());
+            }
+        }
+    }
+
     pub(super) fn terminate(&self) {
         match &self.backend {
-            PtyBackend::Direct { child, .. } => {
-                if let Ok(mut c) = child.lock() {
-                    let _ = c.kill();
+            PtyBackend::Direct { killer, .. } => {
+                if let Ok(mut k) = killer.lock() {
+                    let _ = k.kill();
                 }
+                self.close_pty_handles();
             }
             #[cfg(windows)]
             PtyBackend::Elevated {
@@ -152,11 +187,17 @@ impl PtySession {
 
     pub(super) fn wait_exit_code(&self) -> Option<u32> {
         match &self.backend {
-            PtyBackend::Direct { child, .. } => child
-                .lock()
-                .ok()
-                .and_then(|mut c| c.wait().ok())
-                .map(|status| status.exit_code()),
+            PtyBackend::Direct { exit_slot, .. } => {
+                let guard = exit_slot.lock.lock().ok()?;
+                if let Some(code) = *guard {
+                    return code;
+                }
+                let (guard, _) = exit_slot
+                    .cv
+                    .wait_timeout_while(guard, Duration::from_secs(2), |state| state.is_none())
+                    .ok()?;
+                guard.flatten()
+            }
             #[cfg(windows)]
             PtyBackend::Elevated { .. } => None,
         }

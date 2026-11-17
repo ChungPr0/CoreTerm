@@ -33,11 +33,12 @@ pub async fn sftp_submit_secret(
     state: State<'_, AppState>,
     tab_id: String,
     secret: String,
-    save_to_vault: bool,
+    save_to_vault: Option<bool>,
+    auto_reconnect: Option<bool>,
 ) -> AppResult<()> {
     state
         .sftp_manager
-        .submit_secret(&tab_id, secret, save_to_vault)
+        .submit_secret(&tab_id, secret, save_to_vault.unwrap_or(false), auto_reconnect)
 }
 
 #[tauri::command(rename_all = "snake_case")]

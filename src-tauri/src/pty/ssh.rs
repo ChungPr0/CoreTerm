@@ -35,6 +35,7 @@ pub(super) struct SshExpectContext<'a> {
     pub target_host: &'a str,
     pub target_port: u16,
     pub host_pw_mode: &'a str,
+    pub active_forwards: &'a [PortForwardStatusDto],
 }
 
 /// Resolves SSH tunnel conflicts, compiles `ssh.exe` CLI arguments, and reserves local forwards.
@@ -120,6 +121,14 @@ fn try_auto_fill_or_prompt(
         }
     }
     if !auto_filled {
+        emit_status(
+            ctx.app,
+            ctx.tab_id,
+            ctx.host_id,
+            "HANDSHAKING",
+            ctx.active_forwards.to_vec(),
+            None,
+        );
         if let Ok(mut pending) = ctx.session.pending_prompt_type.lock() {
             *pending = Some(prompt_type.to_string());
         }
@@ -127,11 +136,12 @@ fn try_auto_fill_or_prompt(
     }
 }
 
-/// Processes a ConPTY Expect signal and updates auth failure reason when authentication fails.
+/// Processes a ConPTY Expect signal and tracks terminal auth/connect errors before EOF.
 pub(super) fn handle_expect_signal(
     signal: ExpectSignal,
     ctx: &SshExpectContext<'_>,
     auth_failed_reason: &mut Option<String>,
+    connect_failed_reason: &mut Option<String>,
 ) {
     match signal {
         ExpectSignal::None => {}
@@ -159,6 +169,14 @@ pub(super) fn handle_expect_signal(
             fingerprint,
             reason,
         } => {
+            emit_status(
+                ctx.app,
+                ctx.tab_id,
+                ctx.host_id,
+                "HANDSHAKING",
+                ctx.active_forwards.to_vec(),
+                None,
+            );
             emit_host_key_prompt(
                 ctx.app,
                 SessionHostKeyPromptEventDto {
@@ -175,6 +193,20 @@ pub(super) fn handle_expect_signal(
         ExpectSignal::AuthFailed { reason } => {
             *auth_failed_reason = Some(reason.clone());
             emit_status(ctx.app, ctx.tab_id, ctx.host_id, "AUTH_FAILED", vec![], Some(reason));
+        }
+        ExpectSignal::ConnectFailed { reason } => {
+            *connect_failed_reason = Some(reason.clone());
+            emit_status(ctx.app, ctx.tab_id, ctx.host_id, "ERROR", vec![], Some(reason));
+        }
+        ExpectSignal::Connected => {
+            emit_status(
+                ctx.app,
+                ctx.tab_id,
+                ctx.host_id,
+                "ONLINE",
+                ctx.active_forwards.to_vec(),
+                None,
+            );
         }
     }
 }

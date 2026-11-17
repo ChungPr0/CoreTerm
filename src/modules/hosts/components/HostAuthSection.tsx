@@ -1,5 +1,5 @@
-import React, { useRef } from "react";
-import { KeyRound, Lock } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { Eye, EyeOff, KeyRound, Lock } from "lucide-react";
 import type { AuthMethod, PasswordMode } from "../types";
 import type { SshKeyDto } from "@/modules/keys";
 import { useI18n } from "@/shared/i18n";
@@ -18,6 +18,10 @@ interface HostAuthSectionProps {
   privateKeyPath: string;
   onPrivateKeyPathChange: (val: string) => void;
   onOpenKeyVault?: () => void;
+  autoReconnect?: boolean;
+  onAutoReconnectChange?: (val: boolean) => void;
+  reconnectIntervalSec?: number;
+  onReconnectIntervalSecChange?: (val: number) => void;
 }
 
 export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
@@ -34,9 +38,14 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
   privateKeyPath,
   onPrivateKeyPathChange,
   onOpenKeyVault,
+  autoReconnect = false,
+  onAutoReconnectChange,
+  reconnectIntervalSec = 2,
+  onReconnectIntervalSecChange,
 }) => {
   const { t } = useI18n();
   const keyPathInputRef = useRef<HTMLInputElement>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSelectKey = (keyId: string) => {
     onSelectSavedKey(keyId);
@@ -96,18 +105,69 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
             </select>
           </div>
 
-          {passwordMode === "SAVED" && (
-            <div>
-              <label className="block text-slate-400 mb-1">
-                {t("host.password_input")}
-              </label>
+          <div>
+            <label className="block text-slate-400 mb-1">
+              {t("host.password_input")}
+            </label>
+            <div className="relative">
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
+                disabled={passwordMode !== "SAVED"}
                 onChange={(e) => onPasswordChange(e.target.value)}
-                placeholder={hasSavedPassword ? t("host.password_kept") : ""}
-                className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100"
+                placeholder={
+                  passwordMode === "SAVED"
+                    ? (hasSavedPassword ? t("host.password_kept") : "")
+                    : t("host.password_prompt")
+                }
+                className={`w-full h-8 pl-3 pr-9 rounded bg-slate-900 border border-slate-800 text-slate-100 ${
+                  passwordMode !== "SAVED" ? "opacity-40 cursor-not-allowed bg-slate-950" : ""
+                }`}
               />
+              <button
+                type="button"
+                tabIndex={-1}
+                disabled={passwordMode !== "SAVED"}
+                onClick={() => setShowPassword((v) => !v)}
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors ${
+                  passwordMode !== "SAVED" ? "opacity-30 pointer-events-none" : ""
+                }`}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {passwordMode === "SAVED" && onAutoReconnectChange && (
+            <div className="col-span-2 pt-2 border-t border-slate-800/80 h-8 flex items-center justify-between">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={autoReconnect}
+                  onChange={(e) => onAutoReconnectChange(e.target.checked)}
+                />
+                <span>{t("session.auto_reconnect")}</span>
+              </label>
+
+              {autoReconnect && onReconnectIntervalSecChange && (
+                <div className="flex items-center gap-1.5 h-7">
+                  <span className="text-[11px] text-slate-400">
+                    {t("session.reconnect_interval")}:
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={reconnectIntervalSec}
+                    onChange={(e) => onReconnectIntervalSecChange(Number(e.target.value))}
+                    className="w-14 h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono text-right"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -146,18 +206,52 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
             </div>
           </div>
 
-          {selectedKeyId === "" && (
-            <div>
-              <label className="block text-slate-400 mb-1">
-                {t("host.key_path")} *
+          <div>
+            <label className="block text-slate-400 mb-1">
+              {t("host.key_path")} *
+            </label>
+            <input
+              ref={keyPathInputRef}
+              type="text"
+              value={
+                selectedKeyId === ""
+                  ? privateKeyPath
+                  : (savedKeys.find((k) => k.id === selectedKeyId)?.private_key_path ?? t("vault.default"))
+              }
+              disabled={selectedKeyId !== ""}
+              onChange={(e) => onPrivateKeyPathChange(e.target.value)}
+              className={`w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono ${
+                selectedKeyId !== "" ? "opacity-50 cursor-not-allowed bg-slate-950" : ""
+              }`}
+            />
+          </div>
+
+          {onAutoReconnectChange && (
+            <div className="pt-2 border-t border-slate-800/80 h-8 flex items-center justify-between">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200 select-none">
+                <input
+                  type="checkbox"
+                  checked={autoReconnect}
+                  onChange={(e) => onAutoReconnectChange(e.target.checked)}
+                />
+                <span>{t("session.auto_reconnect")}</span>
               </label>
-              <input
-                ref={keyPathInputRef}
-                type="text"
-                value={privateKeyPath}
-                onChange={(e) => onPrivateKeyPathChange(e.target.value)}
-                className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
-              />
+
+              {autoReconnect && onReconnectIntervalSecChange && (
+                <div className="flex items-center gap-1.5 h-7">
+                  <span className="text-[11px] text-slate-400">
+                    {t("session.reconnect_interval")}:
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={reconnectIntervalSec}
+                    onChange={(e) => onReconnectIntervalSecChange(Number(e.target.value))}
+                    className="w-14 h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono text-right"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

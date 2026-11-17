@@ -260,7 +260,6 @@ export const App: React.FC = () => {
               key={tab.tabId}
               tab={tab}
               isActive={isTabActive}
-              sftpEverOpened={Boolean(sessions.openedSftpTabs[tab.tabId])}
               conflictPolicy={settings.sftpConflictPolicy}
               pauseAutoReconnect={pauseAutoReconnect}
               terminal={terminalNode}

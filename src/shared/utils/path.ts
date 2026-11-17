@@ -12,7 +12,8 @@ export function normPosix(raw: string): string {
     return win.rest.length === 0 ? `/${win.drive}/` : `/${win.drive}/${win.rest.join("/")}`;
   }
   const s = raw.trim().replace(/\/+/g, "/");
-  if (!s || s === "/") return "/";
+  if (!s) return "";
+  if (s === "/") return "/";
   return s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s;
 }
 
@@ -23,7 +24,7 @@ export function posixParent(raw: string): string {
     return `/${win.drive}/${win.rest.slice(0, -1).join("/")}`;
   }
   const path = normPosix(raw);
-  if (path === "/") return "/";
+  if (!path || path === "/") return "/";
   const idx = path.lastIndexOf("/");
   return idx <= 0 ? "/" : path.slice(0, idx);
 }
@@ -42,6 +43,7 @@ export function localParent(raw: string): string {
 
 export function joinRemote(dir: string, name: string): string {
   const base = normPosix(dir);
+  if (!base) return name;
   return base.endsWith("/") ? `${base}${name}` : `${base}/${name}`;
 }
 
@@ -51,7 +53,10 @@ export interface PathCrumb {
 }
 
 export function splitRemoteCrumbs(raw: string): PathCrumb[] {
-  const win = parseWinSftpPath(raw);
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+
+  const win = parseWinSftpPath(trimmed);
   if (win) {
     const rootPath = `/${win.drive}/`;
     const crumbs: PathCrumb[] = [{ label: `${win.drive}\\`, path: rootPath }];
@@ -63,7 +68,8 @@ export function splitRemoteCrumbs(raw: string): PathCrumb[] {
     return crumbs;
   }
 
-  const path = normPosix(raw);
+  const path = normPosix(trimmed);
+  if (!path) return [];
   const crumbs: PathCrumb[] = [{ label: "/", path: "/" }];
   if (path === "/") return crumbs;
   let acc = "";
@@ -77,6 +83,7 @@ export function splitRemoteCrumbs(raw: string): PathCrumb[] {
 
 export function splitLocalCrumbs(raw: string): PathCrumb[] {
   const trimmed = raw.trim();
+  if (!trimmed) return [];
   const winDrive = trimmed.match(/^([a-zA-Z]:)(?:[\\/](.*))?$/);
   if (winDrive) {
     const drive = `${winDrive[1]}\\`;

@@ -33,6 +33,13 @@ export interface HostFormFields {
 export const clampReconnectInterval = (v: number): number =>
   Math.min(Math.max(Number(v) || 2, 1), 60);
 
+export function isAutoReconnectAllowed(
+  authMethod: AuthMethod | string,
+  passwordMode?: PasswordMode | string | null
+): boolean {
+  return authMethod === "SSH_KEY" || (authMethod === "PASSWORD" && passwordMode === "SAVED");
+}
+
 export function createHostFormFields(
   editingHost: HostFullConfigDto | null,
   initialGroupName?: string
@@ -125,10 +132,14 @@ export function validateAndBuildHostPayload(fields: HostFormFields): HostPayload
       port: portNum,
       username: cleanUsername,
       group_name: fields.groupName.trim() || DEFAULT_HOST_GROUP,
-      tags: fields.tagsInput
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      tags: Array.from(
+        new Set(
+          fields.tagsInput
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        )
+      ),
       auth_method: fields.authMethod,
       ssh_key_id:
         fields.authMethod === "SSH_KEY" && fields.selectedKeyId ? fields.selectedKeyId : null,
@@ -152,7 +163,7 @@ export function validateAndBuildHostPayload(fields: HostFormFields): HostPayload
         strict_host_key_checking: fields.strictHostKeyChecking,
         forward_agent: fields.forwardAgent,
         startup_command: fields.startupCommand.trim() || null,
-        auto_reconnect: fields.autoReconnect,
+        auto_reconnect: isAutoReconnectAllowed(fields.authMethod, fields.passwordMode) && fields.autoReconnect,
         reconnect_interval_sec: clampReconnectInterval(fields.reconnectIntervalSec),
       },
       port_forwards: fields.forwards.map((pf) => ({

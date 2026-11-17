@@ -58,6 +58,7 @@ export interface TerminalTabItem {
   conflictStrategy?: ConflictStrategy;
   activeForwards?: PortForwardStatusDto[];
   autoReconnect?: boolean;
+  canAutoReconnect?: boolean;
   reconnectIntervalSec?: number;
   isAdmin?: boolean;
   tabKind?: "terminal" | "sftp";

@@ -4,3 +4,4 @@ export { ContextMenu, type ContextMenuEntry } from "./ContextMenu";
 export { ContextMenuProvider, useContextMenu, type MenuState } from "./ContextMenuProvider";
 export { ModalShell } from "./ModalShell";
 export { PopoverMenu } from "./PopoverMenu";
+export { ReconnectBanner } from "./ReconnectBanner";

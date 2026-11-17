@@ -23,6 +23,10 @@ pub enum ExpectSignal {
     AuthFailed {
         reason: String,
     },
+    ConnectFailed {
+        reason: String,
+    },
+    Connected,
 }
 
 fn strip_ansi(raw: &str) -> String {
@@ -200,15 +204,79 @@ impl ExpectStateMachine {
             }
         }
 
-        if lower.contains("last login:")
-            || lower.contains("welcome to ")
-            || clean.ends_with("$ ")
-            || clean.ends_with("# ")
-        {
+        if let Some(reason) = Self::extract_connect_error(&clean, &lower) {
+            self.rolling_buf.clear();
+            return ExpectSignal::ConnectFailed { reason };
+        }
+
+        if Self::looks_like_shell_connected(&text, &clean, &lower) {
             self.set_passthrough();
+            return ExpectSignal::Connected;
         }
 
         ExpectSignal::None
+    }
+
+    fn extract_connect_error(clean: &str, lower: &str) -> Option<String> {
+        const PATTERNS: &[&str] = &[
+            "connection timed out",
+            "connection refused",
+            "could not resolve hostname",
+            "no route to host",
+            "network is unreachable",
+            "connection reset by peer",
+            "connection closed by remote host",
+            "kex_exchange_identification:",
+            "no matching host key type",
+            "no matching cipher",
+            "no matching key exchange",
+        ];
+        if !PATTERNS.iter().any(|pat| lower.contains(pat)) {
+            return None;
+        }
+        let matched_line = clean
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|line| {
+                let l = line.to_lowercase();
+                PATTERNS.iter().any(|pat| l.contains(pat))
+            })
+            .unwrap_or("")
+            .to_string();
+        if matched_line.is_empty() {
+            Some(Self::extract_last_line(clean))
+        } else {
+            Some(matched_line)
+        }
+    }
+
+    fn looks_like_shell_connected(raw: &str, clean: &str, lower: &str) -> bool {
+        if raw.contains("\x1b[?2004h")
+            || lower.contains("last login:")
+            || lower.contains("welcome to ")
+            || lower.contains("microsoft windows [")
+            || lower.contains("windows powershell")
+            || lower.contains("(c) microsoft corporation")
+            || lower.contains("have a lot of fun")
+        {
+            return true;
+        }
+
+        clean.lines().any(|line| {
+            let no_eol = line.trim_end_matches(['\r', '\n']);
+            let trimmed = no_eol.trim_end();
+            no_eol.ends_with("$ ")
+                || no_eol.ends_with("# ")
+                || no_eol.ends_with("% ")
+                || no_eol.ends_with("❯ ")
+                || trimmed.ends_with('$')
+                || trimmed.ends_with('#')
+                || trimmed.ends_with('❯')
+                || (trimmed.ends_with('>')
+                    && trimmed.contains(":\\")
+                    && !trimmed.to_lowercase().contains("key"))
+        })
     }
 
     fn extract_last_line(buf: &str) -> String {
@@ -293,7 +361,29 @@ mod tests {
         let denied = sm.feed(b"\x1b[31mPermission denied (publickey,password).\x1b[m\r\n");
         assert!(matches!(denied, ExpectSignal::AuthFailed { .. }));
 
-        let _ = sm.feed(b"Last login: Mon Nov 16 12:00:00 2026\r\n");
+        let conn_sig = sm.feed(b"Last login: Mon Nov 16 12:00:00 2026\r\n");
+        assert!(matches!(conn_sig, ExpectSignal::Connected));
         assert_eq!(sm.phase(), &ExpectPhase::Passthrough);
+    }
+
+    #[test]
+    fn detects_ssh_connect_timeout_and_windows_shell_connected() {
+        let mut sm_err = ExpectStateMachine::new();
+        let err_sig = sm_err.feed(b"ssh: connect to host 192.168.88.152 port 22: Connection timed out\r\n");
+        match err_sig {
+            ExpectSignal::ConnectFailed { reason } => {
+                assert_eq!(
+                    reason,
+                    "ssh: connect to host 192.168.88.152 port 22: Connection timed out"
+                );
+            }
+            other => panic!("expected ConnectFailed, got {other:?}"),
+        }
+        assert_eq!(sm_err.phase(), &ExpectPhase::Handshaking);
+
+        let mut sm_win = ExpectStateMachine::new();
+        let win_sig = sm_win.feed(b"tienc@CHUNG C:\\Users\\tienc>");
+        assert!(matches!(win_sig, ExpectSignal::Connected));
+        assert_eq!(sm_win.phase(), &ExpectPhase::Passthrough);
     }
 }

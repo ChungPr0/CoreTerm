@@ -1,4 +1,5 @@
 export { hostsApi } from "./api/hostsApi";
+export { isAutoReconnectAllowed } from "./hooks/hostFormHelpers";
 export { useHostProfiles, type DeletePromptState } from "./hooks/useHostProfiles";
 export { useHostDrag, type HostDragPreview } from "./hooks/useHostDrag";
 export { useGroupDrag, type GroupDragPreview } from "./hooks/useGroupDrag";

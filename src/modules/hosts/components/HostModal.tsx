@@ -158,6 +158,10 @@ export const HostModal: React.FC<HostModalProps> = ({
             privateKeyPath={form.privateKeyPath}
             onPrivateKeyPathChange={form.setPrivateKeyPath}
             onOpenKeyVault={onOpenKeyVault}
+            autoReconnect={form.autoReconnect}
+            onAutoReconnectChange={form.setAutoReconnect}
+            reconnectIntervalSec={form.reconnectIntervalSec}
+            onReconnectIntervalSecChange={form.setReconnectIntervalSec}
           />
 
           <HostOptionsSection
@@ -171,10 +175,6 @@ export const HostModal: React.FC<HostModalProps> = ({
             onCompressionChange={form.setCompression}
             forwardAgent={form.forwardAgent}
             onForwardAgentChange={form.setForwardAgent}
-            autoReconnect={form.autoReconnect}
-            onAutoReconnectChange={form.setAutoReconnect}
-            reconnectIntervalSec={form.reconnectIntervalSec}
-            onReconnectIntervalSecChange={form.setReconnectIntervalSec}
           />
 
           <HostPortForwardSection

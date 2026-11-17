@@ -31,7 +31,7 @@ pub struct PendingHostKeyChallenge {
 
 pub struct PendingSecretChallenge {
     pub prompt_type: String,
-    pub tx: oneshot::Sender<Option<(Zeroizing<String>, bool)>>,
+    pub tx: oneshot::Sender<Option<(Zeroizing<String>, bool, Option<bool>)>>,
 }
 
 #[derive(Clone, Default)]
@@ -213,7 +213,7 @@ pub fn apply_host_key_decision(
 
 pub fn deliver_secret_decision(
     slots: &PendingPromptSlots,
-    secret: Option<(Zeroizing<String>, bool)>,
+    secret: Option<(Zeroizing<String>, bool, Option<bool>)>,
 ) -> CoreResult<()> {
     let mut guard = slots
         .secret
@@ -306,7 +306,7 @@ async fn load_private_key_with_prompts(
     for retry in 1..=3u8 {
         let prompt_text = format!("Enter passphrase for key {key_path}");
         let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
-        let Some((secret, save_to_vault)) =
+        let Some((secret, save_to_vault, _)) =
             request_secret_from_user(ctx, "KEY_PASSPHRASE", &prompt_text, attempt).await?
         else {
             return Err(CoreError::Sftp(
@@ -350,7 +350,7 @@ async fn authenticate_password_with_prompts(
             ctx.config.port
         );
         let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
-        let Some((secret, save_to_vault)) =
+        let Some((secret, save_to_vault, auto_reconnect)) =
             request_secret_from_user(ctx, "PASSWORD", &prompt_text, attempt).await?
         else {
             return Err(CoreError::Sftp("Authentication cancelled".to_string()));
@@ -358,7 +358,7 @@ async fn authenticate_password_with_prompts(
 
         if try_password_and_kbd(session, username, secret.as_str()).await? {
             if save_to_vault {
-                let _ = ctx.hosts.save_secret(&ctx.config.id, secret.as_str());
+                let _ = ctx.hosts.save_secret(&ctx.config.id, secret.as_str(), auto_reconnect);
             }
             return Ok(());
         }
@@ -419,7 +419,7 @@ async fn request_secret_from_user(
     prompt_type: &str,
     prompt_text: &str,
     attempt: u8,
-) -> CoreResult<Option<(Zeroizing<String>, bool)>> {
+) -> CoreResult<Option<(Zeroizing<String>, bool, Option<bool>)>> {
     let (tx, rx) = oneshot::channel();
     {
         let mut slot = ctx

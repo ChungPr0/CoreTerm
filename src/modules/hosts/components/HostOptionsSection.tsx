@@ -14,10 +14,6 @@ interface HostOptionsSectionProps {
   onCompressionChange: (val: boolean) => void;
   forwardAgent: boolean;
   onForwardAgentChange: (val: boolean) => void;
-  autoReconnect: boolean;
-  onAutoReconnectChange: (val: boolean) => void;
-  reconnectIntervalSec: number;
-  onReconnectIntervalSecChange: (val: number) => void;
 }
 
 export const HostOptionsSection: React.FC<HostOptionsSectionProps> = ({
@@ -31,10 +27,6 @@ export const HostOptionsSection: React.FC<HostOptionsSectionProps> = ({
   onCompressionChange,
   forwardAgent,
   onForwardAgentChange,
-  autoReconnect,
-  onAutoReconnectChange,
-  reconnectIntervalSec,
-  onReconnectIntervalSecChange,
 }) => {
   const { t } = useI18n();
 
@@ -108,35 +100,6 @@ export const HostOptionsSection: React.FC<HostOptionsSectionProps> = ({
           />
           <span>{t("ssh.forward_agent")}</span>
         </label>
-      </div>
-
-      <div className="pt-2 border-t border-slate-800/80">
-        <div className="flex min-h-[46px] items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-slate-900/60 border border-slate-800">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200 font-medium">
-            <input
-              type="checkbox"
-              checked={autoReconnect}
-              onChange={(e) => onAutoReconnectChange(e.target.checked)}
-            />
-            <span>{t("session.auto_reconnect")}</span>
-          </label>
-
-          {autoReconnect && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400">
-                {t("session.reconnect_interval")}:
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={reconnectIntervalSec}
-                onChange={(e) => onReconnectIntervalSecChange(Number(e.target.value))}
-                className="w-14 h-7 px-2 rounded bg-slate-950 border border-slate-800 text-slate-100 font-mono text-right"
-              />
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

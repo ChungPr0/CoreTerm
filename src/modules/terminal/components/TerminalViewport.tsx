@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { AlertCircle, RotateCw } from "lucide-react";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
-import type { SessionConnectAckDto } from "../types";
 import { useI18n } from "@/shared/i18n";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
-import { useAlert } from "@/shared/ui";
+import { ReconnectBanner, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
+import type { SessionConnectAckDto } from "../types";
 import {
   useTerminalSession,
   type LaunchWinSize,
@@ -35,7 +35,7 @@ interface TerminalViewportProps {
   onRescan?: (tabId: string) => Promise<void> | void;
   onOpenSettings?: () => void;
   onOpenSsh?: () => void;
-  onToggleAutoReconnect: (tabId: string, enabled: boolean) => void;
+  onToggleAutoReconnect?: (tabId: string, enabled: boolean) => void;
   onSessionAck?: (tabId: string, ack: SessionConnectAckDto) => void;
   onElevationCancelled?: (tabId: string) => void;
   onContextMenuTerminal?: (
@@ -63,7 +63,6 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   onRescan,
   onOpenSettings,
   onOpenSsh,
-  onToggleAutoReconnect,
   onSessionAck,
   onElevationCancelled,
   onContextMenuTerminal,
@@ -94,14 +93,21 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   });
 
   useAutoReconnect({
-    enabled: tab.hostId !== "local" && Boolean(tab.autoReconnect),
+    enabled:
+      tab.hostId !== "local" &&
+      tab.canAutoReconnect !== false &&
+      Boolean(tab.autoReconnect),
     connected: tab.state === "ONLINE",
     disconnected: tab.state === "DISCONNECTED" || tab.state === "ERROR",
     paused: pauseAutoReconnect,
     intervalSec: tab.reconnectIntervalSec,
-    onReconnect: () => onReconnect(tab.tabId),
+    onReconnect: () => {
+      useTabsStore.getState().bumpReconnectToken(tab.tabId);
+    },
   });
 
+  const isConnecting =
+    tab.state === "CONNECTING" || tab.state === "HANDSHAKING";
   const isDisconnected =
     tab.state === "DISCONNECTED" ||
     tab.state === "ERROR" ||
@@ -148,42 +154,17 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
         onClose={find.closeFind}
       />
 
-      {isDisconnected && !isLocalErr && (
-        <div
+      {!isLocalErr && (
+        <ReconnectBanner
+          isDisconnected={isDisconnected}
+          isConnecting={isConnecting}
+          onReconnect={manualReconnect}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
             onContextMenuBanner?.(e, tab);
           }}
-          className="absolute top-2.5 right-3 z-20 px-3 py-1.5 rounded-lg bg-slate-900/95 backdrop-blur-md border border-rose-500/40 shadow-xl flex items-center gap-3 text-xs text-rose-200 select-none"
-        >
-          <div className="flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-            <span>
-              {t("status.disconnected")} ({tab.state})
-            </span>
-          </div>
-          {tab.hostId !== "local" && (
-            <label className="inline-flex items-center gap-1.5 cursor-pointer text-slate-300">
-              <input
-                type="checkbox"
-                checked={!!tab.autoReconnect}
-                onChange={(e) =>
-                  onToggleAutoReconnect(tab.tabId, e.target.checked)
-                }
-              />
-              <span>{t("session.auto_reconnect")}</span>
-            </label>
-          )}
-          <button
-            type="button"
-            onClick={manualReconnect}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium"
-          >
-            <RotateCw className="w-3 h-3" />
-            <span>{t("session.reconnect")}</span>
-          </button>
-        </div>
+        />
       )}
 
       {isLocalErr && (

@@ -67,6 +67,7 @@ pub async fn session_submit_secret(
     tab_id: String,
     secret: String,
     save_to_vault: Option<bool>,
+    auto_reconnect: Option<bool>,
 ) -> AppResult<()> {
     state.pty_manager.submit_secret(
         &state.hosts,
@@ -74,6 +75,7 @@ pub async fn session_submit_secret(
         &tab_id,
         secret,
         save_to_vault.unwrap_or(false),
+        auto_reconnect,
     )
 }
 

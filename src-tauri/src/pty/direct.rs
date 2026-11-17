@@ -8,7 +8,9 @@ use tracing::{error, info};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::hosts::HostService;
-use crate::ipc::dto::{SessionConnectAckDto, SessionConnectRequestDto, ShellProfile};
+use crate::ipc::dto::{
+    PortForwardStatusDto, SessionConnectAckDto, SessionConnectRequestDto, ShellProfile,
+};
 use crate::keys::KeyService;
 use crate::pty::expect::ExpectStateMachine;
 
@@ -36,6 +38,7 @@ struct DirectReaderSpec {
     target_host: String,
     target_port: u16,
     host_pw_mode: String,
+    active_forwards: Vec<PortForwardStatusDto>,
 }
 
 struct PtyServiceDeps<'a> {
@@ -144,8 +147,16 @@ impl PtySessionManager {
         let pid = spawned.pid;
         let reader = spawned.reader;
 
+        let initial_status = if spec.is_local { "ONLINE" } else { "CONNECTING" };
         self.sessions.insert(tab_id.clone(), session.clone());
-        emit_status(app, &tab_id, &host_id, "ONLINE", active_forwards, None);
+        emit_status(
+            app,
+            &tab_id,
+            &host_id,
+            initial_status,
+            active_forwards.clone(),
+            None,
+        );
 
         let reader_spec = DirectReaderSpec {
             tab_id: tab_id.clone(),
@@ -154,6 +165,7 @@ impl PtySessionManager {
             target_host,
             target_port,
             host_pw_mode,
+            active_forwards,
         };
         self.spawn_direct_reader(
             app,
@@ -169,7 +181,7 @@ impl PtySessionManager {
             host_id,
             pid,
             cli_preview,
-            status: "ONLINE".to_string(),
+            status: initial_status.to_string(),
             is_admin: spec.is_admin,
             shell_profile: if spec.is_local { Some(profile) } else { None },
         })
@@ -197,8 +209,9 @@ impl PtySessionManager {
             .spawn(move || {
                 let mut buf = [0u8; READ_BUF_SIZE];
                 let mut expect = ExpectStateMachine::new();
-                // Keep AUTH_FAILED final state intact when ssh.exe exits with code 255.
+                // Keep final failure reason intact when ssh.exe exits with code 255.
                 let mut auth_failed_reason: Option<String> = None;
+                let mut connect_failed_reason: Option<String> = None;
 
                 let expect_ctx = SshExpectContext {
                     app: &app_handle,
@@ -210,6 +223,7 @@ impl PtySessionManager {
                     target_host: &spec.target_host,
                     target_port: spec.target_port,
                     host_pw_mode: &spec.host_pw_mode,
+                    active_forwards: &spec.active_forwards,
                 };
 
                 loop {
@@ -226,6 +240,7 @@ impl PtySessionManager {
                                     signal,
                                     &expect_ctx,
                                     &mut auth_failed_reason,
+                                    &mut connect_failed_reason,
                                 );
                             }
                             if tx.send(slice.to_vec()).is_err() {
@@ -259,6 +274,7 @@ impl PtySessionManager {
                         was_manual,
                         exit_code,
                         auth_failed_reason,
+                        connect_failed_reason,
                     },
                 );
             })

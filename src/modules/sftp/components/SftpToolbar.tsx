@@ -1,17 +1,13 @@
 import React from "react";
-import { Columns2, RefreshCw, Terminal, X } from "lucide-react";
+import { Columns2, Terminal, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import type { SftpConnectionState } from "../types";
 
 interface SftpToolbarProps {
   hostLabel: string;
   connState: SftpConnectionState;
-  sftpOffline: boolean;
   remoteCwd: string;
   showLocal: boolean;
-  autoReconnect?: boolean;
-  onReconnect: () => void;
-  onToggleAutoReconnect?: (enabled: boolean) => void;
   onOpenInTerminal?: (remotePath: string) => void;
   onToggleLocalPane: () => void;
   onCloseSplit?: () => void;
@@ -21,12 +17,8 @@ interface SftpToolbarProps {
 export const SftpToolbar: React.FC<SftpToolbarProps> = ({
   hostLabel,
   connState,
-  sftpOffline,
   remoteCwd,
   showLocal,
-  autoReconnect,
-  onReconnect,
-  onToggleAutoReconnect,
   onOpenInTerminal,
   onToggleLocalPane,
   onCloseSplit,
@@ -52,30 +44,6 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
           {t("sftp.title")} — {hostLabel}
         </span>
         <span className={`text-[11px] font-medium ${statusMeta.text}`}>{statusMeta.label}</span>
-
-        {sftpOffline && (
-          <>
-            <button
-              type="button"
-              onClick={onReconnect}
-              className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#21262d] px-2 text-[11px] text-[#e6edf3] hover:border-[#388bfd]"
-            >
-              <RefreshCw className="h-3 w-3" />
-              {t("sftp.reconnect")}
-            </button>
-            {onToggleAutoReconnect && (
-              <label className="inline-flex h-6 cursor-pointer items-center gap-1 text-[11px] text-[#8b949e] hover:text-[#c9d1d9]">
-                <input
-                  type="checkbox"
-                  checked={Boolean(autoReconnect)}
-                  onChange={(e) => onToggleAutoReconnect(e.target.checked)}
-                  className="h-3 w-3 accent-[#1f6feb]"
-                />
-                <span>{t("session.auto_reconnect")}</span>
-              </label>
-            )}
-          </>
-        )}
       </div>
 
       <div className="flex items-center gap-1.5">

@@ -218,6 +218,9 @@ impl RemoteSftpClient {
         let mut symlink_checks: Vec<(usize, String)> = Vec::new();
         for item in read_dir {
             let name = item.file_name();
+            if name == "." || name == ".." {
+                continue;
+            }
             let entry_path = join_remote_path(&normalized, &name)?;
             let attrs = item.metadata();
             let ftype = attrs.file_type();
@@ -376,7 +379,11 @@ impl RemoteSftpClient {
                     .await
                     .map_err(|e| map_sftp_error("Failed to read remote directory", e))?;
                 for child in children {
-                    let child_path = join_remote_path(&dir_path, &child.file_name())?;
+                    let child_name = child.file_name();
+                    if child_name == "." || child_name == ".." {
+                        continue;
+                    }
+                    let child_path = join_remote_path(&dir_path, &child_name)?;
                     let ctype = child.file_type();
                     if !ctype.is_symlink() && ctype.is_dir() {
                         stack.push((child_path, false));
@@ -614,5 +621,15 @@ mod tests {
         assert_eq!(extract_win_drive_letter("/home/user"), None);
         assert_eq!(extract_win_drive_letter("etc"), None);
         assert_eq!(extract_win_drive_letter("c:relative"), None);
+    }
+
+    #[test]
+    fn skips_dot_and_dotdot_entry_names() {
+        let entries = vec![".", "..", "normal_file", "sub_dir"];
+        let filtered: Vec<&str> = entries
+            .into_iter()
+            .filter(|name| *name != "." && *name != "..")
+            .collect();
+        assert_eq!(filtered, vec!["normal_file", "sub_dir"]);
     }
 }

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { KeyRound, X } from "lucide-react";
+import { Eye, EyeOff, KeyRound, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { ModalShell, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { useTabsStore } from "@/modules/workspace";
 import { sftpApi, type SftpAuthPromptEventDto } from "@/modules/sftp";
 import { sessionApi } from "../api/sessionApi";
 import type { SessionAuthPromptEventDto } from "../types";
@@ -26,6 +27,8 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
   const alert = useAlert();
   const [secret, setSecret] = useState("");
   const [saveVault, setSaveVault] = useState(false);
+  const [autoReconnect, setAutoReconnect] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastAlertKeyRef = useRef<string | null>(null);
@@ -42,6 +45,8 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
     setSubmitting(false);
     setSecret("");
     setSaveVault(false);
+    setAutoReconnect(false);
+    setShowSecret(false);
     const raf = window.requestAnimationFrame(() => inputRef.current?.focus());
 
     if (prompt.attempt > 1) {
@@ -69,12 +74,26 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
     setSubmitting(true);
     try {
       if (source === "sftp") {
-        await sftpApi.sftpSubmitSecret(prompt.tab_id, secret, saveVault);
+        await sftpApi.sftpSubmitSecret(prompt.tab_id, secret, saveVault, autoReconnect);
       } else {
-        await sessionApi.sessionSubmitSecret(prompt.tab_id, secret, saveVault);
+        await sessionApi.sessionSubmitSecret(prompt.tab_id, secret, saveVault, autoReconnect);
+      }
+      if (saveVault) {
+        useTabsStore.setState((s) => ({
+          tabs: s.tabs.map((tab) =>
+            tab.tabId === prompt.tab_id
+              ? {
+                  ...tab,
+                  canAutoReconnect: true,
+                  autoReconnect: autoReconnect,
+                }
+              : tab
+          ),
+        }));
       }
       setSecret("");
       setSaveVault(false);
+      setAutoReconnect(false);
       onClose();
     } catch (err) {
       alert.error(formatLocalizedError(err, t));
@@ -133,24 +152,60 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
 
         <div>
           <label className="block text-slate-400 mb-1">{t("auth.secret")}</label>
-          <input
-            ref={inputRef}
-            type="password"
-            autoFocus
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
-          />
+          <div className="relative">
+            <input
+              ref={inputRef}
+              type={showSecret ? "text" : "password"}
+              autoFocus
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              className="w-full pl-3 pr-9 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowSecret((v) => !v)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              {showSecret ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
 
-        <label className="inline-flex items-center gap-2 cursor-pointer text-slate-300">
-          <input
-            type="checkbox"
-            checked={saveVault}
-            onChange={(e) => setSaveVault(e.target.checked)}
-          />
-          <span>{t("auth.save_vault")}</span>
-        </label>
+        <div className="flex items-center gap-4 h-6">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-slate-300 select-none">
+            <input
+              type="checkbox"
+              checked={saveVault}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setSaveVault(checked);
+                if (!checked) setAutoReconnect(false);
+              }}
+            />
+            <span>{t("auth.save_vault")}</span>
+          </label>
+
+          <div
+            className={`flex items-center transition-opacity duration-150 ${
+              saveVault ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <label className="inline-flex items-center gap-2 cursor-pointer text-slate-300 select-none">
+              <input
+                type="checkbox"
+                disabled={!saveVault}
+                checked={autoReconnect && saveVault}
+                onChange={(e) => setAutoReconnect(e.target.checked)}
+              />
+              <span>{t("session.auto_reconnect")}</span>
+            </label>
+          </div>
+        </div>
 
         <div className="flex items-center justify-end gap-2 pt-1">
           <button

@@ -3,7 +3,7 @@ import { posixCdCmd } from "@/shared/utils/path";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
-import type { HostFullConfigDto, HostProfileSummaryDto } from "@/modules/hosts";
+import { isAutoReconnectAllowed, type HostFullConfigDto, type HostProfileSummaryDto } from "@/modules/hosts";
 import { sftpApi } from "@/modules/sftp";
 import { createLocalTab, useTabsStore, windowApi } from "@/modules/workspace";
 import { sessionApi } from "../api/sessionApi";
@@ -96,6 +96,7 @@ export function useSessionController({
 
   const spawnHostTab = useCallback(
     (host: HostProfileSummaryDto, strategy: ConflictStrategy) => {
+      const canAuto = isAutoReconnectAllowed(host.auth_method, host.password_mode);
       useTabsStore.getState().addTab({
         tabId: crypto.randomUUID(),
         hostId: host.id,
@@ -105,7 +106,8 @@ export function useSessionController({
         errorMessage: null,
         reconnectToken: 0,
         conflictStrategy: strategy,
-        autoReconnect: host.auto_reconnect,
+        canAutoReconnect: canAuto,
+        autoReconnect: canAuto ? host.auto_reconnect : false,
         reconnectIntervalSec: host.reconnect_interval_sec,
       });
       onDismissSidebar();
@@ -116,6 +118,7 @@ export function useSessionController({
 
   const openSftpTab = useCallback(
     (host: HostProfileSummaryDto) => {
+      const canAuto = isAutoReconnectAllowed(host.auth_method, host.password_mode);
       useTabsStore.getState().addTab({
         tabId: crypto.randomUUID(),
         hostId: host.id,
@@ -126,7 +129,8 @@ export function useSessionController({
         reconnectToken: 0,
         tabKind: "sftp",
         sftpState: "CONNECTING",
-        autoReconnect: host.auto_reconnect,
+        canAutoReconnect: canAuto,
+        autoReconnect: canAuto ? host.auto_reconnect : false,
         reconnectIntervalSec: host.reconnect_interval_sec,
       });
       onDismissSidebar();
@@ -174,15 +178,29 @@ export function useSessionController({
     [disposeTab]
   );
 
-  const reconnectTab = useCallback((tabId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    useTabsStore.getState().bumpReconnectToken(tabId);
-  }, []);
+  const reconnectTab = useCallback(
+    (tabId: string, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+        selectTab(tabId);
+      }
+      useTabsStore.getState().bumpReconnectToken(tabId);
+    },
+    [selectTab]
+  );
 
-  const toggleSftpSplit = useCallback((tabId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    useTabsStore.getState().toggleSftpSplit(tabId);
-  }, []);
+  const toggleSftpSplit = useCallback(
+    (tabId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      selectTab(tabId);
+      const tab = useTabsStore.getState().tabs.find((t) => t.tabId === tabId);
+      if (tab?.sftpOpen) {
+        sftpApi.sftpDisconnect(tabId).catch(() => {});
+      }
+      useTabsStore.getState().toggleSftpSplit(tabId);
+    },
+    [selectTab]
+  );
 
   const openSftpInTerminal = useCallback(
     (tabId: string, remotePath: string) => {

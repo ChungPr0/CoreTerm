@@ -11,10 +11,12 @@ interface UseSftpConnectionOptions {
   hostId: string;
   reconnectToken: number;
   autoReconnect?: boolean;
+  canAutoReconnect?: boolean;
   pauseAutoReconnect?: boolean;
   reconnectIntervalSec?: number;
   remoteBrowser: DirectoryBrowser;
   localBrowser: DirectoryBrowser;
+  enabled?: boolean;
   onSftpState?: (tabId: string, state: SftpConnectionState) => void;
   onHydrateJobs: (jobs: SftpTransferJobDto[]) => void;
   onError: (err: unknown) => void;
@@ -25,15 +27,19 @@ export function useSftpConnection({
   hostId,
   reconnectToken,
   autoReconnect,
+  canAutoReconnect,
   pauseAutoReconnect = false,
   reconnectIntervalSec,
   remoteBrowser,
   localBrowser,
+  enabled = true,
   onSftpState,
   onHydrateJobs,
   onError,
 }: UseSftpConnectionOptions) {
-  const [connState, setConnState] = useState<SftpConnectionState>("CONNECTING");
+  const [connState, setConnState] = useState<SftpConnectionState>(
+    enabled ? "CONNECTING" : "DISCONNECTED"
+  );
   const [authBlocked, setAuthBlocked] = useState(false);
   const [localDrives, setLocalDrives] = useState<LocalDriveDto[]>([]);
   const [remoteDrives, setRemoteDrives] = useState<LocalDriveDto[]>([]);
@@ -62,8 +68,11 @@ export function useSftpConnection({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (hostId !== "local") {
+        void sftpApi.sftpDisconnect(tabId).catch(() => {});
+      }
     };
-  }, []);
+  }, [hostId, tabId]);
 
   const markDisconnectedOnError = useCallback(() => {
     setConnState("ERROR");
@@ -86,8 +95,10 @@ export function useSftpConnection({
       setAuthBlocked(false);
       lastErrRef.current = null;
       setRemoteDrives(ack.drives ?? []);
-      const safeHome = ack.home_path || "/";
-      remoteRef.current.setHomeDir(safeHome);
+      const safeHome = ack.home_path || "";
+      if (safeHome) {
+        remoteRef.current.setHomeDir(safeHome);
+      }
       setConnState("CONNECTED");
       onSftpStateRef.current?.(tabId, "CONNECTED");
 
@@ -98,7 +109,9 @@ export function useSftpConnection({
       if (isStale()) return;
 
       onHydrateJobsRef.current(existingJobs);
-      await remoteRef.current.loadDir(targetRemote, isStale);
+      if (targetRemote) {
+        await remoteRef.current.loadDir(targetRemote, isStale);
+      }
     } catch (err) {
       if (isStale()) return;
       const rawMsg = extractRawErrorMessage(err);
@@ -147,8 +160,19 @@ export function useSftpConnection({
     return () => window.clearTimeout(timer);
   }, [loadLocalFs]);
 
-  // Defer initial SFTP connect to a macrotask so React StrictMode double-mount cancels before opening duplicate SSH handshakes.
+  // Initial or state-driven SFTP connect: only runs when enabled (e.g. pure SFTP tab or SSH is online)
   useEffect(() => {
+    if (!enabled) {
+      setConnState("DISCONNECTED");
+      onSftpStateRef.current?.(tabId, "DISCONNECTED");
+      if (hostId !== "local") {
+        void sftpApi.sftpDisconnect(tabId).catch(() => {});
+      }
+      return;
+    }
+
+    setAuthBlocked(false);
+    lastErrRef.current = null;
     const timer = window.setTimeout(() => {
       if (mountedRef.current) void connectSftp();
     }, 0);
@@ -156,20 +180,26 @@ export function useSftpConnection({
       window.clearTimeout(timer);
       connectAttemptRef.current += 1;
     };
-  }, [connectSftp]);
+  }, [enabled, connectSftp, hostId, tabId]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (reconnectTokenRef.current === reconnectToken) return;
     reconnectTokenRef.current = reconnectToken;
     setAuthBlocked(false);
     lastErrRef.current = null;
     void connectSftp();
-  }, [reconnectToken, connectSftp]);
+  }, [enabled, reconnectToken, connectSftp]);
 
   const sftpOffline = connState === "DISCONNECTED" || connState === "ERROR";
 
   useAutoReconnect({
-    enabled: hostId !== "local" && Boolean(autoReconnect) && !authBlocked,
+    enabled:
+      enabled &&
+      hostId !== "local" &&
+      canAutoReconnect !== false &&
+      Boolean(autoReconnect) &&
+      !authBlocked,
     connected: connState === "CONNECTED",
     disconnected: sftpOffline,
     paused: pauseAutoReconnect,

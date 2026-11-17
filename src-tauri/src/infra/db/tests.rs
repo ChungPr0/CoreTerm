@@ -10,7 +10,7 @@ use crate::hosts::HostService;
 use crate::infra::security::SecretVault;
 use crate::ipc::dto::{
     CreateHostRequestDto, GenerateSshKeyRequestDto, ImportSshKeyRequestDto, SavePortForwardDto,
-    UpdateHostRequestDto,
+    UpdateHostRequestDto, UpdateSshOptionsFieldsDto,
 };
 use crate::keys::KeyService;
 
@@ -601,4 +601,80 @@ fn test_atomic_host_and_port_forwards_save() {
     assert_eq!(updated.port_forwards[0].label, "Postgres Renamed");
     assert_eq!(updated.port_forwards[0].bind_port, 15432);
     assert!(!updated.port_forwards[0].is_enabled);
+}
+
+#[test]
+fn test_auto_reconnect_only_allowed_with_saved_password_or_ssh_key() {
+    let temp = tempdir().unwrap();
+    let (_, hosts, _) = setup_services(temp.path());
+
+    // 1. Password with PROMPT_EVERY_TIME: auto_reconnect forced to false
+    let host_prompt = hosts
+        .create(CreateHostRequestDto {
+            alias: "Prompt Host".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".to_string()),
+            password: None,
+            options: Some(UpdateSshOptionsFieldsDto {
+                auto_reconnect: Some(true),
+                ..Default::default()
+            }),
+            port_forwards: None,
+        })
+        .expect("create host");
+    assert!(!host_prompt.options.auto_reconnect);
+
+    // 2. Password with SAVED: auto_reconnect permitted
+    let host_saved = hosts
+        .create(CreateHostRequestDto {
+            alias: "Saved Host".to_string(),
+            host: "10.0.0.2".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("SAVED".to_string()),
+            password: Some("secret123".to_string()),
+            options: Some(UpdateSshOptionsFieldsDto {
+                auto_reconnect: Some(true),
+                ..Default::default()
+            }),
+            port_forwards: None,
+        })
+        .expect("create host with saved password");
+    assert!(host_saved.options.auto_reconnect);
+
+    // Updating to PROMPT_EVERY_TIME automatically turns off auto_reconnect
+    let updated = hosts
+        .update(UpdateHostRequestDto {
+            id: host_saved.id,
+            alias: "Saved Host".to_string(),
+            host: "10.0.0.2".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".to_string()),
+            password: None,
+            options: Some(UpdateSshOptionsFieldsDto {
+                auto_reconnect: Some(true),
+                ..Default::default()
+            }),
+            port_forwards: None,
+        })
+        .expect("update to prompt");
+    assert!(!updated.options.auto_reconnect);
 }
