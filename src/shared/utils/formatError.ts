@@ -7,8 +7,16 @@ interface AppErrorLike {
   message?: unknown;
 }
 
-const BACKEND_PREFIX_RE =
-  /^(?:Validation error|Resource not found|Database error|PTY error|SFTP error|OS\/Process error|I\/O error|Internal error):\s*/i;
+const ERROR_WRAPPER_PREFIXES = [
+  // Backend category prefixes
+  /^(?:Validation error|Resource not found|Database error|PTY error|SFTP error|OS\/Process error|I\/O error|Internal error):\s*/i,
+  // SSH / Protocol wrapper prefixes
+  /^(?:banner exchange|kex_exchange_identification|ssh):\s*/i,
+  /^(?:SSH connect(?:ion)? failed|Failed to connect|Connection failed):\s*/i,
+  /^(?:Failed to open SSH session channel|Failed to start SFTP subsystem|Failed to initialize SFTP protocol):\s*/i,
+  /^(?:Failed to negotiate RSA hash|Public key authentication failed|Password authentication error|Keyboard-interactive (?:auth|response) error):\s*/i,
+  /^(?:Error|IO error|Network error|Transport error):\s*/i,
+];
 
 interface ErrorMatcher {
   pattern: RegExp;
@@ -74,6 +82,21 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   { pattern: /^Cannot delete Default group$/i, key: "errors.group_delete_default" },
 ];
 
+export function stripErrorPrefixes(raw: string): string {
+  let cleaned = dedupeErrorText(raw);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const re of ERROR_WRAPPER_PREFIXES) {
+      if (re.test(cleaned)) {
+        cleaned = cleaned.replace(re, "").trim();
+        changed = true;
+      }
+    }
+  }
+  return dedupeErrorText(cleaned);
+}
+
 export function dedupeErrorText(raw: string): string {
   const parts: string[] = [];
   for (const seg of raw.split(/:\s+/)) {
@@ -108,11 +131,7 @@ export function formatLocalizedError(err: unknown, t: TranslateFn): string {
   const raw = dedupeErrorText(extractRawErrorMessage(err));
   if (!raw) return t("errors.unknown");
 
-  let stripped = raw;
-  while (BACKEND_PREFIX_RE.test(stripped)) {
-    stripped = stripped.replace(BACKEND_PREFIX_RE, "").trim();
-  }
-  stripped = dedupeErrorText(stripped);
+  const stripped = stripErrorPrefixes(raw);
 
   for (const matcher of KNOWN_ERROR_MATCHERS) {
     const match = stripped.match(matcher.pattern);
@@ -120,5 +139,5 @@ export function formatLocalizedError(err: unknown, t: TranslateFn): string {
       return t(matcher.key, matcher.params ? matcher.params(match) : undefined);
     }
   }
-  return raw;
+  return stripped;
 }

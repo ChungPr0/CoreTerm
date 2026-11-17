@@ -474,7 +474,13 @@ pub fn emit_status(
 }
 
 pub fn map_russh_error(prefix: &str, err: russh::Error) -> CoreError {
-    CoreError::Sftp(format!("{prefix}: {err}"))
+    let err_str = err.to_string();
+    let err_trimmed = err_str.trim();
+    if err_trimmed.is_empty() {
+        CoreError::Sftp(prefix.to_string())
+    } else {
+        CoreError::Sftp(err_trimmed.to_string())
+    }
 }
 
 pub fn fmt_sftp_err(err: &SftpClientError) -> String {

@@ -244,11 +244,18 @@ impl ExpectStateMachine {
             })
             .unwrap_or("")
             .to_string();
-        if matched_line.is_empty() {
-            Some(Self::extract_last_line(clean))
+        let line = if matched_line.is_empty() {
+            Self::extract_last_line(clean)
         } else {
-            Some(matched_line)
-        }
+            matched_line
+        };
+        let trimmed = line.trim();
+        let cleaned = if let Some(rest) = trimmed.to_ascii_lowercase().strip_prefix("banner exchange:") {
+            trimmed["banner exchange:".len()..].trim().to_string()
+        } else {
+            trimmed.to_string()
+        };
+        Some(cleaned)
     }
 
     fn looks_like_shell_connected(raw: &str, clean: &str, lower: &str) -> bool {
