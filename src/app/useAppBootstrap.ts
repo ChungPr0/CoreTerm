@@ -35,6 +35,10 @@ export function useAppBootstrap({
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const onOpenDirectoryRef = useRef(onOpenDirectory);
+  onOpenDirectoryRef.current = onOpenDirectory;
+  const onFocusTerminalRef = useRef(onFocusTerminal);
+  onFocusTerminalRef.current = onFocusTerminal;
   const presentedRef = useRef(false);
   const fallbackTimerRef = useRef<number | null>(null);
 
@@ -97,9 +101,9 @@ export function useAppBootstrap({
     let unlistenOpenDir: (() => void) | undefined;
     listenEvent<string>("open-directory", (dir) => {
       if (dir) {
-        onOpenDirectory?.();
+        onOpenDirectoryRef.current?.();
         useTabsStore.getState().openDirectoryInTab(dir);
-        onFocusTerminal();
+        onFocusTerminalRef.current?.();
       }
     })
       .then((fn) => {

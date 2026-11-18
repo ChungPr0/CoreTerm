@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/shared/i18n";
 import { useGlobalShortcuts } from "@/shared/hooks/useGlobalShortcuts";
 import { useAlert, useContextMenu } from "@/shared/ui";
@@ -46,9 +46,9 @@ export const App: React.FC = () => {
     });
   }, [focusTerminal]);
 
+  const handleOpenDirectoryRef = useRef<() => void>(() => {});
   const handleOpenDirectoryFromExternal = useCallback(() => {
-    setIsSettingsOpen(false);
-    setIsPaletteOpen(false);
+    handleOpenDirectoryRef.current();
   }, []);
 
   const {
@@ -74,6 +74,18 @@ export const App: React.FC = () => {
   }, [isShellsLoaded, shellProfiles, settings.defaultShellId, settings.defaultShellProfile]);
 
   const hosts = useHostProfiles({ t, onError: alert.error, onRequestDelete: setDeletePrompt });
+
+  handleOpenDirectoryRef.current = () => {
+    setIsSidebarOpen(false);
+    setIsSettingsOpen(false);
+    setIsPaletteOpen(false);
+    setIsVaultOpen(false);
+    setDeletePrompt(null);
+    closeMenu();
+    hosts.setIsHostModalOpen(false);
+    hosts.setIsGroupModalOpen(false);
+    focusTerminal();
+  };
 
   const sessions = useSshSessions({
     isAppElevated,
