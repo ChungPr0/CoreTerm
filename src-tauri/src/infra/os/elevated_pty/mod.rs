@@ -78,12 +78,10 @@ pub fn validate_elevated_shell(executable: &str, args: &[String]) -> Result<(), 
                     ));
                 }
             }
-            "wsl" => {
-                if lower == "-e" || lower == "--exec" {
-                    return Err(format!(
-                        "Argument '{arg}' is not permitted for elevated WSL shell (non-interactive execution blocked)"
-                    ));
-                }
+            "wsl" if lower == "-e" || lower == "--exec" => {
+                return Err(format!(
+                    "Argument '{arg}' is not permitted for elevated WSL shell (non-interactive execution blocked)"
+                ));
             }
             _ => {}
         }

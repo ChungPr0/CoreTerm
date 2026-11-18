@@ -29,9 +29,11 @@ pub struct PendingHostKeyChallenge {
     pub tx: oneshot::Sender<bool>,
 }
 
+pub type SftpSecretResponse = Option<(Zeroizing<String>, bool, Option<bool>)>;
+
 pub struct PendingSecretChallenge {
     pub prompt_type: String,
-    pub tx: oneshot::Sender<Option<(Zeroizing<String>, bool, Option<bool>)>>,
+    pub tx: oneshot::Sender<SftpSecretResponse>,
 }
 
 #[derive(Clone, Default)]

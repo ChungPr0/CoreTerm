@@ -153,10 +153,48 @@ pub fn unregister_context_menu() -> Result<(), String> {
     Ok(())
 }
 
-/// Auto-heals / updates context menu if the user moved the portable executable.
+#[cfg(windows)]
+pub fn is_installed_version() -> bool {
+    let Ok(exe) = current_exe() else { return false };
+    let exe_name = exe.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+    if exe_name.contains("portable") {
+        return false;
+    }
+    let exe_str = exe.to_string_lossy().to_lowercase();
+    if let Some(parent) = exe.parent() {
+        if parent.join("Uninstall CoreTerm.exe").exists()
+            || parent.join("uninstall.exe").exists()
+        {
+            return true;
+        }
+    }
+    if let Ok(prog_files) = std::env::var("ProgramFiles") {
+        if exe_str.starts_with(&prog_files.to_lowercase()) {
+            return true;
+        }
+    }
+    if let Ok(prog_files_x86) = std::env::var("ProgramFiles(x86)") {
+        if exe_str.starts_with(&prog_files_x86.to_lowercase()) {
+            return true;
+        }
+    }
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let programs = format!("{}\\programs\\", local_app_data.to_lowercase());
+        if exe_str.starts_with(&programs) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Auto-heals / updates context menu if the user moved the executable,
+/// or auto-enables for installer versions (NSIS setup / MSI).
 #[cfg(windows)]
 pub fn sync_context_menu_if_enabled() {
     if !is_context_menu_registered() {
+        if is_installed_version() {
+            let _ = register_context_menu();
+        }
         return;
     }
     // Read command string and compare with current_exe
