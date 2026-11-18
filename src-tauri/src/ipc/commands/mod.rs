@@ -22,4 +22,5 @@ pub struct AppState {
     pub keys: KeyService,
     pub pty_manager: PtySessionManager,
     pub sftp_manager: SftpSessionManager,
+    pub launch_dir: Option<String>,
 }

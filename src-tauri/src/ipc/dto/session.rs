@@ -61,6 +61,7 @@ pub struct SessionConnectRequestDto {
     pub conflict_strategy: Option<String>,
     pub as_admin: Option<bool>,
     pub shell_profile: Option<ShellProfile>,
+    pub initial_cwd: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

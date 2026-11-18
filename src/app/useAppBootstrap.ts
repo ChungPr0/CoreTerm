@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listenEvent } from "@/shared/api/tauriClient";
 import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
 import {
   calcWinSize,
   mergeShells,
+  sessionApi,
   useShellsStore,
   type LaunchWinSize,
 } from "@/modules/terminal";
@@ -11,11 +13,13 @@ import { useTabsStore, windowApi } from "@/modules/workspace";
 interface UseAppBootstrapOpts {
   preloaders: Array<() => Promise<unknown>>;
   onFocusTerminal: () => void;
+  onOpenDirectory?: () => void;
 }
 
 export function useAppBootstrap({
   preloaders,
   onFocusTerminal,
+  onOpenDirectory,
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
@@ -82,8 +86,35 @@ export function useAppBootstrap({
       })
       .catch(() => {});
 
+    sessionApi
+      .appGetLaunchDir()
+      .then((dir) => {
+        if (dir) useTabsStore.getState().setLaunchDir(dir);
+      })
+      .catch(() => {});
+
+    let active = true;
+    let unlistenOpenDir: (() => void) | undefined;
+    listenEvent<string>("open-directory", (dir) => {
+      if (dir) {
+        onOpenDirectory?.();
+        useTabsStore.getState().openDirectoryInTab(dir);
+        onFocusTerminal();
+      }
+    })
+      .then((fn) => {
+        if (!active) {
+          fn();
+        } else {
+          unlistenOpenDir = fn;
+        }
+      })
+      .catch(() => {});
+
     return () => {
+      active = false;
       cancelled = true;
+      if (unlistenOpenDir) unlistenOpenDir();
       if (fallbackTimerRef.current !== null) {
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;

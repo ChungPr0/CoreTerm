@@ -115,6 +115,15 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
     tab.state === "PORT_CONFLICT";
   const isLocalErr = tab.hostId === "local" && tab.state === "ERROR";
 
+  const wasDisconnectedRef = useRef(false);
+  if (isDisconnected) {
+    wasDisconnectedRef.current = true;
+  } else if (tab.state === "ONLINE") {
+    wasDisconnectedRef.current = false;
+  }
+  const showReconnectBanner =
+    !isLocalErr && (isDisconnected || (wasDisconnectedRef.current && isConnecting));
+
   useEffect(() => {
     if (tab.state === "ONLINE") {
       lastAlertErrRef.current = null;
@@ -154,7 +163,13 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
         onClose={find.closeFind}
       />
 
-      {!isLocalErr && (
+      {isConnecting && (
+        <div className="absolute top-0 left-0 right-0 z-30 h-[2px] overflow-hidden bg-sky-950/30 pointer-events-none">
+          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-[#58a6ff] to-transparent animate-shimmer" />
+        </div>
+      )}
+
+      {showReconnectBanner && (
         <ReconnectBanner
           isDisconnected={isDisconnected}
           isConnecting={isConnecting}

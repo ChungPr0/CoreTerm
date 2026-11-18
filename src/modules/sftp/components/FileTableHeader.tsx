@@ -25,9 +25,16 @@ export function useTableColumns(
   useLayoutEffect(() => {
     const el = tableWrapRef.current;
     if (!el) return;
-    const sync = () => setWrapWidth(el.clientWidth);
-    sync();
-    const ro = new ResizeObserver(sync);
+    let prevWidth = Math.round(el.clientWidth);
+    setWrapWidth(prevWidth);
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const w = Math.round(entry ? entry.contentRect.width : el.clientWidth);
+      if (Math.abs(w - prevWidth) > 1) {
+        prevWidth = w;
+        setWrapWidth(w);
+      }
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [tableWrapRef]);

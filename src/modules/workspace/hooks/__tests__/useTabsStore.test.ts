@@ -234,4 +234,42 @@ describe("useTabsStore", () => {
     expect(h2Tab?.canAutoReconnect).toBe(false);
     expect(h2Tab?.autoReconnect).toBe(false);
   });
+
+  it("handles setLaunchDir and openDirectoryInTab properly", () => {
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          tabId: "t1",
+          hostId: "local",
+          title: "PowerShell",
+          shellProfile: {
+            id: "pwsh",
+            name: "PowerShell",
+            kind: "powershell",
+            executable: "powershell.exe",
+            args: [],
+          },
+        }),
+      ],
+      activeTabId: "t1",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().setLaunchDir("C:\\Projects\\my-app");
+    expect(useTabsStore.getState().tabs[0].initialCwd).toBe("C:\\Projects\\my-app");
+    expect(useTabsStore.getState().tabs[0].title).toBe("PowerShell");
+
+    useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\new-proj");
+    const tabs = useTabsStore.getState().tabs;
+    expect(tabs).toHaveLength(2);
+    expect(tabs[1].initialCwd).toBe("D:\\Workspace\\new-proj");
+    expect(tabs[1].title).toBe("PowerShell");
+    expect(tabs[1].hostSubtitle).toBe("Local");
+    expect(useTabsStore.getState().activeTabId).toBe(tabs[1].tabId);
+
+    // Debounce duplicate call with same directory does not create extra tab
+    useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\new-proj");
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
 });

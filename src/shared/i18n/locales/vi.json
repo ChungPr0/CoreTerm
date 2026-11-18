@@ -201,7 +201,11 @@
     "sftp_conflict_resume": "Truyền tiếp (Resume)",
     "custom_shell_fallback": "Shell tùy chỉnh",
     "file_filter_exe": "Tệp thực thi",
-    "file_filter_all": "Tất cả tệp"
+    "file_filter_all": "Tất cả tệp",
+    "context_menu_title": "Open in CoreTerm",
+    "context_menu_desc": "Thêm \"Open in CoreTerm\" vào menu ngữ cảnh khi click chuột phải thư mục",
+    "context_menu_enabled": "Đã thêm \"Open in CoreTerm\" vào menu chuột phải Windows",
+    "context_menu_disabled": "Đã gỡ \"Open in CoreTerm\" khỏi menu chuột phải Windows"
   },
   "window": {
     "restore": "Khôi phục",

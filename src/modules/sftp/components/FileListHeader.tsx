@@ -101,7 +101,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-[#21262d] bg-[#11161d] px-2.5 py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-1.5 border-b border-[#21262d] bg-[#11161d] px-2.5 py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <span
             className={`inline-flex h-6 items-center rounded border px-2 text-[11px] font-medium ${badgeCls}`}

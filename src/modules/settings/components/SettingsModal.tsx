@@ -3,6 +3,7 @@ import {
   FolderSync,
   Globe,
   Monitor,
+  MousePointerClick,
   RefreshCw,
   RotateCcw,
   Save,
@@ -28,6 +29,7 @@ import { ModalShell } from "@/shared/ui";
 import {
   mergeShells,
   resolveDefaultShell,
+  sessionApi,
   useShellsStore,
 } from "@/modules/terminal";
 import type { AppSettingsValues } from "../types";
@@ -63,6 +65,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     settings.defaultShellId || DEFAULT_SHELL_ID
   );
   const [isScanning, setIsScanning] = useState(false);
+  const [contextMenuOriginal, setContextMenuOriginal] = useState(false);
+  const [contextMenuDraft, setContextMenuDraft] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    sessionApi
+      .contextMenuGetStatus()
+      .then((status) => {
+        setContextMenuOriginal(status);
+        setContextMenuDraft(status);
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  const handleToggleContextMenu = () => {
+    setContextMenuDraft((prev) => !prev);
+  };
 
   const systemShells = useMemo(() => {
     if (detectedFromStore.length > 0) return detectedFromStore;
@@ -103,6 +122,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const validCols = clampLaunchCols(cols);
     const validRows = clampLaunchRows(rows);
     const selectedProfile = effectiveDefaultShell ?? undefined;
+    if (contextMenuDraft !== contextMenuOriginal) {
+      sessionApi.contextMenuSetEnabled(contextMenuDraft).catch(() => {});
+      setContextMenuOriginal(contextMenuDraft);
+    }
     onSave({
       launchCols: validCols,
       launchRows: validRows,
@@ -300,6 +323,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <option value="RENAME">{t("settings.sftp_conflict_rename")}</option>
               <option value="RESUME">{t("settings.sftp_conflict_resume")}</option>
             </select>
+          </div>
+
+          {/* Windows Context Menu ("Open in CoreTerm") */}
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-slate-300 font-medium">
+              <MousePointerClick className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>{t("settings.context_menu_title")}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleContextMenu}
+              aria-label={t("settings.context_menu_title")}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                contextMenuDraft ? "bg-sky-500" : "bg-slate-700"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  contextMenuDraft ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">

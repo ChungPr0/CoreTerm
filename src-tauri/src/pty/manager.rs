@@ -172,10 +172,12 @@ impl PtySessionManager {
         }
 
         if let Some(ref profile) = local_profile {
-            if let Some(ack) =
-                self.try_claim_prewarmed_local(app, &req, profile, is_admin, &on_output)
-            {
-                return Ok(ack);
+            if req.initial_cwd.is_none() {
+                if let Some(ack) =
+                    self.try_claim_prewarmed_local(app, &req, profile, is_admin, &on_output)
+                {
+                    return Ok(ack);
+                }
             }
         }
 
@@ -346,6 +348,7 @@ impl PtySessionManager {
                 conflict_strategy: None,
                 as_admin: remembered_admin,
                 shell_profile: remembered_shell,
+                initial_cwd: None,
             },
             on_output,
         )

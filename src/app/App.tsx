@@ -46,6 +46,11 @@ export const App: React.FC = () => {
     });
   }, [focusTerminal]);
 
+  const handleOpenDirectoryFromExternal = useCallback(() => {
+    setIsSettingsOpen(false);
+    setIsPaletteOpen(false);
+  }, []);
+
   const {
     settings,
     shellProfiles,
@@ -58,6 +63,7 @@ export const App: React.FC = () => {
   } = useAppBootstrap({
     preloaders: PRELOADERS,
     onFocusTerminal: focusTerminal,
+    onOpenDirectory: handleOpenDirectoryFromExternal,
   });
 
   const defaultShellProfile = useMemo(() => {

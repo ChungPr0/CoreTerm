@@ -8,7 +8,7 @@ import type {
 } from "@/shared/types/ipc";
 import { isAutoReconnectAllowed, type HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
-import { createLocalTab, sftpToTabState } from "../utils/tabHelpers";
+import { DEFAULT_LOCAL_SHELL, createLocalTab, sftpToTabState } from "../utils/tabHelpers";
 
 export type TabDisposeCallback = (tab: TerminalTabItem, hadSftp: boolean) => void;
 
@@ -47,11 +47,16 @@ interface TabsStoreState {
   toggleAutoReconnect: (tabId: string, enabled: boolean) => void;
   syncHostConfig: (saved: HostFullConfigDto) => void;
   markLocalTabsAdmin: () => void;
+  setLaunchDir: (dir: string) => void;
+  openDirectoryInTab: (dir: string) => void;
 }
 
 const initialSettings = loadSettings();
 const initialShell = initialSettings.defaultShellProfile ?? null;
 const initialTab = createLocalTab(initialShell);
+
+let lastOpenDir = "";
+let lastOpenDirTime = 0;
 
 export const useTabsStore = create<TabsStoreState>((set, get) => ({
   tabs: [initialTab],
@@ -332,4 +337,40 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
         tab.hostId === "local" ? { ...tab, isAdmin: true } : tab
       ),
     })),
+
+  setLaunchDir: (dir: string) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab, idx) =>
+        idx === 0 && tab.hostId === "local"
+          ? {
+              ...tab,
+              initialCwd: dir,
+            }
+          : tab
+      ),
+    })),
+
+  openDirectoryInTab: (dir: string) => {
+    const now = Date.now();
+    if (dir === lastOpenDir && now - lastOpenDirTime < 800) {
+      return;
+    }
+    lastOpenDir = dir;
+    lastOpenDirTime = now;
+
+    const currentSettings = loadSettings();
+    const existingLocal = get().tabs.find((t) => t.hostId === "local");
+    const defaultShell =
+      currentSettings.defaultShellProfile ??
+      existingLocal?.shellProfile ??
+      DEFAULT_LOCAL_SHELL;
+    const isAdmin = get().tabs.some((t) => t.hostId === "local" && t.isAdmin);
+    const newTab = createLocalTab(defaultShell, isAdmin);
+    newTab.initialCwd = dir;
+
+    set((s) => ({
+      tabs: [...s.tabs, newTab],
+      activeTabId: newTab.tabId,
+    }));
+  },
 }));

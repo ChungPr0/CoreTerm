@@ -48,6 +48,7 @@ export const sessionApi = {
     conflictStrategy?: ConflictStrategy;
     asAdmin?: boolean;
     shellProfile?: ShellProfile;
+    initialCwd?: string;
     onOutput: Channel<number[] | Uint8Array>;
   }): Promise<SessionConnectAckDto> {
     return invoke<SessionConnectAckDto>("session_connect", {
@@ -59,6 +60,7 @@ export const sessionApi = {
         conflict_strategy: params.conflictStrategy ?? DEFAULT_CONFLICT_STRATEGY,
         as_admin: params.asAdmin,
         shell_profile: params.shellProfile,
+        initial_cwd: params.initialCwd,
       },
       on_output: params.onOutput,
     });
@@ -142,6 +144,18 @@ export const sessionApi = {
     handler: (payload: SessionHostKeyPromptEventDto) => void
   ): Promise<UnlistenFn> {
     return listenEvent("session:host_key_prompt", handler);
+  },
+
+  appGetLaunchDir(): Promise<string | null> {
+    return invoke<string | null>("app_get_launch_dir");
+  },
+
+  contextMenuGetStatus(): Promise<boolean> {
+    return invoke<boolean>("context_menu_get_status");
+  },
+
+  contextMenuSetEnabled(enabled: boolean): Promise<boolean> {
+    return invoke<boolean>("context_menu_set_enabled", { enabled });
   },
 };
 

@@ -229,6 +229,7 @@ export function useTerminalSession({
             conflictStrategy: tab.conflictStrategy ?? DEFAULT_CONFLICT_STRATEGY,
             asAdmin: tab.isAdmin,
             shellProfile: tab.shellProfile,
+            initialCwd: tab.initialCwd,
             onOutput: outputChannel,
           })
           .then((ack) => {

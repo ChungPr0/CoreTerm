@@ -1,5 +1,6 @@
 pub mod acl;
 pub mod clipboard;
+pub mod context_menu;
 pub mod elevated_pty;
 pub mod elevation;
 pub mod job_object;

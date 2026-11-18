@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { File, FileSymlink, Folder } from "lucide-react";
+import { File, FileSymlink, Folder, RefreshCw } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { fmtMode, fmtSize, fmtTime } from "@/shared/utils/formatters";
 import type { FileItem, LocalDriveDto } from "../types";
@@ -146,7 +146,8 @@ export const FileList: React.FC<FileListProps> = ({
 
       <div
         ref={tableWrapRef}
-        className="min-h-0 flex-1 overflow-auto"
+        style={{ scrollbarGutter: "stable" }}
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
         onClick={(e) => {
           if (e.target === e.currentTarget && !shouldSuppressRowClick?.()) onSelect([]);
         }}
@@ -231,6 +232,13 @@ export const FileList: React.FC<FileListProps> = ({
             })}
           </tbody>
         </table>
+
+        {loading && visibleItems.length === 0 && (
+          <div className="flex h-36 flex-col items-center justify-center gap-2.5 text-xs text-[#8b949e]">
+            <RefreshCw className="h-5 w-5 animate-spin text-[#58a6ff]" />
+            <span>{emptyMessage || t("common.loading")}</span>
+          </div>
+        )}
 
         {!loading && visibleItems.length === 0 && (
           <div

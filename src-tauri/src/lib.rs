@@ -7,7 +7,7 @@ pub mod pty;
 pub mod sftp;
 pub mod ssh;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tracing::info;
 
 use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS};
@@ -16,7 +16,8 @@ use crate::infra::db::SqliteDb;
 use crate::infra::security::SecretVault;
 use crate::keys::KeyService;
 use crate::ipc::commands::{
-    app_get_status, check_shell_exe, clipboard_read_text, clipboard_write_text,
+    app_get_launch_dir, app_get_status, check_shell_exe, clipboard_read_text,
+    clipboard_write_text, context_menu_get_status, context_menu_set_enabled,
     detect_available_shells, host_create, host_delete, host_duplicate, host_get_detail,
     host_group_create, host_group_delete, host_group_list, host_group_reorder, host_list,
     host_move_group, host_update, key_delete, key_generate, key_get_default, key_import, key_list,
@@ -36,14 +37,65 @@ use crate::infra::os::JobObjectSupervisor;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
 
-/// Runs elevated ConPTY named-pipe relay and skips GUI bootstrap when invoked via UAC helper flag.
-pub fn maybe_run_elevated_worker() -> Option<i32> {
+/// Runs elevated ConPTY named-pipe relay or CLI helper flags before GUI bootstrap.
+pub fn maybe_run_cli_helpers() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(|a| a.as_str()) == Some(ELEVATED_PTY_FLAG) {
-        Some(run_elevated_worker(&args[1..]))
-    } else {
-        None
+    if let Some(first) = args.first() {
+        if first == ELEVATED_PTY_FLAG {
+            return Some(run_elevated_worker(&args[1..]));
+        }
+        if first == "--register-context-menu" {
+            match crate::infra::os::context_menu::register_context_menu() {
+                Ok(_) => {
+                    println!("Successfully registered 'Open in CoreTerm' context menu.");
+                    return Some(0);
+                }
+                Err(e) => {
+                    eprintln!("Failed to register context menu: {e}");
+                    return Some(1);
+                }
+            }
+        }
+        if first == "--unregister-context-menu" {
+            let _ = crate::infra::os::context_menu::unregister_context_menu();
+            println!("Successfully unregistered 'Open in CoreTerm' context menu.");
+            return Some(0);
+        }
     }
+    None
+}
+
+/// Parses and cleans a directory path passed via CLI or context menu launch.
+/// Removes Windows extended-length prefix (`\\?\` or `\\?\UNC\`) which causes
+/// PowerShell to display `Microsoft.PowerShell.Core\FileSystem::\\?\C:\...` in prompts.
+pub fn parse_clean_launch_dir(raw: &str) -> Option<String> {
+    if raw.starts_with('-') {
+        return None;
+    }
+    let trimmed = raw.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let p = std::path::Path::new(trimmed);
+    if !p.exists() || !p.is_dir() {
+        return None;
+    }
+    let abs_path = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(p))
+            .unwrap_or_else(|_| p.to_path_buf())
+    };
+    let s = abs_path.to_string_lossy();
+    let cleaned = if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", stripped)
+    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        stripped.to_string()
+    } else {
+        s.to_string()
+    };
+    Some(cleaned)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -59,6 +111,17 @@ pub fn run() {
         JobObjectSupervisor::new().expect("Failed to initialize Windows Job Object Supervisor");
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(main_win) = app.get_webview_window("main") {
+                let _ = main_win.show();
+                let _ = main_win.unminimize();
+                let _ = main_win.set_focus();
+            }
+            let launch_dir = argv.into_iter().skip(1).find_map(|arg| parse_clean_launch_dir(&arg));
+            if let Some(dir) = launch_dir {
+                let _ = app.emit("open-directory", dir);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let app_data_dir = app
@@ -96,11 +159,16 @@ pub fn run() {
                 });
             }
 
+            let launch_dir = std::env::args().skip(1).find_map(|arg| parse_clean_launch_dir(&arg));
+
+            crate::infra::os::context_menu::sync_context_menu_if_enabled();
+
             app.manage(AppState {
                 hosts,
                 keys,
                 pty_manager,
                 sftp_manager,
+                launch_dir,
             });
             Ok(())
         })
@@ -159,6 +227,9 @@ pub fn run() {
             sftp_list_transfers,
             sftp_clear_finished_transfers,
             app_get_status,
+            app_get_launch_dir,
+            context_menu_get_status,
+            context_menu_set_enabled,
             clipboard_read_text,
             clipboard_write_text,
             window_set_launch_size,

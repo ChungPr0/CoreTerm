@@ -35,7 +35,7 @@ function getStatusIndicator(
     case "HANDSHAKING":
       return {
         dotClass:
-          "bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]",
+          "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.75)]",
         label: t("status.connecting"),
       };
     case "ONLINE":
@@ -251,9 +251,9 @@ export const TabItem: React.FC<TabItemProps> = ({
           title={isConnecting ? t("status.connecting") : t("common.reconnect")}
           className={`inline-flex h-5 w-5 items-center justify-center rounded hover:bg-slate-700/70 transition-colors shrink-0 ${
             isConnecting
-              ? "text-amber-400 cursor-wait"
+              ? "text-sky-400 cursor-wait"
               : isOffline
-                ? "text-sky-400 hover:text-sky-300"
+                ? "text-rose-400 hover:text-rose-300"
                 : "text-slate-400 hover:text-sky-300"
           }`}
         >

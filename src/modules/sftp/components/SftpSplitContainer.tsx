@@ -81,7 +81,7 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
     >
       <div
         className="flex min-h-0 flex-col overflow-hidden"
-        style={sftpOpen ? { height: `${Math.round((1 - ratio) * 1000) / 10}%` } : { flex: 1 }}
+        style={sftpOpen ? { height: `calc(${Math.round((1 - ratio) * 1000) / 10}% - 3px)` } : { flex: 1 }}
       >
         {terminal}
       </div>
@@ -98,7 +98,7 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
       {sftpOpen && (
         <div
           style={{
-            height: `${Math.round(ratio * 1000) / 10}%`,
+            height: `calc(${Math.round(ratio * 1000) / 10}% - 3px)`,
           }}
           className="flex min-h-0 flex-col overflow-hidden"
         >

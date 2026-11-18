@@ -3,8 +3,10 @@ use crate::core::defaults::{
     MIN_LAUNCH_ROWS,
 };
 use crate::infra::os;
+use crate::ipc::commands::AppState;
 use crate::ipc::dto::AppStatusDto;
 use crate::ipc::error::{AppError, AppResult};
+use tauri::State;
 
 #[tauri::command]
 pub async fn app_get_status() -> AppResult<AppStatusDto> {
@@ -22,6 +24,26 @@ pub async fn clipboard_read_text() -> AppResult<String> {
 #[tauri::command(rename_all = "snake_case")]
 pub async fn clipboard_write_text(text: String) -> AppResult<()> {
     os::clipboard::write_text(&text).map_err(AppError::Internal)
+}
+
+#[tauri::command]
+pub async fn context_menu_get_status() -> AppResult<bool> {
+    Ok(os::context_menu::is_context_menu_registered())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn context_menu_set_enabled(enabled: bool) -> AppResult<bool> {
+    if enabled {
+        os::context_menu::register_context_menu().map_err(AppError::Internal)?;
+    } else {
+        os::context_menu::unregister_context_menu().map_err(AppError::Internal)?;
+    }
+    Ok(os::context_menu::is_context_menu_registered())
+}
+
+#[tauri::command]
+pub async fn app_get_launch_dir(state: State<'_, AppState>) -> AppResult<Option<String>> {
+    Ok(state.launch_dir.clone())
 }
 
 fn calc_launch_dims(cols: u16, rows: u16, width: Option<f64>, height: Option<f64>) -> (f64, f64) {

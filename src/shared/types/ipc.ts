@@ -61,6 +61,7 @@ export interface TerminalTabItem {
   canAutoReconnect?: boolean;
   reconnectIntervalSec?: number;
   isAdmin?: boolean;
+  initialCwd?: string;
   tabKind?: "terminal" | "sftp";
   sftpOpen?: boolean;
   sftpSplitRatio?: number;

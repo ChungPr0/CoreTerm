@@ -110,7 +110,19 @@ impl PtySessionManager {
         );
 
         let cwd = if spec.is_local {
-            std::env::var("USERPROFILE").ok()
+            spec.req
+                .initial_cwd
+                .as_ref()
+                .map(|s| {
+                    if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+                        format!(r"\\{}", stripped)
+                    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                        stripped.to_string()
+                    } else {
+                        s.clone()
+                    }
+                })
+                .or_else(|| std::env::var("USERPROFILE").ok())
         } else {
             None
         };

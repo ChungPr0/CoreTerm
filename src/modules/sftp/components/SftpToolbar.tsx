@@ -30,8 +30,8 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
     connState === "CONNECTED"
       ? { dot: "bg-emerald-400", text: "text-emerald-300", label: t("sftp.connected") }
       : connState === "CONNECTING"
-        ? { dot: "bg-amber-400 animate-pulse", text: "text-amber-300", label: t("sftp.connecting") }
-        : { dot: "bg-red-400", text: "text-red-300", label: t("sftp.disconnected") };
+        ? { dot: "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.7)]", text: "text-sky-300", label: t("sftp.connecting") }
+        : { dot: "bg-rose-400", text: "text-rose-300", label: t("sftp.disconnected") };
 
   return (
     <div

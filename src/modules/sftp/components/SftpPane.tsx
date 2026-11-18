@@ -135,6 +135,16 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   connStateRef.current = conn.connState;
   markDisconnectRef.current = conn.markDisconnectedOnError;
 
+  const wasOfflineRef = useRef(false);
+  if (conn.sftpOffline) {
+    wasOfflineRef.current = true;
+  } else if (conn.connState === "CONNECTED") {
+    wasOfflineRef.current = false;
+  }
+  const showSftpReconnect =
+    mode === "full" &&
+    (conn.sftpOffline || (wasOfflineRef.current && conn.connState === "CONNECTING"));
+
   const hasSftpModal =
     transfers.conflicts.length > 0 ||
     nameModal !== null ||
@@ -357,7 +367,13 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         dragPreview={fileDrag.dragPreview}
       />
 
-      {mode === "full" && (
+      {conn.connState === "CONNECTING" && (
+        <div className="absolute top-0 left-0 right-0 z-30 h-[2px] overflow-hidden bg-sky-950/30 pointer-events-none">
+          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-[#58a6ff] to-transparent animate-shimmer" />
+        </div>
+      )}
+
+      {showSftpReconnect && (
         <ReconnectBanner
           isDisconnected={conn.sftpOffline}
           isConnecting={conn.connState === "CONNECTING"}
