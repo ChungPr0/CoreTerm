@@ -63,6 +63,8 @@ pub fn spawn_elevated_pty(
     executable: &str,
     args: &[String],
 ) -> Result<ElevatedPtyConnection, String> {
+    super::validate_elevated_shell(executable, args)?;
+
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Failed to resolve executable path: {e}"))?;
     let exe_str = exe_path.to_string_lossy().to_string();

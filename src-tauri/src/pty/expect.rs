@@ -178,30 +178,26 @@ impl ExpectStateMachine {
             return ExpectSignal::AuthFailed { reason };
         }
 
-        if lower.contains("enter passphrase for key") {
-            let trimmed = lower.trim_end();
-            if trimmed.ends_with(':') {
-                self.passphrase_attempts = self.passphrase_attempts.saturating_add(1);
-                let prompt_text = Self::extract_last_line(&clean);
-                self.rolling_buf.clear();
-                return ExpectSignal::PassphrasePrompt {
-                    prompt_text,
-                    attempt: self.passphrase_attempts,
-                };
-            }
+        let last_line = Self::extract_last_line(&clean);
+
+        if Self::is_ssh_passphrase_prompt(&last_line) {
+            self.passphrase_attempts = self.passphrase_attempts.saturating_add(1);
+            let prompt_text = last_line;
+            self.rolling_buf.clear();
+            return ExpectSignal::PassphrasePrompt {
+                prompt_text,
+                attempt: self.passphrase_attempts,
+            };
         }
 
-        if lower.contains("password:") {
-            let trimmed = lower.trim_end();
-            if trimmed.ends_with("password:") {
-                self.password_attempts = self.password_attempts.saturating_add(1);
-                let prompt_text = Self::extract_last_line(&clean);
-                self.rolling_buf.clear();
-                return ExpectSignal::PasswordPrompt {
-                    prompt_text,
-                    attempt: self.password_attempts,
-                };
-            }
+        if Self::is_ssh_password_prompt(&last_line) {
+            self.password_attempts = self.password_attempts.saturating_add(1);
+            let prompt_text = last_line;
+            self.rolling_buf.clear();
+            return ExpectSignal::PasswordPrompt {
+                prompt_text,
+                attempt: self.password_attempts,
+            };
         }
 
         if let Some(reason) = Self::extract_connect_error(&clean, &lower) {
@@ -258,10 +254,40 @@ impl ExpectStateMachine {
         Some(cleaned)
     }
 
+    fn is_ssh_passphrase_prompt(line: &str) -> bool {
+        let trimmed = line.trim();
+        let lower = trimmed.to_lowercase();
+        lower.starts_with("enter passphrase for key") && lower.ends_with(':')
+    }
+
+    fn is_ssh_password_prompt(line: &str) -> bool {
+        let trimmed = line.trim();
+        let lower = trimmed.to_lowercase();
+        if !lower.ends_with("password:") {
+            return false;
+        }
+        // Standard OpenSSH: "user@host's password:" or "user@host’s password:"
+        if lower.contains("'s password:") || lower.contains("’s password:") {
+            return true;
+        }
+        // Direct password prompt: "password:" or "enter password:"
+        if lower == "password:" || lower == "enter password:" {
+            return true;
+        }
+        // Standard PAM or sudo: "[sudo] password for <user>:" or "password for <user>:"
+        if lower.contains("password for ") {
+            return true;
+        }
+        // Parenthesized user prompt: e.g. "(root) password:"
+        if lower.ends_with(") password:") {
+            return true;
+        }
+        false
+    }
+
     fn looks_like_shell_connected(raw: &str, clean: &str, lower: &str) -> bool {
         if raw.contains("\x1b[?2004h")
             || lower.contains("last login:")
-            || lower.contains("welcome to ")
             || lower.contains("microsoft windows [")
             || lower.contains("windows powershell")
             || lower.contains("(c) microsoft corporation")
@@ -392,5 +418,32 @@ mod tests {
         let win_sig = sm_win.feed(b"tienc@CHUNG C:\\Users\\tienc>");
         assert!(matches!(win_sig, ExpectSignal::Connected));
         assert_eq!(sm_win.phase(), &ExpectPhase::Passthrough);
+    }
+
+    #[test]
+    fn test_rejects_fake_password_banners_and_avoids_premature_passthrough() {
+        let mut sm = ExpectStateMachine::new();
+
+        // Pre-auth banner containing "password:" but not a real prompt
+        let fake_banner = sm.feed(
+            b"*** SECURITY WARNING ***\r\nUnauthorized access prohibited. Never share your password:\r\n",
+        );
+        assert!(matches!(fake_banner, ExpectSignal::None));
+        assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
+
+        // Pre-auth banner containing "Welcome to ..."
+        let welcome_banner = sm.feed(b"Welcome to Ubuntu 22.04 LTS (GNU/Linux 5.15.0-generic)\r\n");
+        assert!(matches!(welcome_banner, ExpectSignal::None));
+        assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
+
+        // Actual OpenSSH password prompt
+        let real_prompt = sm.feed(b"deploy@10.0.0.2's password: ");
+        match real_prompt {
+            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+                assert_eq!(prompt_text, "deploy@10.0.0.2's password:");
+                assert_eq!(attempt, 1);
+            }
+            other => panic!("expected PasswordPrompt, got {other:?}"),
+        }
     }
 }

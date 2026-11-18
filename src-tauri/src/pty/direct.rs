@@ -80,7 +80,11 @@ impl PtySessionManager {
                     id: "ssh".to_string(),
                     kind: "ssh".to_string(),
                     name: plan.cli_preview.clone(),
-                    executable: "ssh.exe".to_string(),
+                    executable: if cfg!(windows) {
+                        "ssh.exe".to_string()
+                    } else {
+                        "ssh".to_string()
+                    },
                     args: plan
                         .args
                         .iter()
@@ -243,7 +247,7 @@ impl PtySessionManager {
                                     &mut connect_failed_reason,
                                 );
                             }
-                            if tx.send(slice.to_vec()).is_err() {
+                            if tx.blocking_send(slice.to_vec()).is_err() {
                                 break;
                             }
                         }

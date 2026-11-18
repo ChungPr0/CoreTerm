@@ -28,16 +28,38 @@ pub(super) fn validate_host_fields(
     if alias.trim().is_empty() {
         return Err(CoreError::Validation("Alias cannot be empty".to_string()));
     }
-    if host.trim().is_empty() {
+    let trimmed_host = host.trim();
+    if trimmed_host.is_empty() {
         return Err(CoreError::Validation("Host/IP cannot be empty".to_string()));
+    }
+    if trimmed_host.starts_with('-') {
+        return Err(CoreError::Validation(format!(
+            "Host cannot start with a hyphen '-': '{trimmed_host}'"
+        )));
+    }
+    if trimmed_host.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(CoreError::Validation(format!(
+            "Host contains invalid whitespace or control characters: '{trimmed_host}'"
+        )));
     }
     if port == 0 {
         return Err(CoreError::Validation(
             "Port must be between 1 and 65535".to_string(),
         ));
     }
-    if username.trim().is_empty() {
+    let trimmed_user = username.trim();
+    if trimmed_user.is_empty() {
         return Err(CoreError::Validation("Username cannot be empty".to_string()));
+    }
+    if trimmed_user.starts_with('-') {
+        return Err(CoreError::Validation(format!(
+            "Username cannot start with a hyphen '-': '{trimmed_user}'"
+        )));
+    }
+    if trimmed_user.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(CoreError::Validation(format!(
+            "Username contains invalid whitespace or control characters: '{trimmed_user}'"
+        )));
     }
     if auth_method != "SSH_KEY" && auth_method != "PASSWORD" {
         return Err(CoreError::Validation(format!(

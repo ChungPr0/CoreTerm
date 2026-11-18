@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::core::error::{CoreError, CoreResult};
 
 const WIN_RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4",
+    "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6",
+    "LPT7", "LPT8", "LPT9", "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
 ];
 
 fn is_win_drive_seg(seg: &str) -> bool {
@@ -74,7 +75,7 @@ pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
         )));
     }
 
-    let stem = valid.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let stem = valid.split('.').next().unwrap_or("").to_uppercase();
     if WIN_RESERVED.contains(&stem.as_str()) {
         return Err(CoreError::Validation(format!(
             "Filename uses a reserved Windows device name: '{name}'"
@@ -171,6 +172,12 @@ mod tests {
         assert!(safe_join_windows_relative(base, &["CON.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &[" CON.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["nul".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["clock$.txt".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["conin$.dat".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["conout$".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["COM¹".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["com¹.log".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["lpt²".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["bad:name".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["trailing.".into()]).is_err());
 

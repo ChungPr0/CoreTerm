@@ -101,9 +101,39 @@ pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
         Ok(())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(path, perms)?;
+        Ok(())
+    }
+
+    #[cfg(all(not(windows), not(unix)))]
     {
         let _ = path;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_restrict_private_key_acl() {
+        let dir = tempdir().expect("tempdir");
+        let key_file = dir.path().join("test_id_ed25519");
+        std::fs::write(&key_file, b"dummy private key").expect("write");
+        let res = restrict_private_key_acl(&key_file);
+        assert!(res.is_ok());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(&key_file).expect("metadata");
+            assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        }
     }
 }

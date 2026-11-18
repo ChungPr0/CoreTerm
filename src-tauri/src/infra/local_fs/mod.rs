@@ -185,9 +185,171 @@ pub fn rename_entry(old_path: &str, new_name: &str) -> CoreResult<String> {
     Ok(clean_display_path(&dest))
 }
 
+fn is_root_or_drive_root(path: &Path) -> bool {
+    if path.parent().is_none() {
+        return true;
+    }
+    !path
+        .components()
+        .any(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
+fn path_components_match_or_sub(target: &Path, protected: &Path) -> bool {
+    let target_comps: Vec<_> = target
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    let prot_comps: Vec<_> = protected
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+
+    if target_comps.len() < prot_comps.len() || prot_comps.is_empty() {
+        return false;
+    }
+
+    target_comps[..prot_comps.len()] == prot_comps[..]
+}
+
+fn path_components_equal(target: &Path, other: &Path) -> bool {
+    let target_comps: Vec<_> = target
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    let other_comps: Vec<_> = other
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    target_comps == other_comps
+}
+
+pub fn validate_delete_path(path: &Path) -> CoreResult<()> {
+    if path.as_os_str().is_empty() {
+        return Err(CoreError::Validation("Path to delete cannot be empty".to_string()));
+    }
+
+    if is_root_or_drive_root(path) {
+        return Err(CoreError::Validation(format!(
+            "Deleting drive or root path is strictly prohibited: '{}'",
+            clean_display_path(path)
+        )));
+    }
+
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+    if is_root_or_drive_root(&target) {
+        return Err(CoreError::Validation(format!(
+            "Deleting drive or root path is strictly prohibited: '{}'",
+            clean_display_path(path)
+        )));
+    }
+
+    #[cfg(windows)]
+    {
+        let mut protected_dirs: Vec<PathBuf> = Vec::new();
+        for env_var in &["WINDIR", "SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"] {
+            if let Ok(val) = std::env::var(env_var) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    let pb = PathBuf::from(trimmed);
+                    let canon = fs::canonicalize(&pb).unwrap_or(pb);
+                    protected_dirs.push(canon);
+                }
+            }
+        }
+
+        for prot in &protected_dirs {
+            if path_components_match_or_sub(&target, prot) {
+                return Err(CoreError::Validation(format!(
+                    "Deleting protected system path is prohibited: '{}'",
+                    clean_display_path(path)
+                )));
+            }
+        }
+
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            let trimmed = profile.trim();
+            if !trimmed.is_empty() {
+                let prof_path = PathBuf::from(trimmed);
+                let canon_prof = fs::canonicalize(&prof_path).unwrap_or(prof_path);
+                if path_components_equal(&target, &canon_prof) {
+                    return Err(CoreError::Validation(
+                        "Deleting the user profile root directory is strictly prohibited".to_string(),
+                    ));
+                }
+                if let Some(prof_parent) = canon_prof.parent() {
+                    if path_components_equal(&target, prof_parent) {
+                        return Err(CoreError::Validation(format!(
+                            "Deleting protected system path is prohibited: '{}'",
+                            clean_display_path(path)
+                        )));
+                    }
+                }
+            }
+        }
+
+        for env_var in &["APPDATA", "LOCALAPPDATA"] {
+            if let Ok(val) = std::env::var(env_var) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    let app_dir = PathBuf::from(trimmed).join("CoreTerm");
+                    let canon_app = fs::canonicalize(&app_dir).unwrap_or(app_dir);
+                    if path_components_match_or_sub(&target, &canon_app) {
+                        return Err(CoreError::Validation(format!(
+                            "Deleting application data directory is prohibited: '{}'",
+                            clean_display_path(path)
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let unix_system_roots = [
+            "/etc", "/bin", "/sbin", "/usr", "/lib", "/lib32", "/lib64", "/var", "/boot",
+            "/dev", "/proc", "/sys", "/opt", "/root",
+        ];
+        for root in &unix_system_roots {
+            let pb = PathBuf::from(root);
+            let canon = fs::canonicalize(&pb).unwrap_or(pb);
+            if path_components_match_or_sub(&target, &canon) {
+                return Err(CoreError::Validation(format!(
+                    "Deleting protected system path is prohibited: '{}'",
+                    clean_display_path(path)
+                )));
+            }
+        }
+
+        if let Ok(home) = std::env::var("HOME") {
+            let trimmed = home.trim();
+            if !trimmed.is_empty() {
+                let home_path = PathBuf::from(trimmed);
+                let canon_home = fs::canonicalize(&home_path).unwrap_or(home_path);
+                if path_components_equal(&target, &canon_home) {
+                    return Err(CoreError::Validation(
+                        "Deleting the user profile root directory is strictly prohibited".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn delete_entries(paths: &[String]) -> CoreResult<()> {
     for raw in paths {
-        let p = Path::new(raw.trim());
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(CoreError::Validation(
+                "Path to delete cannot be empty".to_string(),
+            ));
+        }
+        let p = Path::new(trimmed);
+        validate_delete_path(p)?;
+
         let meta = fs::symlink_metadata(p)?;
         if meta.file_type().is_symlink() {
             // Unlink the symlink only; remove_dir handles Windows junctions.
@@ -221,5 +383,34 @@ mod tests {
 
         let conflict = rename_entry(&renamed, "other.txt");
         assert!(conflict.is_err());
+    }
+
+    #[test]
+    fn test_validate_delete_path_blocks_roots_and_system_dirs() {
+        assert!(validate_delete_path(Path::new("")).is_err());
+        #[cfg(windows)]
+        {
+            assert!(validate_delete_path(Path::new("C:\\")).is_err());
+            assert!(validate_delete_path(Path::new("c:/")).is_err());
+            if let Ok(windir) = std::env::var("WINDIR") {
+                assert!(validate_delete_path(Path::new(&windir)).is_err());
+                assert!(validate_delete_path(&Path::new(&windir).join("System32")).is_err());
+            }
+            if let Ok(profile) = std::env::var("USERPROFILE") {
+                assert!(validate_delete_path(Path::new(&profile)).is_err());
+                if let Some(parent) = Path::new(&profile).parent() {
+                    assert!(validate_delete_path(parent).is_err());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_delete_entries_allows_safe_files_in_tempdir() {
+        let dir = tempdir().expect("tempdir");
+        let a = dir.path().join("safe_delete_file.txt");
+        fs::write(&a, b"delete me").unwrap();
+        assert!(delete_entries(&[a.to_string_lossy().to_string()]).is_ok());
+        assert!(!a.exists());
     }
 }

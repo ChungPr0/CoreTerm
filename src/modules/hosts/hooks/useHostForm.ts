@@ -203,12 +203,16 @@ export function useHostForm({
         scrollAndFocusInput(aliasInputRef.current);
         break;
       case "errors.host_host_empty":
+      case "errors.host_host_invalid_hyphen":
+      case "errors.host_host_invalid_chars":
         scrollAndFocusInput(hostInputRef.current);
         break;
       case "errors.host_port_range":
         scrollAndFocusInput(portInputRef.current);
         break;
       case "errors.host_username_empty":
+      case "errors.host_username_invalid_hyphen":
+      case "errors.host_username_invalid_chars":
         scrollAndFocusInput(usernameInputRef.current);
         break;
       case "errors.key_binding_required":
@@ -238,9 +242,17 @@ export function useHostForm({
     } catch (err) {
       const errMsg = formatLocalizedError(err, t);
       if (errMsg === t("errors.host_alias_empty")) scrollAndFocusInput(aliasInputRef.current);
-      else if (errMsg === t("errors.host_host_empty")) scrollAndFocusInput(hostInputRef.current);
+      else if (
+        errMsg === t("errors.host_host_empty") ||
+        errMsg === t("errors.host_host_invalid_hyphen") ||
+        errMsg === t("errors.host_host_invalid_chars")
+      ) scrollAndFocusInput(hostInputRef.current);
       else if (errMsg === t("errors.host_port_range")) scrollAndFocusInput(portInputRef.current);
-      else if (errMsg === t("errors.host_username_empty")) scrollAndFocusInput(usernameInputRef.current);
+      else if (
+        errMsg === t("errors.host_username_empty") ||
+        errMsg === t("errors.host_username_invalid_hyphen") ||
+        errMsg === t("errors.host_username_invalid_chars")
+      ) scrollAndFocusInput(usernameInputRef.current);
       else if (errMsg === t("errors.key_binding_required")) scrollAndFocusInput(keyPathInputRef.current);
       else if (errMsg === t("errors.host_password_empty")) scrollAndFocusInput(passwordInputRef.current);
       alert.error(errMsg);

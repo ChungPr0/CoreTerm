@@ -73,13 +73,15 @@ pub(super) fn emit_host_key_prompt(app: &AppHandle, payload: SessionHostKeyPromp
     let _ = app.emit("session:host_key_prompt", payload);
 }
 
+pub(super) const PTY_BATCHER_CHANNEL_CAPACITY: usize = 256;
+
 pub(super) fn spawn_output_batcher(
     on_output: Channel<Vec<u8>>,
 ) -> (
-    tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    tokio::sync::mpsc::Sender<Vec<u8>>,
     tauri::async_runtime::JoinHandle<()>,
 ) {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(PTY_BATCHER_CHANNEL_CAPACITY);
     let handle = tauri::async_runtime::spawn(async move {
         let mut batch_buf: Vec<u8> = Vec::with_capacity(MAX_BATCH_SIZE);
         loop {

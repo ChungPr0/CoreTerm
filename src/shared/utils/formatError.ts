@@ -57,8 +57,24 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   },
   { pattern: /^Alias cannot be empty$/i, key: "errors.host_alias_empty" },
   { pattern: /^Host(?:\/IP)? cannot be empty$/i, key: "errors.host_host_empty" },
+  {
+    pattern: /^Host cannot start with a hyphen '-':\s*'(.+?)'$/i,
+    key: "errors.host_host_invalid_hyphen",
+  },
+  {
+    pattern: /^Host contains invalid whitespace or control characters:\s*'(.+?)'$/i,
+    key: "errors.host_host_invalid_chars",
+  },
   { pattern: /^Port must be between 1 and 65535$/i, key: "errors.host_port_range" },
   { pattern: /^Username cannot be empty$/i, key: "errors.host_username_empty" },
+  {
+    pattern: /^Username cannot start with a hyphen '-':\s*'(.+?)'$/i,
+    key: "errors.host_username_invalid_hyphen",
+  },
+  {
+    pattern: /^Username contains invalid whitespace or control characters:\s*'(.+?)'$/i,
+    key: "errors.host_username_invalid_chars",
+  },
   {
     pattern: /^(?:Invalid auth_method '(.+?)'|Unsupported auth_method:\s*(.+))$/i,
     key: "errors.host_invalid_auth",
@@ -68,6 +84,37 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   { pattern: /^Host profile not found:\s*(.+)$/i, key: "errors.host_not_found", params: (m) => ({ id: m[1] }) },
   { pattern: /^Port forward rule not found:\s*(.+)$/i, key: "errors.port_forward_not_found", params: (m) => ({ id: m[1] }) },
   { pattern: /UAC_CANCELLED/i, key: "errors.session_uac_cancelled" },
+  {
+    pattern: /^Executable '(.+?)' is not an authorized interactive shell for elevated execution$/i,
+    key: "errors.session_shell_unauthorized",
+    params: (m) => ({ exe: m[1] }),
+  },
+  {
+    pattern: /^Argument '(.+?)' is not permitted for elevated \w+ shell \(non-interactive execution blocked\)$/i,
+    key: "errors.session_shell_arg_disallowed",
+    params: (m) => ({ arg: m[1] }),
+  },
+  { pattern: /^Elevated shell executable cannot be empty$/i, key: "errors.session_shell_exe_empty" },
+  { pattern: /^Path to delete cannot be empty$/i, key: "errors.local_delete_empty" },
+  {
+    pattern: /^Deleting drive or root path is strictly prohibited:\s*'(.+?)'$/i,
+    key: "errors.local_delete_root",
+    params: (m) => ({ path: m[1] }),
+  },
+  {
+    pattern: /^Deleting protected system path is prohibited:\s*'(.+?)'$/i,
+    key: "errors.local_delete_protected",
+    params: (m) => ({ path: m[1] }),
+  },
+  {
+    pattern: /^Deleting the user profile root directory is strictly prohibited$/i,
+    key: "errors.local_delete_user_root",
+  },
+  {
+    pattern: /^Deleting application data directory is prohibited:\s*'(.+?)'$/i,
+    key: "errors.local_delete_app_data",
+    params: (m) => ({ path: m[1] }),
+  },
   { pattern: /^Group name cannot be empty$/i, key: "errors.group_name_empty" },
   {
     pattern: /^Group name cannot exceed (\d+) characters$/i,

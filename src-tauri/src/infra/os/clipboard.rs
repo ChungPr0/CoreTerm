@@ -11,7 +11,9 @@ use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
 };
 #[cfg(windows)]
-use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows_sys::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
 
 #[cfg(windows)]
 fn open_clipboard_with_retry() -> Result<(), String> {
@@ -40,8 +42,10 @@ pub fn read_text() -> Result<String, String> {
                 if ptr.is_null() {
                     Ok(String::new())
                 } else {
+                    let total_bytes = GlobalSize(handle as HGLOBAL);
+                    let max_units = total_bytes / std::mem::size_of::<u16>();
                     let mut len = 0usize;
-                    while *ptr.add(len) != 0 {
+                    while len < max_units && *ptr.add(len) != 0 {
                         len += 1;
                     }
                     let slice = std::slice::from_raw_parts(ptr, len);
@@ -104,5 +108,21 @@ pub fn write_text(text: &str) -> Result<(), String> {
     {
         let _ = text;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn test_clipboard_read_write_roundtrip() {
+        let test_val = "CoreTerm_SEC_06_Test_Clipboard";
+        if write_text(test_val).is_ok() {
+            if let Ok(read) = read_text() {
+                assert_eq!(read, test_val);
+            }
+        }
     }
 }

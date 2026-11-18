@@ -165,6 +165,9 @@ impl PtySessionManager {
         // When parent app is unelevated and user asks for an Admin terminal tab, use UAC helper bridge.
         if is_admin && !app_elevated {
             let profile = local_profile.unwrap_or_else(default_shell_profile);
+            #[cfg(windows)]
+            crate::infra::os::elevated_pty::validate_elevated_shell(&profile.executable, &profile.args)
+                .map_err(CoreError::Validation)?;
             return self.connect_elevated_local(app, req, &profile, on_output);
         }
 

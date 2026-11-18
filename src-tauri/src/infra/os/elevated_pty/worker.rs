@@ -176,6 +176,11 @@ mod win_worker {
             }
         };
 
+        if let Err(e) = crate::infra::os::elevated_pty::validate_elevated_shell(&target_exe, &shell_args) {
+            send_error(&e);
+            return 77;
+        }
+
         let pair = match native_pty_system().openpty(PtySize {
             rows: rows.max(MIN_PTY_ROWS),
             cols: cols.max(MIN_PTY_COLS),

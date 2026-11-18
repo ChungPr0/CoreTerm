@@ -91,7 +91,13 @@ pub fn remove_host_from_known_hosts(host: &str, port: u16) {
         return;
     }
 
-    let mut cmd1 = Command::new("ssh-keygen.exe");
+    let ssh_keygen_bin = if cfg!(windows) {
+        "ssh-keygen.exe"
+    } else {
+        "ssh-keygen"
+    };
+
+    let mut cmd1 = Command::new(ssh_keygen_bin);
     cmd1.args(["-R", trimmed]);
     #[cfg(windows)]
     cmd1.creation_flags(CREATE_NO_WINDOW);
@@ -99,7 +105,7 @@ pub fn remove_host_from_known_hosts(host: &str, port: u16) {
 
     if port != 22 {
         let bracketed = format!("[{trimmed}]:{port}");
-        let mut cmd2 = Command::new("ssh-keygen.exe");
+        let mut cmd2 = Command::new(ssh_keygen_bin);
         cmd2.args(["-R", &bracketed]);
         #[cfg(windows)]
         cmd2.creation_flags(CREATE_NO_WINDOW);

@@ -93,7 +93,7 @@ impl PtySessionManager {
                         match pipe_reader.read_next_frame() {
                             Ok(None) => break,
                             Ok(Some((elevated_pty::FRAME_DATA, payload))) => {
-                                if tx.send(payload).is_err() {
+                                if tx.blocking_send(payload).is_err() {
                                     break;
                                 }
                             }

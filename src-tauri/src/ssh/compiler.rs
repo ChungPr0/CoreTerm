@@ -125,11 +125,13 @@ impl SshCommandCompiler {
 
         if let Some(cmd) = startup_cmd {
             args.push(OsString::from("-t"));
+            args.push(OsString::from("--"));
             args.push(OsString::from(host));
             args.push(OsString::from(format!(
                 "{cmd}; exec ${{SHELL:-/bin/sh}} -l"
             )));
         } else {
+            args.push(OsString::from("--"));
             args.push(OsString::from(host));
         }
 
@@ -138,7 +140,8 @@ impl SshCommandCompiler {
 
     pub fn format_cli_preview(args: &[OsString]) -> String {
         let mut parts = Vec::with_capacity(args.len() + 1);
-        parts.push("ssh.exe".to_string());
+        let ssh_bin = if cfg!(windows) { "ssh.exe" } else { "ssh" };
+        parts.push(ssh_bin.to_string());
         for raw in args {
             let s = raw.to_string_lossy();
             if s.contains([' ', ';', '$']) {
@@ -217,6 +220,7 @@ mod tests {
                 "ServerAliveCountMax=3",
                 "-o",
                 "StrictHostKeyChecking=accept-new",
+                "--",
                 "203.0.113.10",
             ]
         );
@@ -256,6 +260,7 @@ mod tests {
                 "ServerAliveCountMax=3",
                 "-o",
                 "StrictHostKeyChecking=accept-new",
+                "--",
                 "203.0.113.10",
             ]
         );
@@ -354,6 +359,7 @@ mod tests {
         assert!(!tab2_args.contains(&"-L".to_string()));
         assert!(!tab2_args.contains(&"-D".to_string()));
         assert!(tab2_args.contains(&"-R".to_string()));
+        assert!(tab2_args.contains(&"--".to_string()));
     }
 
     #[test]
@@ -364,9 +370,38 @@ mod tests {
             OsString::from("my key path"),
             OsString::from("echo $HOME; sh"),
         ];
+        let expected_bin = if cfg!(windows) { "ssh.exe" } else { "ssh" };
         assert_eq!(
             SshCommandCompiler::format_cli_preview(&args),
-            "ssh.exe -p 22 \"my key path\" \"echo $HOME; sh\""
+            format!("{expected_bin} -p 22 \"my key path\" \"echo $HOME; sh\"")
         );
+    }
+
+    #[test]
+    fn test_compiler_rejects_injected_host_and_user_flags() {
+        let mut cfg = sample_base_config();
+
+        // Host starting with '-'
+        cfg.host = "-oProxyCommand=calc.exe".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        cfg.host = "-F/etc/passwd".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Host containing whitespace or newline
+        cfg.host = "server.local ; whoami".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        cfg.host = "server.local\nwhoami".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Username starting with '-'
+        cfg.host = "192.168.1.1".to_string();
+        cfg.username = "-oProxyCommand=calc.exe".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Username containing whitespace
+        cfg.username = "user name".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
     }
 }

@@ -129,7 +129,7 @@ impl PtySessionManager {
                                             }
                                         }
                                         PrewarmSink::Streaming(tx) => {
-                                            if tx.send(slice.to_vec()).is_err() {
+                                            if tx.blocking_send(slice.to_vec()).is_err() {
                                                 break;
                                             }
                                         }
@@ -233,7 +233,7 @@ impl PtySessionManager {
         emit_status(app, &req.tab_id, "local", "ONLINE", vec![], None);
 
         if !buffered.is_empty() {
-            let _ = tx.send(buffered);
+            let _ = tx.blocking_send(buffered);
         }
 
         let target_cols = req.cols.max(MIN_PTY_COLS);

@@ -101,4 +101,24 @@ describe("hostFormHelpers", () => {
     fields.password = "new-secret";
     expect(validateAndBuildHostPayload(fields, false).ok).toBe(true);
   });
+
+  it("rejects host and username starting with hyphen or containing whitespace/control chars", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    expect(validateAndBuildHostPayload({ ...fields, host: "-oProxyCommand=calc" })).toEqual({
+      ok: false,
+      errorKey: "errors.host_host_invalid_hyphen",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, host: "host with space" })).toEqual({
+      ok: false,
+      errorKey: "errors.host_host_invalid_chars",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, username: "-F/evil/config" })).toEqual({
+      ok: false,
+      errorKey: "errors.host_username_invalid_hyphen",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, username: "user with space" })).toEqual({
+      ok: false,
+      errorKey: "errors.host_username_invalid_chars",
+    });
+  });
 });

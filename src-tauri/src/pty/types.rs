@@ -19,7 +19,7 @@ pub(super) const PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
 
 pub(super) enum PrewarmSink {
     Buffering(Vec<u8>),
-    Streaming(tokio::sync::mpsc::UnboundedSender<Vec<u8>>),
+    Streaming(tokio::sync::mpsc::Sender<Vec<u8>>),
     Closed,
 }
 

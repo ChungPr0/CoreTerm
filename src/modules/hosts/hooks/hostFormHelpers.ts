@@ -115,10 +115,18 @@ export function validateAndBuildHostPayload(
 
   if (!cleanAlias) return { ok: false, errorKey: "errors.host_alias_empty" };
   if (!cleanHost) return { ok: false, errorKey: "errors.host_host_empty" };
+  if (cleanHost.startsWith("-")) return { ok: false, errorKey: "errors.host_host_invalid_hyphen" };
+  if (/\s/.test(cleanHost) || /[\x00-\x1F\x7F]/.test(cleanHost)) {
+    return { ok: false, errorKey: "errors.host_host_invalid_chars" };
+  }
   if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
     return { ok: false, errorKey: "errors.host_port_range" };
   }
   if (!cleanUsername) return { ok: false, errorKey: "errors.host_username_empty" };
+  if (cleanUsername.startsWith("-")) return { ok: false, errorKey: "errors.host_username_invalid_hyphen" };
+  if (/\s/.test(cleanUsername) || /[\x00-\x1F\x7F]/.test(cleanUsername)) {
+    return { ok: false, errorKey: "errors.host_username_invalid_chars" };
+  }
   if (
     fields.authMethod === "SSH_KEY" &&
     !fields.selectedKeyId &&
