@@ -104,7 +104,10 @@ export type HostPayloadResult =
   | { ok: true; payload: CreateHostRequestDto }
   | { ok: false; errorKey: string };
 
-export function validateAndBuildHostPayload(fields: HostFormFields): HostPayloadResult {
+export function validateAndBuildHostPayload(
+  fields: HostFormFields,
+  hasSavedPassword = false
+): HostPayloadResult {
   const cleanAlias = fields.alias.trim();
   const cleanHost = fields.host.trim();
   const cleanUsername = fields.username.trim();
@@ -122,6 +125,14 @@ export function validateAndBuildHostPayload(fields: HostFormFields): HostPayload
     !fields.privateKeyPath.trim()
   ) {
     return { ok: false, errorKey: "errors.key_binding_required" };
+  }
+  if (
+    fields.authMethod === "PASSWORD" &&
+    fields.passwordMode === "SAVED" &&
+    !hasSavedPassword &&
+    !fields.password
+  ) {
+    return { ok: false, errorKey: "errors.host_password_empty" };
   }
 
   return {

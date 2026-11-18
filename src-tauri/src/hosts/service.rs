@@ -63,7 +63,7 @@ impl HostService {
             req.password_mode.as_deref(),
             req.password.as_deref(),
             None,
-        );
+        )?;
 
         let tags_json = serde_json::to_string(&req.tags).unwrap_or_else(|_| "[]".to_string());
         let db_res: CoreResult<()> = (|| {
@@ -123,7 +123,7 @@ impl HostService {
             req.password_mode.as_deref(),
             req.password.as_deref(),
             old_secret_ref,
-        );
+        )?;
 
         let tags_json = serde_json::to_string(&req.tags).unwrap_or_else(|_| "[]".to_string());
         let db_res: CoreResult<()> = (|| {

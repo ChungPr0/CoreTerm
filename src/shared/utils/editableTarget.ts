@@ -23,3 +23,9 @@ export function getEditableInput(
   }
   return null;
 }
+
+export function scrollAndFocusInput(element: HTMLElement | null): void {
+  if (!element) return;
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  element.focus({ preventScroll: true });
+}

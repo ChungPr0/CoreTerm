@@ -48,6 +48,7 @@ describe("formatError utils", () => {
       ["Validation error: Host/IP cannot be empty", "Host", "Host"],
       ["Cannot delete Default group", "nhóm Default", "Default"],
       ["PTY error: UAC_CANCELLED", "Administrator", "Administrator"],
+      ["Validation error: Password is required", "Mật khẩu", "Password"],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {

@@ -5,6 +5,7 @@ import { keysApi, type SshKeyDto } from "@/modules/keys";
 import { useI18n } from "@/shared/i18n";
 import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import {
   createHostFormFields,
   validateAndBuildHostPayload,
@@ -38,6 +39,12 @@ export function useHostForm({
   const [savedKeys, setSavedKeys] = useState<SshKeyDto[]>([]);
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const aliasInputRef = useRef<HTMLInputElement>(null);
+  const hostInputRef = useRef<HTMLInputElement>(null);
+  const portInputRef = useRef<HTMLInputElement>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const keyPathInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const prevKeysVersionRef = useRef(keysVersion);
   const authStateRef = useRef({
@@ -190,10 +197,36 @@ export function useHostForm({
     setPendingDeleteRuleIdx(null);
   }, [pendingDeleteRuleIdx]);
 
+  const focusFieldForError = (errorKey: string) => {
+    switch (errorKey) {
+      case "errors.host_alias_empty":
+        scrollAndFocusInput(aliasInputRef.current);
+        break;
+      case "errors.host_host_empty":
+        scrollAndFocusInput(hostInputRef.current);
+        break;
+      case "errors.host_port_range":
+        scrollAndFocusInput(portInputRef.current);
+        break;
+      case "errors.host_username_empty":
+        scrollAndFocusInput(usernameInputRef.current);
+        break;
+      case "errors.key_binding_required":
+        scrollAndFocusInput(keyPathInputRef.current);
+        break;
+      case "errors.host_password_empty":
+        scrollAndFocusInput(passwordInputRef.current);
+        break;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = validateAndBuildHostPayload(fields);
-    if (!res.ok) return void alert.error(t(res.errorKey));
+    const res = validateAndBuildHostPayload(fields, Boolean(editingHost?.has_saved_password));
+    if (!res.ok) {
+      focusFieldForError(res.errorKey);
+      return void alert.error(t(res.errorKey));
+    }
 
     setIsSaving(true);
     try {
@@ -203,7 +236,14 @@ export function useHostForm({
       onSaved(savedHost);
       onClose();
     } catch (err) {
-      alert.error(formatLocalizedError(err, t));
+      const errMsg = formatLocalizedError(err, t);
+      if (errMsg === t("errors.host_alias_empty")) scrollAndFocusInput(aliasInputRef.current);
+      else if (errMsg === t("errors.host_host_empty")) scrollAndFocusInput(hostInputRef.current);
+      else if (errMsg === t("errors.host_port_range")) scrollAndFocusInput(portInputRef.current);
+      else if (errMsg === t("errors.host_username_empty")) scrollAndFocusInput(usernameInputRef.current);
+      else if (errMsg === t("errors.key_binding_required")) scrollAndFocusInput(keyPathInputRef.current);
+      else if (errMsg === t("errors.host_password_empty")) scrollAndFocusInput(passwordInputRef.current);
+      alert.error(errMsg);
     } finally {
       setIsSaving(false);
     }
@@ -212,6 +252,12 @@ export function useHostForm({
   return {
     ...fields,
     ...setters,
+    aliasInputRef,
+    hostInputRef,
+    portInputRef,
+    usernameInputRef,
+    keyPathInputRef,
+    passwordInputRef,
     pendingRule:
       pendingDeleteRuleIdx !== null ? fields.forwards[pendingDeleteRuleIdx] : undefined,
     setPendingDeleteRuleIdx,

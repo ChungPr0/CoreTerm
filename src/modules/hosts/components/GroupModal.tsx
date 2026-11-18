@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { FolderPlus, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import { ModalShell, useAlert } from "@/shared/ui";
 
 interface GroupModalProps {
@@ -37,17 +38,27 @@ export const GroupModal: React.FC<GroupModalProps> = ({
     e.preventDefault();
     if (isSubmitting) return;
     const trimmed = name.trim();
-    if (!trimmed) return void alert.error(t("group.name_required"));
-    if (trimmed.length > MAX_GROUP_NAME_LEN) return void alert.error(t("group.name_too_long"));
+    if (!trimmed) {
+      scrollAndFocusInput(inputRef.current);
+      return void alert.error(t("group.name_required"));
+    }
+    if (trimmed.length > MAX_GROUP_NAME_LEN) {
+      scrollAndFocusInput(inputRef.current);
+      return void alert.error(t("group.name_too_long"));
+    }
 
     const duplicate = existingGroups.some(
       (g) => g.trim().toLowerCase() === trimmed.toLowerCase()
     );
-    if (duplicate) return void alert.error(t("group.name_duplicate"));
+    if (duplicate) {
+      scrollAndFocusInput(inputRef.current);
+      return void alert.error(t("group.name_duplicate"));
+    }
 
     try {
       await onCreateGroup(trimmed);
     } catch (err) {
+      scrollAndFocusInput(inputRef.current);
       alert.error(formatLocalizedError(err, t));
     }
   };

@@ -11,6 +11,8 @@ interface HostAuthSectionProps {
   onPasswordModeChange: (mode: PasswordMode) => void;
   password: string;
   onPasswordChange: (val: string) => void;
+  passwordInputRef?: React.RefObject<HTMLInputElement>;
+  keyPathInputRef?: React.RefObject<HTMLInputElement>;
   hasSavedPassword?: boolean;
   savedKeys: SshKeyDto[];
   selectedKeyId: string;
@@ -31,6 +33,8 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
   onPasswordModeChange,
   password,
   onPasswordChange,
+  passwordInputRef,
+  keyPathInputRef,
   hasSavedPassword,
   savedKeys,
   selectedKeyId,
@@ -44,13 +48,14 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
   onReconnectIntervalSecChange,
 }) => {
   const { t } = useI18n();
-  const keyPathInputRef = useRef<HTMLInputElement>(null);
+  const localKeyPathRef = useRef<HTMLInputElement>(null);
+  const effectiveKeyPathRef = keyPathInputRef || localKeyPathRef;
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSelectKey = (keyId: string) => {
     onSelectSavedKey(keyId);
     if (!keyId) {
-      setTimeout(() => keyPathInputRef.current?.focus(), 0);
+      setTimeout(() => effectiveKeyPathRef.current?.focus(), 0);
     }
   };
 
@@ -111,6 +116,7 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
             </label>
             <div className="relative">
               <input
+                ref={passwordInputRef}
                 type={showPassword ? "text" : "password"}
                 value={password}
                 disabled={passwordMode !== "SAVED"}
@@ -211,7 +217,7 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
               {t("host.key_path")} *
             </label>
             <input
-              ref={keyPathInputRef}
+              ref={effectiveKeyPathRef}
               type="text"
               value={
                 selectedKeyId === ""

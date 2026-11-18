@@ -250,7 +250,7 @@ impl ExpectStateMachine {
             matched_line
         };
         let trimmed = line.trim();
-        let cleaned = if let Some(rest) = trimmed.to_ascii_lowercase().strip_prefix("banner exchange:") {
+        let cleaned = if let Some(_rest) = trimmed.to_ascii_lowercase().strip_prefix("banner exchange:") {
             trimmed["banner exchange:".len()..].trim().to_string()
         } else {
             trimmed.to_string()

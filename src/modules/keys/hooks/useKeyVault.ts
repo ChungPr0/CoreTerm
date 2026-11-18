@@ -4,6 +4,7 @@ import { keysApi } from "../api/keysApi";
 import { useI18n } from "@/shared/i18n";
 import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 
 export const MAX_KEY_NAME_LEN = 64;
 
@@ -43,6 +44,8 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const sourcePathInputRef = useRef<HTMLInputElement>(null);
   const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -78,19 +81,34 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName) return void alert.error(t("vault.name_required"));
-    if (trimmedName.length > MAX_KEY_NAME_LEN) return void alert.error(t("vault.name_too_long"));
+    if (!trimmedName) {
+      scrollAndFocusInput(nameInputRef.current);
+      return void alert.error(t("vault.name_required"));
+    }
+    if (trimmedName.length > MAX_KEY_NAME_LEN) {
+      scrollAndFocusInput(nameInputRef.current);
+      return void alert.error(t("vault.name_too_long"));
+    }
 
     const dupName = keys.some((k) => k.name.trim().toLowerCase() === trimmedName.toLowerCase());
-    if (dupName) return void alert.error(t("vault.name_duplicate"));
+    if (dupName) {
+      scrollAndFocusInput(nameInputRef.current);
+      return void alert.error(t("vault.name_duplicate"));
+    }
 
     const cleanSourcePath = normalizePathInput(sourcePath);
     if (mode === "import") {
-      if (!cleanSourcePath) return void alert.error(t("vault.path_required"));
+      if (!cleanSourcePath) {
+        scrollAndFocusInput(sourcePathInputRef.current);
+        return void alert.error(t("vault.path_required"));
+      }
       const dupPath = keys.find(
         (k) => k.private_key_path.trim().toLowerCase() === cleanSourcePath.toLowerCase()
       );
-      if (dupPath) return void alert.error(`${t("vault.path_duplicate")} (${dupPath.name})`);
+      if (dupPath) {
+        scrollAndFocusInput(sourcePathInputRef.current);
+        return void alert.error(`${t("vault.path_duplicate")} (${dupPath.name})`);
+      }
     }
 
     setLoading(true);
@@ -119,6 +137,7 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
       await loadKeys();
       onKeysChanged();
     } catch (err) {
+      scrollAndFocusInput(nameInputRef.current);
       alert.error(formatLocalizedError(err, t));
     } finally {
       setLoading(false);
@@ -168,6 +187,8 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
     setMode,
     name,
     setName,
+    nameInputRef,
+    sourcePathInputRef,
     keyType,
     setKeyType,
     comment,

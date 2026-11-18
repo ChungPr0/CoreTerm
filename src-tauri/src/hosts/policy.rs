@@ -107,38 +107,41 @@ pub(super) fn plan_password_binding(
     password_mode: Option<&str>,
     password: Option<&str>,
     existing_secret_ref: Option<String>,
-) -> (String, Option<String>, PendingVaultOp) {
+) -> CoreResult<(String, Option<String>, PendingVaultOp)> {
     if auth_method != "PASSWORD" {
-        return (
+        return Ok((
             "NONE".to_string(),
             None,
             existing_secret_ref
                 .map(PendingVaultOp::Delete)
                 .unwrap_or(PendingVaultOp::None),
-        );
+        ));
     }
     let mode = password_mode.unwrap_or("PROMPT_EVERY_TIME");
     if mode == "SAVED" {
         if let Some(pw) = password.filter(|p| !p.is_empty()) {
             let ref_id = SecretVault::host_password_ref(host_id);
-            return (
+            return Ok((
                 "SAVED".to_string(),
                 Some(ref_id.clone()),
                 PendingVaultOp::Store {
                     ref_id,
                     secret: Zeroizing::new(pw.to_string()),
                 },
-            );
+            ));
         }
         if existing_secret_ref.is_some() {
-            return ("SAVED".to_string(), existing_secret_ref, PendingVaultOp::None);
+            return Ok(("SAVED".to_string(), existing_secret_ref, PendingVaultOp::None));
         }
+        return Err(CoreError::Validation(
+            "Password is required".to_string(),
+        ));
     } else if let Some(old_ref) = existing_secret_ref {
-        return (
+        return Ok((
             "PROMPT_EVERY_TIME".to_string(),
             None,
             PendingVaultOp::Delete(old_ref),
-        );
+        ));
     }
-    ("PROMPT_EVERY_TIME".to_string(), None, PendingVaultOp::None)
+    Ok(("PROMPT_EVERY_TIME".to_string(), None, PendingVaultOp::None))
 }

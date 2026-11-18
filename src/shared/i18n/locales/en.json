@@ -366,6 +366,7 @@
     "key_import_failed": "Failed to import SSH key: {{detail}}",
     "key_binding_required": "SSH Key authentication requires selecting a key or providing a Key Path.",
     "host_alias_empty": "Connection name cannot be empty.",
+    "host_password_empty": "Password cannot be empty.",
     "host_host_empty": "Host / IP address cannot be empty.",
     "host_port_range": "Port must be between 1 and 65535.",
     "host_username_empty": "Username cannot be empty.",

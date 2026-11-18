@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Network, Plus, Trash2 } from "lucide-react";
 import type { ForwardType } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { useAlert } from "@/shared/ui";
+import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import type { DraftPortForward } from "./hostFormTypes";
 
 interface HostPortForwardSectionProps {
@@ -28,23 +29,30 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
   const [newPfTargetHost, setNewPfTargetHost] = useState("localhost");
   const [newPfTargetPort, setNewPfTargetPort] = useState<number>(80);
 
+  const bindPortInputRef = useRef<HTMLInputElement>(null);
+  const targetHostInputRef = useRef<HTMLInputElement>(null);
+  const targetPortInputRef = useRef<HTMLInputElement>(null);
+
   const handleAdd = () => {
     const bindPortNum = Number(newPfBindPort);
     if (!Number.isInteger(bindPortNum) || bindPortNum < 1 || bindPortNum > 65535) {
+      scrollAndFocusInput(bindPortInputRef.current);
       alert.error(t("errors.forward_port_range"));
       return;
     }
     const targetHost = newPfTargetHost.trim();
     const targetPortNum = Number(newPfTargetPort);
-    if (
-      newPfType !== "DYNAMIC" &&
-      (!targetHost ||
-        !Number.isInteger(targetPortNum) ||
-        targetPortNum < 1 ||
-        targetPortNum > 65535)
-    ) {
-      alert.error(t("errors.forward_target_required"));
-      return;
+    if (newPfType !== "DYNAMIC") {
+      if (!targetHost) {
+        scrollAndFocusInput(targetHostInputRef.current);
+        alert.error(t("errors.forward_target_required"));
+        return;
+      }
+      if (!Number.isInteger(targetPortNum) || targetPortNum < 1 || targetPortNum > 65535) {
+        scrollAndFocusInput(targetPortInputRef.current);
+        alert.error(t("errors.forward_target_required"));
+        return;
+      }
     }
 
     onAddRule({
@@ -114,6 +122,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
               {t("forward.bind_port")}
             </label>
             <input
+              ref={bindPortInputRef}
               type="number"
               value={newPfBindPort}
               onChange={(e) => setNewPfBindPort(Number(e.target.value))}
@@ -128,6 +137,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
                   {t("forward.target_host")}
                 </label>
                 <input
+                  ref={targetHostInputRef}
                   type="text"
                   value={newPfTargetHost}
                   onChange={(e) => setNewPfTargetHost(e.target.value)}
@@ -140,6 +150,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
                   {t("forward.target_port")}
                 </label>
                 <input
+                  ref={targetPortInputRef}
                   type="number"
                   value={newPfTargetPort}
                   onChange={(e) => setNewPfTargetPort(Number(e.target.value))}

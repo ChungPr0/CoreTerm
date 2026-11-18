@@ -366,6 +366,7 @@
     "key_import_failed": "Nhập khóa SSH thất bại: {{detail}}",
     "key_binding_required": "Xác thực SSH Key cần chọn một khóa hoặc nhập Đường dẫn Key.",
     "host_alias_empty": "Tên kết nối không được để trống.",
+    "host_password_empty": "Mật khẩu không được để trống.",
     "host_host_empty": "Địa chỉ Host / IP không được để trống.",
     "host_port_range": "Cổng phải nằm trong khoảng từ 1 đến 65535.",
     "host_username_empty": "Tên tài khoản không được để trống.",

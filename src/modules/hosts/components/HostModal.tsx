@@ -76,6 +76,7 @@ export const HostModal: React.FC<HostModalProps> = ({
                 {t("host.alias")} *
               </label>
               <input
+                ref={form.aliasInputRef}
                 type="text"
                 value={form.alias}
                 onChange={(e) => form.setAlias(e.target.value)}
@@ -110,6 +111,7 @@ export const HostModal: React.FC<HostModalProps> = ({
                 {t("host.host")} *
               </label>
               <input
+                ref={form.hostInputRef}
                 type="text"
                 value={form.host}
                 onChange={(e) => form.setHost(e.target.value)}
@@ -122,6 +124,7 @@ export const HostModal: React.FC<HostModalProps> = ({
                 {t("host.port")}
               </label>
               <input
+                ref={form.portInputRef}
                 type="number"
                 min={1}
                 max={65535}
@@ -136,6 +139,7 @@ export const HostModal: React.FC<HostModalProps> = ({
                 {t("host.username")} *
               </label>
               <input
+                ref={form.usernameInputRef}
                 type="text"
                 value={form.username}
                 onChange={(e) => form.setUsername(e.target.value)}
@@ -151,6 +155,8 @@ export const HostModal: React.FC<HostModalProps> = ({
             onPasswordModeChange={form.setPasswordMode}
             password={form.password}
             onPasswordChange={form.setPassword}
+            passwordInputRef={form.passwordInputRef}
+            keyPathInputRef={form.keyPathInputRef}
             hasSavedPassword={editingHost?.has_saved_password}
             savedKeys={form.savedKeys}
             selectedKeyId={form.selectedKeyId}

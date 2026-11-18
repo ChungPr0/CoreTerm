@@ -12,6 +12,7 @@ interface KeyGenerateImportFormProps {
   onModeChange: (mode: KeyVaultMode) => void;
   name: string;
   onNameChange: (v: string) => void;
+  nameInputRef?: React.RefObject<HTMLInputElement>;
   keyType: KeyAlgorithm;
   onKeyTypeChange: (v: KeyAlgorithm) => void;
   comment: string;
@@ -20,6 +21,7 @@ interface KeyGenerateImportFormProps {
   onPassphraseChange: (v: string) => void;
   sourcePath: string;
   onSourcePathChange: (v: string) => void;
+  sourcePathInputRef?: React.RefObject<HTMLInputElement>;
   copyManaged: boolean;
   onCopyManagedChange: (v: boolean) => void;
   setDefault: boolean;
@@ -33,6 +35,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
   onModeChange,
   name,
   onNameChange,
+  nameInputRef,
   keyType,
   onKeyTypeChange,
   comment,
@@ -41,6 +44,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
   onPassphraseChange,
   sourcePath,
   onSourcePathChange,
+  sourcePathInputRef,
   copyManaged,
   onCopyManagedChange,
   setDefault,
@@ -93,6 +97,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
               </span>
             </div>
             <input
+              ref={nameInputRef}
               type="text"
               maxLength={MAX_KEY_NAME_LEN}
               value={name}
@@ -121,6 +126,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
                 {t("vault.source_path")}
               </label>
               <input
+                ref={sourcePathInputRef}
                 type="text"
                 value={sourcePath}
                 onChange={(e) => onSourcePathChange(e.target.value)}

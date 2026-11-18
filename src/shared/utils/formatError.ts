@@ -51,6 +51,10 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
     pattern: /^(?:SSH Key authentication requires selecting a key or providing a Key Path\.|SSH_KEY authentication requires a valid private_key_path)$/i,
     key: "errors.key_binding_required",
   },
+  {
+    pattern: /^(?:Password is required|Password cannot be empty when password mode is SAVED)$/i,
+    key: "errors.host_password_empty",
+  },
   { pattern: /^Alias cannot be empty$/i, key: "errors.host_alias_empty" },
   { pattern: /^Host(?:\/IP)? cannot be empty$/i, key: "errors.host_host_empty" },
   { pattern: /^Port must be between 1 and 65535$/i, key: "errors.host_port_range" },

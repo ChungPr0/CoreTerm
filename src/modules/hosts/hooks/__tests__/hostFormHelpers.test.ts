@@ -87,4 +87,18 @@ describe("hostFormHelpers", () => {
       errorKey: "errors.key_binding_required",
     });
   });
+
+  it("validates password requirement for SAVED password mode", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.authMethod = "PASSWORD";
+    fields.passwordMode = "SAVED";
+    fields.password = "";
+    expect(validateAndBuildHostPayload(fields, false)).toEqual({
+      ok: false,
+      errorKey: "errors.host_password_empty",
+    });
+    expect(validateAndBuildHostPayload(fields, true).ok).toBe(true);
+    fields.password = "new-secret";
+    expect(validateAndBuildHostPayload(fields, false).ok).toBe(true);
+  });
 });

@@ -678,3 +678,129 @@ fn test_auto_reconnect_only_allowed_with_saved_password_or_ssh_key() {
         .expect("update to prompt");
     assert!(!updated.options.auto_reconnect);
 }
+
+#[test]
+fn test_saved_password_mode_requires_password_when_no_existing_secret() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = SqliteDb::init(dir.path()).unwrap();
+    let vault = SecretVault::new();
+    let hosts = HostService::new(db, vault);
+
+    let err = hosts
+        .create(CreateHostRequestDto {
+        alias: "Saved Empty".to_string(),
+        host: "10.0.0.1".to_string(),
+        port: 22,
+        username: "root".to_string(),
+        group_name: "Default".to_string(),
+        tags: vec![],
+        auth_method: "PASSWORD".to_string(),
+        ssh_key_id: None,
+        private_key_path: None,
+        password_mode: Some("SAVED".to_string()),
+        password: None,
+        options: None,
+        port_forwards: None,
+    });
+    assert!(err.is_err(), "Creation without password in SAVED mode must fail");
+
+    let created = hosts
+        .create(CreateHostRequestDto {
+            alias: "Saved Valid".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("SAVED".to_string()),
+            password: Some("pass-123".to_string()),
+            options: None,
+            port_forwards: None,
+        })
+        .expect("create host with saved password");
+    assert!(created.has_saved_password);
+
+    let updated_kept = hosts
+        .update(UpdateHostRequestDto {
+            id: created.id.clone(),
+            alias: "Saved Valid".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("SAVED".to_string()),
+            password: None,
+            options: None,
+            port_forwards: None,
+        })
+        .expect("update keeps saved password");
+    assert!(updated_kept.has_saved_password);
+
+    let updated_prompt = hosts
+        .update(UpdateHostRequestDto {
+            id: created.id.clone(),
+            alias: "Saved Valid".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".to_string()),
+            password: None,
+            options: None,
+            port_forwards: None,
+        })
+        .expect("switch to prompt");
+    assert!(!updated_prompt.has_saved_password);
+
+    let err_update = hosts.update(UpdateHostRequestDto {
+        id: created.id.clone(),
+        alias: "Saved Valid".to_string(),
+        host: "10.0.0.1".to_string(),
+        port: 22,
+        username: "root".to_string(),
+        group_name: "Default".to_string(),
+        tags: vec![],
+        auth_method: "PASSWORD".to_string(),
+        ssh_key_id: None,
+        private_key_path: None,
+        password_mode: Some("SAVED".to_string()),
+        password: None,
+        options: None,
+        port_forwards: None,
+    });
+    assert!(
+        err_update.is_err(),
+        "Switching back to SAVED without password after deletion must fail"
+    );
+
+    let updated_saved_again = hosts
+        .update(UpdateHostRequestDto {
+            id: created.id.clone(),
+            alias: "Saved Valid".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("SAVED".to_string()),
+            password: Some("new-pass-456".to_string()),
+            options: None,
+            port_forwards: None,
+        })
+        .expect("update back to saved with new password");
+    assert!(updated_saved_again.has_saved_password);
+}
