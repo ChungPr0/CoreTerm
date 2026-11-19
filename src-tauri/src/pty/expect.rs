@@ -263,7 +263,7 @@ impl ExpectStateMachine {
     fn is_ssh_password_prompt(line: &str) -> bool {
         let trimmed = line.trim();
         let lower = trimmed.to_lowercase();
-        if !lower.ends_with("password:") {
+        if !lower.ends_with(':') {
             return false;
         }
         // Standard OpenSSH: "user@host's password:" or "user@host’s password:"
@@ -445,5 +445,72 @@ mod tests {
             }
             other => panic!("expected PasswordPrompt, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn detects_fragmented_streaming_prompts_and_sudo_prompts() {
+        let mut sm = ExpectStateMachine::new();
+
+        // Chunks arriving piece by piece
+        assert!(matches!(sm.feed(b"deploy@"), ExpectSignal::None));
+        assert!(matches!(sm.feed(b"my-server's "), ExpectSignal::None));
+        let final_sig = sm.feed(b"password: ");
+
+        match final_sig {
+            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+                assert_eq!(prompt_text, "deploy@my-server's password:");
+                assert_eq!(attempt, 1);
+            }
+            other => panic!("expected PasswordPrompt, got {other:?}"),
+        }
+
+        // Test sudo password prompt
+        let mut sm_sudo = ExpectStateMachine::new();
+        let sudo_sig = sm_sudo.feed(b"[sudo] password for deploy: ");
+        match sudo_sig {
+            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+                assert_eq!(prompt_text, "[sudo] password for deploy:");
+                assert_eq!(attempt, 1);
+            }
+            other => panic!("expected PasswordPrompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detects_dns_failure_and_connection_refused_errors() {
+        let mut sm_dns = ExpectStateMachine::new();
+        let dns_sig = sm_dns.feed(
+            b"ssh: Could not resolve hostname invalid-domain.local: Name or service not known\r\n",
+        );
+        match dns_sig {
+            ExpectSignal::ConnectFailed { reason } => {
+                assert!(reason.contains("Could not resolve hostname"));
+            }
+            other => panic!("expected ConnectFailed, got {other:?}"),
+        }
+
+        let mut sm_refused = ExpectStateMachine::new();
+        let ref_sig = sm_refused.feed(b"ssh: connect to host 10.0.0.5 port 22: Connection refused\r\n");
+        match ref_sig {
+            ExpectSignal::ConnectFailed { reason } => {
+                assert!(reason.contains("Connection refused"));
+            }
+            other => panic!("expected ConnectFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detects_interactive_shell_prompts() {
+        let mut sm_bash = ExpectStateMachine::new();
+        assert!(matches!(sm_bash.feed(b"user@server:~$ "), ExpectSignal::Connected));
+        assert_eq!(sm_bash.phase(), &ExpectPhase::Passthrough);
+
+        let mut sm_root = ExpectStateMachine::new();
+        assert!(matches!(sm_root.feed(b"root@server:~# "), ExpectSignal::Connected));
+        assert_eq!(sm_root.phase(), &ExpectPhase::Passthrough);
+
+        let mut sm_zsh = ExpectStateMachine::new();
+        assert!(matches!(sm_zsh.feed("dev in ~/project ❯ ".as_bytes()), ExpectSignal::Connected));
+        assert_eq!(sm_zsh.phase(), &ExpectPhase::Passthrough);
     }
 }

@@ -203,19 +203,30 @@ mod tests {
 
     #[test]
     fn test_conflict_policy_parsing() {
+        assert_eq!(ConflictPolicy::default(), ConflictPolicy::Ask);
         assert_eq!(ConflictPolicy::parse("ASK"), ConflictPolicy::Ask);
+        assert_eq!(ConflictPolicy::parse("  ask  "), ConflictPolicy::Ask);
         assert_eq!(ConflictPolicy::parse("overwrite"), ConflictPolicy::Overwrite);
+        assert_eq!(ConflictPolicy::parse("  OVERWRITE \t"), ConflictPolicy::Overwrite);
         assert_eq!(ConflictPolicy::parse("SKIP"), ConflictPolicy::Skip);
         assert_eq!(ConflictPolicy::parse("rename"), ConflictPolicy::Rename);
+        assert_eq!(ConflictPolicy::parse(" rEnAmE "), ConflictPolicy::Rename);
         assert_eq!(ConflictPolicy::parse("RESUME"), ConflictPolicy::Resume);
-        assert_eq!(ConflictPolicy::parse("unknown"), ConflictPolicy::Ask);
+        assert_eq!(ConflictPolicy::parse(""), ConflictPolicy::Ask);
+        assert_eq!(ConflictPolicy::parse("   "), ConflictPolicy::Ask);
+        assert_eq!(ConflictPolicy::parse("unknown_policy"), ConflictPolicy::Ask);
     }
 
     #[test]
     fn test_batch_conflict_state_remembers_choice() {
-        let state = BatchConflictState::new(ConflictPolicy::Ask);
-        assert_eq!(state.current_policy(), ConflictPolicy::Ask);
+        let state = BatchConflictState::new(ConflictPolicy::Skip);
+        assert_eq!(state.current_policy(), ConflictPolicy::Skip);
+
         state.remember_for_batch(ConflictPolicy::Overwrite);
         assert_eq!(state.current_policy(), ConflictPolicy::Overwrite);
+
+        // Remembering another choice overrides the previous one
+        state.remember_for_batch(ConflictPolicy::Rename);
+        assert_eq!(state.current_policy(), ConflictPolicy::Rename);
     }
 }

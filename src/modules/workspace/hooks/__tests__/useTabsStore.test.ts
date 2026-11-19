@@ -272,4 +272,63 @@ describe("useTabsStore", () => {
     useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\new-proj");
     expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
+
+  it("handles edge cases when closing or operating on non-existent tab IDs", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ tabId: "t1" }), makeTab({ tabId: "t2" })],
+      activeTabId: "t1",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    // Closing a non-existent tab should be a safe no-op
+    useTabsStore.getState().closeTab("non-existent-id");
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+    expect(useTabsStore.getState().activeTabId).toBe("t1");
+
+    // closeOtherTabs with a non-existent target should not delete all tabs
+    useTabsStore.getState().closeOtherTabs("non-existent-id");
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+
+    // Reordering a non-existent tab or invalid indices should be safe
+    useTabsStore.getState().reorderTab("non-existent-id", 0);
+    expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual(["t1", "t2"]);
+
+    useTabsStore.getState().reorderTab("t1", -1);
+    expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual(["t1", "t2"]);
+
+    // Resizing SFTP split on non-existent tab is safe
+    useTabsStore.getState().resizeSftpSplit("non-existent-id", 0.7);
+    expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual(["t1", "t2"]);
+  });
+
+  it("activates adjacent tab smoothly when closing middle tab", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ tabId: "t1" }), makeTab({ tabId: "t2" }), makeTab({ tabId: "t3" })],
+      activeTabId: "t2",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().closeTab("t2");
+    expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual(["t1", "t3"]);
+    // Should focus either the next tab (t3) or previous (t1)
+    expect(["t1", "t3"]).toContain(useTabsStore.getState().activeTabId);
+  });
+
+  it("manages SFTP modal open and close states per tab", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ tabId: "t1" }), makeTab({ tabId: "t2" })],
+      activeTabId: "t1",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().setSftpModalOpen("t1", true);
+    expect(useTabsStore.getState().sftpModalByTab["t1"]).toBe(true);
+    expect(useTabsStore.getState().sftpModalByTab["t2"]).toBeUndefined();
+
+    useTabsStore.getState().setSftpModalOpen("t1", false);
+    expect(useTabsStore.getState().sftpModalByTab["t1"]).toBeUndefined();
+  });
 });

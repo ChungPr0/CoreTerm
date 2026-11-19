@@ -65,4 +65,40 @@ describe("fileListUtils", () => {
     expect(fitted.perms).toBe(0);
     expect(fitted.name).toBe(400);
   });
+
+  it("handles empty lists, special query characters and mtime sorting", () => {
+    // Empty list
+    expect(sortAndFilterItems([], "test", "name", "asc")).toEqual([]);
+
+    const items = [
+      item({ name: "old.log", mtimeMs: 1000 }),
+      item({ name: "new.log", mtimeMs: 5000 }),
+      item({ name: "mid.log", mtimeMs: 3000 }),
+    ];
+
+    expect(sortAndFilterItems(items, "", "mtime", "asc").map((i) => i.name)).toEqual([
+      "old.log",
+      "mid.log",
+      "new.log",
+    ]);
+
+    expect(sortAndFilterItems(items, "", "mtime", "desc").map((i) => i.name)).toEqual([
+      "new.log",
+      "mid.log",
+      "old.log",
+    ]);
+
+    // Query containing regex special characters like brackets and question marks
+    const specialList = [
+      item({ name: "app[1].log" }),
+      item({ name: "app(prod).log" }),
+      item({ name: "other.log" }),
+    ];
+    expect(sortAndFilterItems(specialList, "[1]", "name", "asc").map((i) => i.name)).toEqual([
+      "app[1].log",
+    ]);
+    expect(sortAndFilterItems(specialList, "(prod)", "name", "asc").map((i) => i.name)).toEqual([
+      "app(prod).log",
+    ]);
+  });
 });

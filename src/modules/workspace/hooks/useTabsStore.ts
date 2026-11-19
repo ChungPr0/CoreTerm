@@ -139,6 +139,9 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
 
   closeOtherTabs: (keepTabId, onDispose) => {
     const state = get();
+    if (!state.tabs.some((t) => t.tabId === keepTabId)) {
+      return;
+    }
     for (const tab of state.tabs) {
       if (tab.tabId !== keepTabId) {
         onDispose?.(tab, Boolean(state.openedSftpTabs[tab.tabId]));
