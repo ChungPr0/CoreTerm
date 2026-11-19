@@ -102,4 +102,14 @@ export const hostsApi = {
       host_id: hostId,
     });
   },
+
+  portCheckAvailable(
+    bindAddress: string,
+    bindPort: number
+  ): Promise<PortProbeResultDto> {
+    return invoke<PortProbeResultDto>("port_check_available", {
+      bind_address: bindAddress,
+      bind_port: bindPort,
+    });
+  },
 };

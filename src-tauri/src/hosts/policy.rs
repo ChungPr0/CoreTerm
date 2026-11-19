@@ -76,12 +76,45 @@ pub(super) fn validate_port_forwards(rules: &[SavePortForwardDto]) -> CoreResult
                 "Bind port must be between 1 and 65535".to_string(),
             ));
         }
+        port_forward_repo::validate_and_normalize_bind_address(&rule.bind_address)?;
         port_forward_repo::normalize_targets(
             &rule.forward_type,
             rule.target_host.clone(),
             rule.target_port,
         )?;
     }
+
+    let enabled: Vec<&SavePortForwardDto> = rules.iter().filter(|r| r.is_enabled).collect();
+    for i in 0..enabled.len() {
+        for j in (i + 1)..enabled.len() {
+            let a = enabled[i];
+            let b = enabled[j];
+
+            let a_is_local = a.forward_type == "LOCAL" || a.forward_type == "DYNAMIC";
+            let b_is_local = b.forward_type == "LOCAL" || b.forward_type == "DYNAMIC";
+
+            if a_is_local && b_is_local && a.bind_port == b.bind_port {
+                let addr_a = port_forward_repo::normalize_bind_addr(&a.bind_address);
+                let addr_b = port_forward_repo::normalize_bind_addr(&b.bind_address);
+                if addr_a == addr_b || addr_a == "0.0.0.0" || addr_b == "0.0.0.0" {
+                    return Err(CoreError::Validation(format!(
+                        "Duplicate local listening port {} between rules '{}' and '{}'",
+                        a.bind_port, a.label, b.label
+                    )));
+                }
+            } else if a.forward_type == "REMOTE" && b.forward_type == "REMOTE" && a.bind_port == b.bind_port {
+                let addr_a = port_forward_repo::normalize_bind_addr(&a.bind_address);
+                let addr_b = port_forward_repo::normalize_bind_addr(&b.bind_address);
+                if addr_a == addr_b || addr_a == "0.0.0.0" || addr_b == "0.0.0.0" {
+                    return Err(CoreError::Validation(format!(
+                        "Duplicate remote listening port {} between rules '{}' and '{}'",
+                        a.bind_port, a.label, b.label
+                    )));
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -166,4 +199,96 @@ pub(super) fn plan_password_binding(
         ));
     }
     Ok(("PROMPT_EVERY_TIME".to_string(), None, PendingVaultOp::None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_port_forwards_rejects_zero_port() {
+        let rules = vec![SavePortForwardDto {
+            id: None,
+            label: "Zero".to_string(),
+            forward_type: "LOCAL".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+            target_host: Some("localhost".to_string()),
+            target_port: Some(80),
+            is_enabled: true,
+        }];
+        assert!(validate_port_forwards(&rules).is_err());
+    }
+
+    #[test]
+    fn test_validate_port_forwards_rejects_invalid_bind_address() {
+        let rules = vec![SavePortForwardDto {
+            id: None,
+            label: "Bad IP".to_string(),
+            forward_type: "LOCAL".to_string(),
+            bind_address: "-bad-ip;echo".to_string(),
+            bind_port: 8080,
+            target_host: Some("localhost".to_string()),
+            target_port: Some(80),
+            is_enabled: true,
+        }];
+        assert!(validate_port_forwards(&rules).is_err());
+    }
+
+    #[test]
+    fn test_validate_port_forwards_detects_duplicate_local_port() {
+        let rules = vec![
+            SavePortForwardDto {
+                id: None,
+                label: "App 1".to_string(),
+                forward_type: "LOCAL".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 8080,
+                target_host: Some("localhost".to_string()),
+                target_port: Some(80),
+                is_enabled: true,
+            },
+            SavePortForwardDto {
+                id: None,
+                label: "App 2".to_string(),
+                forward_type: "DYNAMIC".to_string(),
+                bind_address: "localhost".to_string(),
+                bind_port: 8080,
+                target_host: None,
+                target_port: None,
+                is_enabled: true,
+            },
+        ];
+        let res = validate_port_forwards(&rules);
+        assert!(res.is_err());
+        let err = res.unwrap_err().to_string();
+        assert!(err.contains("Duplicate local listening port 8080"));
+    }
+
+    #[test]
+    fn test_validate_port_forwards_allows_duplicate_if_one_disabled() {
+        let rules = vec![
+            SavePortForwardDto {
+                id: None,
+                label: "App 1".to_string(),
+                forward_type: "LOCAL".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 8080,
+                target_host: Some("localhost".to_string()),
+                target_port: Some(80),
+                is_enabled: true,
+            },
+            SavePortForwardDto {
+                id: None,
+                label: "App 2 Disabled".to_string(),
+                forward_type: "LOCAL".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 8080,
+                target_host: Some("localhost".to_string()),
+                target_port: Some(8081),
+                is_enabled: false,
+            },
+        ];
+        assert!(validate_port_forwards(&rules).is_ok());
+    }
 }

@@ -198,6 +198,107 @@ impl ActiveTunnelRegistry {
         statuses
     }
 
+    pub fn check_single_port(&self, bind_address: &str, bind_port: u16) -> PortProbeResultDto {
+        if bind_port == 0 {
+            return PortProbeResultDto {
+                rule_id: String::new(),
+                bind_address: bind_address.to_string(),
+                bind_port,
+                status: "INVALID_PORT".to_string(),
+                owner_tab_id: None,
+                conflicting_pid: None,
+                conflicting_process_name: None,
+            };
+        }
+
+        let norm_addr = Self::normalize_addr(bind_address);
+
+        let key = (norm_addr.clone(), bind_port);
+        if let Some(entry) = self.tunnels.get(&key) {
+            return PortProbeResultDto {
+                rule_id: entry.rule_id.clone(),
+                bind_address: bind_address.to_string(),
+                bind_port,
+                status: "SHARED_WITH_ACTIVE_TAB".to_string(),
+                owner_tab_id: Some(entry.tab_id.clone()),
+                conflicting_pid: None,
+                conflicting_process_name: None,
+            };
+        }
+        let wildcard_key = ("0.0.0.0".to_string(), bind_port);
+        if let Some(entry) = self.tunnels.get(&wildcard_key) {
+            return PortProbeResultDto {
+                rule_id: entry.rule_id.clone(),
+                bind_address: bind_address.to_string(),
+                bind_port,
+                status: "SHARED_WITH_ACTIVE_TAB".to_string(),
+                owner_tab_id: Some(entry.tab_id.clone()),
+                conflicting_pid: None,
+                conflicting_process_name: None,
+            };
+        }
+
+        let bind_target = format!("{norm_addr}:{bind_port}");
+        match TcpListener::bind(&bind_target) {
+            Ok(listener) => {
+                drop(listener);
+                PortProbeResultDto {
+                    rule_id: String::new(),
+                    bind_address: bind_address.to_string(),
+                    bind_port,
+                    status: "AVAILABLE".to_string(),
+                    owner_tab_id: None,
+                    conflicting_pid: None,
+                    conflicting_process_name: None,
+                }
+            }
+            Err(e) => {
+                let (pid, proc_name) = inspect_port_owner_process(bind_port);
+                if pid.is_some() {
+                    PortProbeResultDto {
+                        rule_id: String::new(),
+                        bind_address: bind_address.to_string(),
+                        bind_port,
+                        status: "CONFLICT_EXTERNAL".to_string(),
+                        owner_tab_id: None,
+                        conflicting_pid: pid,
+                        conflicting_process_name: proc_name,
+                    }
+                } else if e.kind() == std::io::ErrorKind::AddrNotAvailable {
+                    PortProbeResultDto {
+                        rule_id: String::new(),
+                        bind_address: bind_address.to_string(),
+                        bind_port,
+                        status: "ADDR_NOT_AVAILABLE".to_string(),
+                        owner_tab_id: None,
+                        conflicting_pid: None,
+                        conflicting_process_name: None,
+                    }
+                } else if e.kind() == std::io::ErrorKind::PermissionDenied && bind_port < 1024 {
+                    PortProbeResultDto {
+                        rule_id: String::new(),
+                        bind_address: bind_address.to_string(),
+                        bind_port,
+                        status: "PERMISSION_DENIED".to_string(),
+                        owner_tab_id: None,
+                        conflicting_pid: None,
+                        conflicting_process_name: None,
+                    }
+                } else {
+                    PortProbeResultDto {
+                        rule_id: String::new(),
+                        bind_address: bind_address.to_string(),
+                        bind_port,
+                        status: "CONFLICT_EXTERNAL".to_string(),
+                        owner_tab_id: None,
+                        conflicting_pid: None,
+                        conflicting_process_name: None,
+                    }
+                }
+            }
+        }
+    }
+
     fn normalize_addr(addr: &str) -> String {
         let trimmed = addr.trim();
         if trimmed.is_empty() || trimmed == "localhost" {
@@ -219,7 +320,6 @@ fn inspect_port_owner_process(port: u16) -> (Option<u32>, Option<String>) {
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
-    let needle = format!(":{port}");
     let mut found_pid: Option<u32> = None;
 
     for line in text.lines() {
@@ -227,10 +327,16 @@ fn inspect_port_owner_process(port: u16) -> (Option<u32>, Option<String>) {
             continue;
         }
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 5 && parts[1].ends_with(&needle) {
-            if let Ok(pid) = parts[4].parse::<u32>() {
-                found_pid = Some(pid);
-                break;
+        if parts.len() >= 5 {
+            if let Some(port_str) = parts[1].rsplit(':').next() {
+                if let Ok(p) = port_str.parse::<u16>() {
+                    if p == port {
+                        if let Ok(pid) = parts[4].parse::<u32>() {
+                            found_pid = Some(pid);
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
@@ -258,4 +364,43 @@ fn inspect_port_owner_process(port: u16) -> (Option<u32>, Option<String>) {
     });
 
     (Some(pid), proc_name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_single_port_invalid_zero() {
+        let registry = ActiveTunnelRegistry::new();
+        let res = registry.check_single_port("127.0.0.1", 0);
+        assert_eq!(res.status, "INVALID_PORT");
+    }
+
+    #[test]
+    fn test_check_single_port_shared_with_active_tab() {
+        let registry = ActiveTunnelRegistry::new();
+        registry.register_tunnel("127.0.0.1", 19876, "tab-1", "host-1", "rule-1");
+
+        let res = registry.check_single_port("127.0.0.1", 19876);
+        assert_eq!(res.status, "SHARED_WITH_ACTIVE_TAB");
+        assert_eq!(res.owner_tab_id, Some("tab-1".to_string()));
+
+        let res_localhost = registry.check_single_port("localhost", 19876);
+        assert_eq!(res_localhost.status, "SHARED_WITH_ACTIVE_TAB");
+    }
+
+    #[test]
+    fn test_check_single_port_available_or_external_conflict() {
+        let registry = ActiveTunnelRegistry::new();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind free port");
+        let assigned_port = listener.local_addr().unwrap().port();
+
+        let conflict_res = registry.check_single_port("127.0.0.1", assigned_port);
+        assert_eq!(conflict_res.status, "CONFLICT_EXTERNAL");
+
+        drop(listener);
+        let avail_res = registry.check_single_port("127.0.0.1", assigned_port);
+        assert_eq!(avail_res.status, "AVAILABLE");
+    }
 }

@@ -244,4 +244,63 @@ describe("hostFormHelpers", () => {
       expect(dyn.is_enabled).toBe(false);
     }
   });
+
+  it("validates port forward port range and target requirements", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.forwards = [
+      {
+        label: "Invalid Port",
+        forward_type: "LOCAL",
+        bind_address: "127.0.0.1",
+        bind_port: 0,
+        target_host: "localhost",
+        target_port: 80,
+        is_enabled: true,
+      },
+    ];
+    expect(validateAndBuildHostPayload(fields)).toEqual({
+      ok: false,
+      errorKey: "errors.forward_port_range",
+    });
+
+    fields.forwards[0].bind_port = 8080;
+    fields.forwards[0].target_host = "";
+    expect(validateAndBuildHostPayload(fields)).toEqual({
+      ok: false,
+      errorKey: "errors.forward_target_required",
+    });
+  });
+
+  it("detects duplicate local listening ports between enabled rules", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.forwards = [
+      {
+        label: "Rule 1",
+        forward_type: "LOCAL",
+        bind_address: "127.0.0.1",
+        bind_port: 8080,
+        target_host: "localhost",
+        target_port: 80,
+        is_enabled: true,
+      },
+      {
+        label: "Rule 2",
+        forward_type: "DYNAMIC",
+        bind_address: "localhost",
+        bind_port: 8080,
+        target_host: "",
+        target_port: 0,
+        is_enabled: true,
+      },
+    ];
+    expect(validateAndBuildHostPayload(fields)).toEqual({
+      ok: false,
+      errorKey: "errors.forward_duplicate_local_port",
+      errorParams: { port: 8080 },
+    });
+
+    // If Rule 2 is disabled, no collision
+    fields.forwards[1].is_enabled = false;
+    expect(validateAndBuildHostPayload(fields).ok).toBe(true);
+  });
 });

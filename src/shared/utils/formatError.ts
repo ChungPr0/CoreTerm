@@ -83,6 +83,24 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   { pattern: /^Missing host id for update$/i, key: "errors.host_missing_id" },
   { pattern: /^Host profile not found:\s*(.+)$/i, key: "errors.host_not_found", params: (m) => ({ id: m[1] }) },
   { pattern: /^Port forward rule not found:\s*(.+)$/i, key: "errors.port_forward_not_found", params: (m) => ({ id: m[1] }) },
+  {
+    pattern: /^Duplicate local listening port (\d+) between rules '(.+?)' and '(.+?)'$/i,
+    key: "errors.forward_duplicate_local_port",
+    params: (m) => ({ port: m[1] }),
+  },
+  {
+    pattern: /^Duplicate remote listening port (\d+) between rules '(.+?)' and '(.+?)'$/i,
+    key: "errors.forward_duplicate_remote_port",
+    params: (m) => ({ port: m[1] }),
+  },
+  {
+    pattern: /^Bind address (?:cannot start with hyphen|contains invalid characters):/i,
+    key: "errors.forward_bind_address_invalid",
+  },
+  {
+    pattern: /^Target host (?:cannot start with hyphen|contains invalid characters):/i,
+    key: "errors.forward_target_host_invalid",
+  },
   { pattern: /UAC_CANCELLED/i, key: "errors.session_uac_cancelled" },
   {
     pattern: /^Executable '(.+?)' is not an authorized interactive shell for elevated execution$/i,

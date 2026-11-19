@@ -170,6 +170,13 @@ export function useHostForm({
     setFields((prev) => ({ ...prev, forwards: [...prev.forwards, rule] }));
   }, []);
 
+  const handleUpdateRule = useCallback((idx: number, rule: DraftPortForward) => {
+    setFields((prev) => ({
+      ...prev,
+      forwards: prev.forwards.map((item, i) => (i === idx ? rule : item)),
+    }));
+  }, []);
+
   const handleToggleRule = useCallback(
     async (idx: number) => {
       const target = fields.forwards[idx];
@@ -229,7 +236,7 @@ export function useHostForm({
     const res = validateAndBuildHostPayload(fields, Boolean(editingHost?.has_saved_password));
     if (!res.ok) {
       focusFieldForError(res.errorKey);
-      return void alert.error(t(res.errorKey));
+      return void alert.error(t(res.errorKey, res.errorParams));
     }
 
     setIsSaving(true);
@@ -279,6 +286,7 @@ export function useHostForm({
     isSaving,
     handleSelectSavedKey,
     handleAddRule,
+    handleUpdateRule,
     handleToggleRule,
     confirmRemoveRule,
     handleSubmit,

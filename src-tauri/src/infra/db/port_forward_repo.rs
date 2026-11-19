@@ -42,6 +42,33 @@ pub fn list_by_host(conn: &Connection, host_id: &str) -> CoreResult<Vec<PortForw
     Ok(rules)
 }
 
+pub fn validate_and_normalize_bind_address(addr: &str) -> CoreResult<String> {
+    let trimmed = addr.trim();
+    if trimmed.is_empty() {
+        return Ok("127.0.0.1".to_string());
+    }
+    if trimmed.starts_with('-') {
+        return Err(CoreError::Validation(format!(
+            "Bind address cannot start with hyphen: '{trimmed}'"
+        )));
+    }
+    if trimmed.chars().any(|c| c.is_whitespace() || c.is_control() || c == ';' || c == '&' || c == '|' || c == '`' || c == '$') {
+        return Err(CoreError::Validation(format!(
+            "Bind address contains invalid characters: '{trimmed}'"
+        )));
+    }
+    Ok(trimmed.to_string())
+}
+
+pub fn normalize_bind_addr(addr: &str) -> &str {
+    let trimmed = addr.trim();
+    if trimmed.is_empty() || trimmed == "localhost" {
+        "127.0.0.1"
+    } else {
+        trimmed
+    }
+}
+
 pub fn normalize_targets(
     forward_type: &str,
     target_host: Option<String>,
@@ -58,6 +85,16 @@ pub fn normalize_targets(
                         "{forward_type} port forward requires a target host"
                     ))
                 })?;
+            if th.starts_with('-') {
+                return Err(CoreError::Validation(format!(
+                    "Target host cannot start with hyphen: '{th}'"
+                )));
+            }
+            if th.chars().any(|c| c.is_whitespace() || c.is_control() || c == ';' || c == '&' || c == '|' || c == '`' || c == '$') {
+                return Err(CoreError::Validation(format!(
+                    "Target host contains invalid characters: '{th}'"
+                )));
+            }
             let tp = target_port.filter(|p| *p > 0).ok_or_else(|| {
                 CoreError::Validation(format!(
                     "{forward_type} port forward requires a valid target port"
@@ -85,13 +122,31 @@ pub fn upsert(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let bind_address = if req.bind_address.trim().is_empty() {
-        "127.0.0.1".to_string()
-    } else {
-        req.bind_address.trim().to_string()
-    };
+    let bind_address = validate_and_normalize_bind_address(&req.bind_address)?;
     let (target_host, target_port) =
         normalize_targets(&req.forward_type, req.target_host, req.target_port)?;
+
+    if req.is_enabled {
+        let existing = list_by_host(conn, &req.host_id)?;
+        let req_is_local = req.forward_type == "LOCAL" || req.forward_type == "DYNAMIC";
+        let norm_req = normalize_bind_addr(&bind_address);
+        for other in existing {
+            if other.id == rule_id || !other.is_enabled || other.bind_port != req.bind_port {
+                continue;
+            }
+            let other_is_local = other.forward_type == "LOCAL" || other.forward_type == "DYNAMIC";
+            if (req_is_local && other_is_local) || (req.forward_type == "REMOTE" && other.forward_type == "REMOTE") {
+                let norm_other = normalize_bind_addr(&other.bind_address);
+                if norm_req == norm_other || norm_req == "0.0.0.0" || norm_other == "0.0.0.0" {
+                    let side = if req_is_local { "local" } else { "remote" };
+                    return Err(CoreError::Validation(format!(
+                        "Duplicate {side} listening port {} between rules '{}' and '{}'",
+                        req.bind_port, req.label, other.label
+                    )));
+                }
+            }
+        }
+    }
 
     conn.execute(
         r#"

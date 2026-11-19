@@ -10,7 +10,7 @@ use crate::hosts::HostService;
 use crate::infra::security::SecretVault;
 use crate::ipc::dto::{
     CreateHostRequestDto, GenerateSshKeyRequestDto, ImportSshKeyRequestDto, SavePortForwardDto,
-    UpdateHostRequestDto, UpdateSshOptionsFieldsDto,
+    UpdateHostRequestDto, UpdateSshOptionsFieldsDto, UpsertPortForwardRequestDto,
 };
 use crate::keys::KeyService;
 
@@ -601,6 +601,86 @@ fn test_atomic_host_and_port_forwards_save() {
     assert_eq!(updated.port_forwards[0].label, "Postgres Renamed");
     assert_eq!(updated.port_forwards[0].bind_port, 15432);
     assert!(!updated.port_forwards[0].is_enabled);
+}
+
+#[test]
+fn test_upsert_port_forward_validates_bind_address_and_rejects_duplicates() {
+    let temp = tempdir().unwrap();
+    let (_, hosts, _) = setup_services(temp.path());
+
+    let created = hosts
+        .create(CreateHostRequestDto {
+            alias: "PF Host".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            group_name: "Default".to_string(),
+            tags: vec![],
+            auth_method: "PASSWORD".to_string(),
+            ssh_key_id: None,
+            private_key_path: None,
+            password_mode: Some("PROMPT_EVERY_TIME".to_string()),
+            password: None,
+            options: None,
+            port_forwards: None,
+        })
+        .unwrap();
+
+    let bad_bind = hosts.upsert_port_forward(UpsertPortForwardRequestDto {
+        id: None,
+        host_id: created.id.clone(),
+        label: "Bad Bind".to_string(),
+        forward_type: "LOCAL".to_string(),
+        bind_address: "-invalid-addr;echo".to_string(),
+        bind_port: 8080,
+        target_host: Some("localhost".to_string()),
+        target_port: Some(80),
+        is_enabled: true,
+    });
+    assert!(bad_bind.is_err());
+
+    let rule1 = hosts
+        .upsert_port_forward(UpsertPortForwardRequestDto {
+            id: None,
+            host_id: created.id.clone(),
+            label: "Rule 1".to_string(),
+            forward_type: "LOCAL".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 8080,
+            target_host: Some("localhost".to_string()),
+            target_port: Some(80),
+            is_enabled: true,
+        })
+        .expect("upsert rule 1");
+    assert_eq!(rule1.bind_port, 8080);
+
+    let dup_rule = hosts.upsert_port_forward(UpsertPortForwardRequestDto {
+        id: None,
+        host_id: created.id.clone(),
+        label: "Rule 2 Dup".to_string(),
+        forward_type: "DYNAMIC".to_string(),
+        bind_address: "localhost".to_string(),
+        bind_port: 8080,
+        target_host: None,
+        target_port: None,
+        is_enabled: true,
+    });
+    assert!(dup_rule.is_err());
+
+    let disabled_dup = hosts
+        .upsert_port_forward(UpsertPortForwardRequestDto {
+            id: None,
+            host_id: created.id.clone(),
+            label: "Rule 2 Disabled".to_string(),
+            forward_type: "DYNAMIC".to_string(),
+            bind_address: "localhost".to_string(),
+            bind_port: 8080,
+            target_host: None,
+            target_port: None,
+            is_enabled: false,
+        })
+        .expect("upsert disabled rule with duplicate port");
+    assert!(!disabled_dup.is_enabled);
 }
 
 #[test]

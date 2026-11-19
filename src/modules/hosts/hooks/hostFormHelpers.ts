@@ -102,7 +102,7 @@ export function createHostFormFields(
 
 export type HostPayloadResult =
   | { ok: true; payload: CreateHostRequestDto }
-  | { ok: false; errorKey: string };
+  | { ok: false; errorKey: string; errorParams?: Record<string, string | number> };
 
 export function validateAndBuildHostPayload(
   fields: HostFormFields,
@@ -141,6 +141,67 @@ export function validateAndBuildHostPayload(
     !fields.password
   ) {
     return { ok: false, errorKey: "errors.host_password_empty" };
+  }
+
+  for (const pf of fields.forwards) {
+    const bindPortNum = Number(pf.bind_port);
+    if (!Number.isInteger(bindPortNum) || bindPortNum < 1 || bindPortNum > 65535) {
+      return { ok: false, errorKey: "errors.forward_port_range" };
+    }
+    const cleanBindAddr = pf.bind_address.trim();
+    if (cleanBindAddr.startsWith("-") || /\s/.test(cleanBindAddr) || /[;`&$|]/.test(cleanBindAddr)) {
+      return { ok: false, errorKey: "errors.forward_bind_address_invalid" };
+    }
+    if (pf.forward_type !== "DYNAMIC") {
+      const cleanTargetHost = (pf.target_host || "").trim();
+      const targetPortNum = Number(pf.target_port);
+      if (!cleanTargetHost) {
+        return { ok: false, errorKey: "errors.forward_target_required" };
+      }
+      if (cleanTargetHost.startsWith("-") || /\s/.test(cleanTargetHost) || /[;`&$|]/.test(cleanTargetHost)) {
+        return { ok: false, errorKey: "errors.forward_target_host_invalid" };
+      }
+      if (!Number.isInteger(targetPortNum) || targetPortNum < 1 || targetPortNum > 65535) {
+        return { ok: false, errorKey: "errors.forward_port_range" };
+      }
+    }
+  }
+
+  const normalizeAddr = (addr: string) => {
+    const t = addr.trim().toLowerCase();
+    return !t || t === "localhost" ? "127.0.0.1" : t;
+  };
+
+  const enabledForwards = fields.forwards.filter((r) => r.is_enabled);
+  for (let i = 0; i < enabledForwards.length; i++) {
+    for (let j = i + 1; j < enabledForwards.length; j++) {
+      const a = enabledForwards[i];
+      const b = enabledForwards[j];
+      const aIsLocal = a.forward_type === "LOCAL" || a.forward_type === "DYNAMIC";
+      const bIsLocal = b.forward_type === "LOCAL" || b.forward_type === "DYNAMIC";
+
+      if (aIsLocal && bIsLocal && a.bind_port === b.bind_port) {
+        const addrA = normalizeAddr(a.bind_address);
+        const addrB = normalizeAddr(b.bind_address);
+        if (addrA === addrB || addrA === "0.0.0.0" || addrB === "0.0.0.0") {
+          return {
+            ok: false,
+            errorKey: "errors.forward_duplicate_local_port",
+            errorParams: { port: a.bind_port },
+          };
+        }
+      } else if (a.forward_type === "REMOTE" && b.forward_type === "REMOTE" && a.bind_port === b.bind_port) {
+        const addrA = normalizeAddr(a.bind_address);
+        const addrB = normalizeAddr(b.bind_address);
+        if (addrA === addrB || addrA === "0.0.0.0" || addrB === "0.0.0.0") {
+          return {
+            ok: false,
+            errorKey: "errors.forward_duplicate_remote_port",
+            errorParams: { port: a.bind_port },
+          };
+        }
+      }
+    }
   }
 
   return {

@@ -10,6 +10,7 @@ export { HostModal } from "./components/HostModal";
 export { HostAuthSection } from "./components/HostAuthSection";
 export { HostOptionsSection } from "./components/HostOptionsSection";
 export { HostPortForwardSection } from "./components/HostPortForwardSection";
+export { PortForwardModal } from "./components/PortForwardModal";
 export { GroupModal } from "./components/GroupModal";
 export { PortConflictModal } from "./components/PortConflictModal";
 export type {

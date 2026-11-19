@@ -84,6 +84,14 @@ impl PtySessionManager {
         Ok(self.tunnel_registry.probe_host_rules(host_id, &rules))
     }
 
+    pub fn check_port_available(
+        &self,
+        bind_address: &str,
+        bind_port: u16,
+    ) -> PortProbeResultDto {
+        self.tunnel_registry.check_single_port(bind_address, bind_port)
+    }
+
     pub fn connect(
         &self,
         app: &AppHandle,

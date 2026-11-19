@@ -130,3 +130,12 @@ pub async fn port_forward_probe(
 ) -> AppResult<Vec<PortProbeResultDto>> {
     state.pty_manager.probe_host_ports(&state.hosts, &host_id)
 }
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn port_check_available(
+    state: State<'_, AppState>,
+    bind_address: String,
+    bind_port: u16,
+) -> AppResult<PortProbeResultDto> {
+    Ok(state.pty_manager.check_port_available(&bind_address, bind_port))
+}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Save, Server, X } from "lucide-react";
 import type { HostFullConfigDto } from "../types";
 import { useI18n } from "@/shared/i18n";
@@ -8,6 +8,7 @@ import { GroupComboBox } from "./GroupComboBox";
 import { HostAuthSection } from "./HostAuthSection";
 import { HostOptionsSection } from "./HostOptionsSection";
 import { HostPortForwardSection } from "./HostPortForwardSection";
+import { PortForwardModal } from "./PortForwardModal";
 
 interface HostModalProps {
   isOpen: boolean;
@@ -31,6 +32,9 @@ export const HostModal: React.FC<HostModalProps> = ({
   onSaved,
 }) => {
   const { t } = useI18n();
+  const [isPfModalOpen, setIsPfModalOpen] = useState(false);
+  const [editingPfIdx, setEditingPfIdx] = useState<number | null>(null);
+
   const form = useHostForm({
     isOpen,
     editingHost,
@@ -165,9 +169,16 @@ export const HostModal: React.FC<HostModalProps> = ({
 
           <HostPortForwardSection
             forwards={form.forwards}
-            onAddRule={form.handleAddRule}
             onToggleRule={form.handleToggleRule}
             onRequestDeleteRule={form.setPendingDeleteRuleIdx}
+            onOpenAddRule={() => {
+              setEditingPfIdx(null);
+              setIsPfModalOpen(true);
+            }}
+            onOpenEditRule={(idx) => {
+              setEditingPfIdx(idx);
+              setIsPfModalOpen(true);
+            }}
           />
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
@@ -205,6 +216,26 @@ export const HostModal: React.FC<HostModalProps> = ({
         }
         onCancel={() => form.setPendingDeleteRuleIdx(null)}
         onConfirm={form.confirmRemoveRule}
+      />
+
+      <PortForwardModal
+        isOpen={isPfModalOpen}
+        initialRule={editingPfIdx !== null ? form.forwards[editingPfIdx] : null}
+        existingRules={form.forwards}
+        editingIndex={editingPfIdx}
+        onClose={() => {
+          setIsPfModalOpen(false);
+          setEditingPfIdx(null);
+        }}
+        onSave={(rule) => {
+          if (editingPfIdx !== null) {
+            form.handleUpdateRule(editingPfIdx, rule);
+          } else {
+            form.handleAddRule(rule);
+          }
+          setIsPfModalOpen(false);
+          setEditingPfIdx(null);
+        }}
       />
     </>
   );
