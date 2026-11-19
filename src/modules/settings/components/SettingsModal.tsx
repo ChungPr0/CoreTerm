@@ -191,14 +191,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>{t("settings.launch_size")}</span>
               </div>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="xs"
                 onClick={() => {
                   setCols(LAUNCH_COLS_DEFAULT);
                   setRows(LAUNCH_ROWS_DEFAULT);
                 }}
                 leftIcon={<RotateCcw className="w-3 h-3" />}
-                className="text-sky-400 hover:text-sky-300"
               >
                 {t("settings.reset_win")}
               </Button>
