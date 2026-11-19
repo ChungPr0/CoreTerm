@@ -3,7 +3,7 @@ import { FolderPlus, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
-import { ModalShell, useAlert } from "@/shared/ui";
+import { Button, Input, ModalShell, useAlert } from "@/shared/ui";
 
 interface GroupModalProps {
   isOpen: boolean;
@@ -80,49 +80,43 @@ export const GroupModal: React.FC<GroupModalProps> = ({
           <h2 className="text-sm font-bold text-slate-100">{t("group.create_title")}</h2>
         </div>
 
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           disabled={isSubmitting}
           onClick={onClose}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-45"
         >
           <X className="w-4 h-4" />
-        </button>
+        </Button>
       </div>
 
       <form noValidate onSubmit={handleSubmit} className="p-5 space-y-4">
-        <div>
-          <label className="block text-slate-300 font-medium mb-1.5">
-            {t("group.name")} *
-          </label>
-          <input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("group.name_placeholder")}
-            maxLength={MAX_GROUP_NAME_LEN}
-            disabled={isSubmitting}
-            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/70"
-          />
-        </div>
+        <Input
+          ref={inputRef}
+          type="text"
+          label={`${t("group.name")} *`}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("group.name_placeholder")}
+          maxLength={MAX_GROUP_NAME_LEN}
+          disabled={isSubmitting}
+        />
 
         <div className="flex items-center justify-end gap-2 pt-1">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={isSubmitting}
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium disabled:opacity-45 transition-colors"
           >
             {t("common.cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
-            disabled={isSubmitting}
-            className="px-4 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold disabled:opacity-50 transition-colors"
+            loading={isSubmitting}
           >
-            {isSubmitting ? t("common.loading") : t("common.add")}
-          </button>
+            {t("common.add")}
+          </Button>
         </div>
       </form>
     </ModalShell>

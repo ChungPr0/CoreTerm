@@ -155,13 +155,12 @@ describe("buildTabContextItems", () => {
 });
 
 describe("buildTabBarWindowMenu", () => {
-  it("exposes standard Restore/Move/Size/Minimize/Maximize/Close window controls", () => {
+  it("exposes standard Restore/Move/Minimize/Maximize/Close window controls", () => {
     const onAction = vi.fn();
     const normal = buildTabBarWindowMenu(t, false, onAction);
     expect(normal.map((i) => i.id)).toEqual([
       "win-restore",
       "win-move",
-      "win-size",
       "win-minimize",
       "win-maximize",
       "sep-win-close",
@@ -170,15 +169,14 @@ describe("buildTabBarWindowMenu", () => {
 
     expect(normal[0].type !== "separator" && normal[0].disabled).toBe(true);
     expect(normal[1].type !== "separator" && normal[1].disabled).toBe(false);
-    expect(normal[4].type !== "separator" && normal[4].disabled).toBe(false);
+    expect(normal[3].type !== "separator" && normal[3].disabled).toBe(false);
 
     const maximized = buildTabBarWindowMenu(t, true, onAction);
     expect(maximized[0].type !== "separator" && maximized[0].disabled).toBe(false);
     expect(maximized[1].type !== "separator" && maximized[1].disabled).toBe(true);
-    expect(maximized[2].type !== "separator" && maximized[2].disabled).toBe(true);
-    expect(maximized[4].type !== "separator" && maximized[4].disabled).toBe(true);
+    expect(maximized[3].type !== "separator" && maximized[3].disabled).toBe(true);
 
-    const closeItem = maximized[6];
+    const closeItem = maximized[5];
     if (closeItem.type !== "separator") {
       expect(closeItem.shortcut).toBe("Alt+F4");
       closeItem.onSelect?.();

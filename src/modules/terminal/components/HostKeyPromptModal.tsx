@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { RotateCcw, ShieldAlert, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell, useAlert } from "@/shared/ui";
+import { Button, IconButton, ModalShell, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { sftpApi, type SftpHostKeyPromptEventDto } from "@/modules/sftp";
 import { sessionApi } from "../api/sessionApi";
@@ -94,14 +94,13 @@ export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
             {isChangedWarning ? t("hostkey.changed_title") : t("hostkey.title")}
           </h3>
         </div>
-        <button
-          type="button"
+        <IconButton
+          size="xs"
           onClick={handleDismiss}
           disabled={submitting}
-          className="p-1 text-slate-400 hover:text-slate-200 disabled:opacity-50"
-        >
-          <X className="w-4 h-4" />
-        </button>
+          title={t("common.close")}
+          icon={<X className="w-4 h-4" />}
+        />
       </div>
 
       <div className="p-3 rounded bg-slate-950 border border-slate-800 font-mono space-y-1.5">
@@ -117,34 +116,31 @@ export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           disabled={submitting}
           onClick={() => handleDecision("REJECT")}
-          className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-medium"
         >
           {t("hostkey.reject")}
-        </button>
+        </Button>
 
         {isChangedWarning ? (
-          <button
-            type="button"
+          <Button
+            variant="danger"
             disabled={submitting}
+            leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
             onClick={() => handleDecision("REMOVE_OLD_AND_ACCEPT")}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-semibold"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>{t("hostkey.reset")}</span>
-          </button>
+            {t("hostkey.reset")}
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             disabled={submitting}
             onClick={() => handleDecision("ACCEPT")}
-            className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold"
           >
             {t("hostkey.accept")}
-          </button>
+          </Button>
         )}
       </div>
     </ModalShell>

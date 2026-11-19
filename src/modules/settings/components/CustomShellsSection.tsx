@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { FolderOpen, Pencil, Plus, Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
+import { Button, IconButton, Input } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
 import { useAlert } from "@/shared/ui";
 import {
@@ -141,14 +142,14 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
         </div>
 
         {!isEditorOpen && (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={openAdd}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] font-medium shrink-0 transition-colors"
+            leftIcon={<Plus className="w-3 h-3 text-sky-400" />}
           >
-            <Plus className="w-3 h-3" />
-            <span>{t("settings.shell_add")}</span>
-          </button>
+            {t("settings.shell_add")}
+          </Button>
         )}
       </div>
 
@@ -183,25 +184,23 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
+                  <IconButton
+                    size="sm"
+                    tone="sky"
                     title={t("common.edit")}
                     onClick={() => openEdit(shell)}
-                    className="p-1 rounded text-slate-400 hover:text-sky-300 hover:bg-slate-800 transition-colors"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                  <button
-                    type="button"
+                    icon={<Pencil className="w-3 h-3" />}
+                  />
+                  <IconButton
+                    size="sm"
+                    tone="rose"
                     title={t("common.delete")}
                     onClick={() => {
                       if (editingId === shell.id) resetEditor();
                       onChange(customShells.filter((c) => c.id !== shell.id));
                     }}
-                    className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                    icon={<Trash2 className="w-3 h-3" />}
+                  />
                 </div>
               </div>
             );
@@ -218,71 +217,59 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
             {editingId ? t("settings.shell_edit") : t("settings.shell_add")}
           </div>
 
-          <div className="space-y-1">
-            <label className="block text-[11px] text-slate-400">
-              {t("settings.shell_name")}
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("settings.shell_name_hint")}
-              className="w-full h-8 px-2.5 rounded bg-slate-950 border border-slate-800 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
-            />
-          </div>
+          <Input
+            type="text"
+            label={<span className="text-[11px] text-slate-400">{t("settings.shell_name")}</span>}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("settings.shell_name_hint")}
+          />
 
           <div className="space-y-1">
             <label className="block text-[11px] text-slate-400">
               {t("settings.shell_path")}
             </label>
             <div className="flex items-center gap-1.5">
-              <input
+              <Input
                 type="text"
                 value={executable}
                 onChange={(e) => setExecutable(e.target.value)}
                 placeholder={t("settings.shell_path_hint")}
-                className="flex-1 min-w-0 h-8 px-2.5 rounded bg-slate-950 border border-slate-800 text-slate-100 font-mono text-[11px] placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
+                className="font-mono text-[11px]"
+                containerClassName="flex-1 min-w-0"
               />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={() => void pickExe()}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium shrink-0 transition-colors"
+                leftIcon={<FolderOpen className="w-3.5 h-3.5 text-sky-400" />}
               >
-                <FolderOpen className="w-3 h-3 text-sky-400" />
-                <span>{t("settings.shell_browse")}</span>
-              </button>
+                {t("settings.shell_browse")}
+              </Button>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="block text-[11px] text-slate-400">
-              {t("settings.shell_args")}
-            </label>
-            <input
-              type="text"
-              value={argsText}
-              onChange={(e) => setArgsText(e.target.value)}
-              placeholder={t("settings.shell_args_hint")}
-              className="w-full h-8 px-2.5 rounded bg-slate-950 border border-slate-800 text-slate-100 font-mono text-[11px] placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
-            />
-          </div>
+          <Input
+            type="text"
+            label={<span className="text-[11px] text-slate-400">{t("settings.shell_args")}</span>}
+            value={argsText}
+            onChange={(e) => setArgsText(e.target.value)}
+            placeholder={t("settings.shell_args_hint")}
+            className="font-mono text-[11px]"
+          />
 
           <div className="flex items-center justify-end gap-1.5 pt-1">
-            <button
-              type="button"
-              onClick={resetEditor}
-              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
-            >
+            <Button variant="secondary" size="xs" onClick={resetEditor}>
               {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={validating}
+            </Button>
+            <Button
+              variant="primary"
+              size="xs"
+              loading={validating}
               onClick={() => void saveShell()}
-              className="px-2.5 py-1 rounded bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold text-[11px]"
             >
-              {validating ? t("common.loading") : t("common.save")}
-            </button>
+              {t("common.save")}
+            </Button>
           </div>
         </div>
       )}

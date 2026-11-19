@@ -3,6 +3,7 @@ import { Menu, Shield } from "lucide-react";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useI18n } from "@/shared/i18n";
+import { IconButton } from "@/shared/ui";
 import { useTabDrag } from "../hooks/useTabDrag";
 import { NewTabDropdown } from "./NewTabDropdown";
 import { TabItem } from "./TabItem";
@@ -113,17 +114,14 @@ export const TabBar: React.FC<TabBarProps> = ({
       }}
       className="h-9 bg-slate-950 border-b border-slate-800/80 flex items-center select-none shrink-0 relative z-[80]"
     >
-      <button
-        type="button"
+      <IconButton
+        size="md"
         disabled={isModalOpen}
         onClick={onToggleSidebar}
         title={t("app.menu")}
-        className={`ml-1.5 mr-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 ${
-          isModalOpen ? "opacity-45 pointer-events-none" : ""
-        }`}
-      >
-        <Menu className="w-4 h-4" />
-      </button>
+        icon={<Menu className="w-4 h-4" />}
+        className="ml-1.5 mr-1 shrink-0"
+      />
 
       <div
         ref={middleRef}

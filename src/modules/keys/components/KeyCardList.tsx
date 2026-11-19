@@ -2,6 +2,7 @@ import React from "react";
 import { Check, Copy, Star, Trash2 } from "lucide-react";
 import type { SshKeyDto } from "../types";
 import { useI18n } from "@/shared/i18n";
+import { Button, IconButton } from "@/shared/ui";
 
 interface KeyCardListProps {
   keys: SshKeyDto[];
@@ -64,37 +65,35 @@ export const KeyCardList: React.FC<KeyCardListProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => onToggleDefault(k)}
+                  <IconButton
+                    size="md"
+                    bordered
+                    tone="emerald"
                     title={t("vault.set_default")}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
+                    onClick={() => onToggleDefault(k)}
+                    className={
                       k.is_default
                         ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
                         : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                  </button>
+                    }
+                    icon={<Star className="w-3.5 h-3.5 fill-current" />}
+                  />
 
                   {k.public_key_content && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => onCopyPub(k)}
-                      className="inline-flex h-7 items-center gap-1 px-2.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
-                    >
-                      {copiedId === k.id ? (
-                        <>
+                      leftIcon={
+                        copiedId === k.id ? (
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{t("common.copied")}</span>
-                        </>
-                      ) : (
-                        <>
+                        ) : (
                           <Copy className="w-3.5 h-3.5" />
-                          <span>{t("vault.copy_pub")}</span>
-                        </>
-                      )}
-                    </button>
+                        )
+                      }
+                    >
+                      {copiedId === k.id ? t("common.copied") : t("vault.copy_pub")}
+                    </Button>
                   )}
                 </div>
               </div>
@@ -104,15 +103,16 @@ export const KeyCardList: React.FC<KeyCardListProps> = ({
                   {k.private_key_path}
                 </div>
 
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={() => onRequestDelete(k)}
                   title={t("common.delete")}
-                  className="inline-flex items-center gap-1 shrink-0 px-2 py-1 rounded bg-slate-900 hover:bg-rose-500/20 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 text-[11px] transition-colors"
+                  leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                  className="hover:border-rose-500/40 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{t("common.delete")}</span>
-                </button>
+                  {t("common.delete")}
+                </Button>
               </div>
             </div>
           ))

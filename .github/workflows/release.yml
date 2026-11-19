@@ -29,26 +29,31 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Rust stable toolchain
+      - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
 
-      - name: Rust cache
+      - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run Clippy & Rust unit tests
-        working-directory: src-tauri
-        run: |
-          cargo clippy --all-targets -- -D warnings
-          cargo test
+      - name: Run frontend tests
+        run: npm run test
 
-      - name: Build Tauri app & installers
+      - name: Run Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Rust unit tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build application
         run: npm run tauri build
 
       - name: Collect release artifacts

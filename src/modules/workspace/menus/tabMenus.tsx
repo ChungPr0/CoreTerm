@@ -11,6 +11,7 @@ import {
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { windowApi } from "../api/windowApi";
+import { startInteractiveWindowMove } from "../utils/interactiveWindowActions";
 import type { ShellProfile, TerminalTabItem } from "../types";
 import { isTabOffline } from "../utils/tabHelpers";
 import {
@@ -249,6 +250,10 @@ export function useTabMenus(opts: UseTabMenusOpts) {
             x,
             y,
             items: buildTabBarWindowMenu(t, isMaximized, (action) => {
+              if (action === "move") {
+                void startInteractiveWindowMove();
+                return;
+              }
               void windowApi.windowSysCommand(action).catch(() => {});
             }),
           });

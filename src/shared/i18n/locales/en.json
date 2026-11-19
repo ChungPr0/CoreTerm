@@ -327,7 +327,7 @@
     "conflict_rename": "Keep Both (Rename)",
     "conflict_skip": "Skip",
     "conflict_resume": "Resume Partial",
-    "chmod_title": "Change Permissions (chmod)",
+    "chmod_title": "Change Permissions",
     "chmod_octal": "Octal Mode",
     "chmod_owner": "Owner",
     "chmod_group": "Group",

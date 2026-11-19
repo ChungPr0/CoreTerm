@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Network, Plus, Trash2 } from "lucide-react";
 import type { ForwardType } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
-import { useAlert } from "@/shared/ui";
+import { Button, IconButton, Input, Select, Switch, useAlert } from "@/shared/ui";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import type { DraftPortForward } from "./hostFormTypes";
 
@@ -77,84 +77,70 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
       <div className="space-y-2.5">
         <div className="grid grid-cols-12 gap-2.5 items-end">
           <div className="col-span-5">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-              {t("forward.label")}
-            </label>
-            <input
+            <Input
               type="text"
+              label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.label")}</span>}
               value={newPfLabel}
               onChange={(e) => setNewPfLabel(e.target.value)}
-              className="w-full h-8 px-2.5 rounded-md bg-slate-900 border border-slate-800 text-slate-100"
             />
           </div>
 
           <div className="col-span-4">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-              {t("forward.type")}
-            </label>
-            <select
+            <Select
+              label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.type")}</span>}
               value={newPfType}
               onChange={(e) => setNewPfType(e.target.value as ForwardType)}
-              className="w-full h-8 px-2 rounded-md bg-slate-900 border border-slate-800 text-slate-100"
             >
               <option value="LOCAL">{t("forward.local")}</option>
               <option value="REMOTE">{t("forward.remote")}</option>
               <option value="DYNAMIC">{t("forward.dynamic")}</option>
-            </select>
+            </Select>
           </div>
 
           <div className="col-span-3">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-              {t("forward.bind_addr")}
-            </label>
-            <input
+            <Input
               type="text"
+              label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.bind_addr")}</span>}
               value={newPfBindAddr}
               onChange={(e) => setNewPfBindAddr(e.target.value)}
-              className="w-full h-8 px-2.5 rounded-md bg-slate-900 border border-slate-800 text-slate-100 font-mono"
+              className="font-mono"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-12 gap-2.5 items-end">
           <div className={newPfType === "DYNAMIC" ? "col-span-3" : "col-span-2"}>
-            <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-              {t("forward.bind_port")}
-            </label>
-            <input
+            <Input
               ref={bindPortInputRef}
               type="number"
+              label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.bind_port")}</span>}
               value={newPfBindPort}
               onChange={(e) => setNewPfBindPort(Number(e.target.value))}
-              className="w-full h-8 px-2.5 rounded-md bg-slate-900 border border-slate-800 text-slate-100 font-mono"
+              className="font-mono"
             />
           </div>
 
           {newPfType !== "DYNAMIC" && (
             <>
               <div className="col-span-5">
-                <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-                  {t("forward.target_host")}
-                </label>
-                <input
+                <Input
                   ref={targetHostInputRef}
                   type="text"
+                  label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.target_host")}</span>}
                   value={newPfTargetHost}
                   onChange={(e) => setNewPfTargetHost(e.target.value)}
-                  className="w-full h-8 px-2.5 rounded-md bg-slate-900 border border-slate-800 text-slate-100 font-mono"
+                  className="font-mono"
                 />
               </div>
 
               <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-slate-400 mb-1 whitespace-nowrap">
-                  {t("forward.target_port")}
-                </label>
-                <input
+                <Input
                   ref={targetPortInputRef}
                   type="number"
+                  label={<span className="text-[11px] font-medium text-slate-400 whitespace-nowrap">{t("forward.target_port")}</span>}
                   value={newPfTargetPort}
                   onChange={(e) => setNewPfTargetPort(Number(e.target.value))}
-                  className="w-full h-8 px-2.5 rounded-md bg-slate-900 border border-slate-800 text-slate-100 font-mono"
+                  className="font-mono"
                 />
               </div>
             </>
@@ -165,14 +151,15 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
               newPfType === "DYNAMIC" ? "col-span-3 col-start-10" : "col-span-3"
             }
           >
-            <button
+            <Button
+              variant="success"
               type="button"
               onClick={handleAdd}
-              className="w-full h-8 flex items-center justify-center gap-1.5 px-3 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-semibold whitespace-nowrap"
+              leftIcon={<Plus className="w-3.5 h-3.5" />}
+              className="w-full"
             >
-              <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span>{t("forward.add")}</span>
-            </button>
+              {t("forward.add")}
+            </Button>
           </div>
         </div>
       </div>
@@ -185,11 +172,11 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
               className="px-2.5 py-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between"
             >
               <div className="flex items-center gap-2 font-mono text-[11px]">
-                <input
-                  type="checkbox"
+                <Switch
+                  size="sm"
                   checked={pf.is_enabled}
                   onChange={() => onToggleRule(idx)}
-                  title={t("forward.enabled")}
+                  aria-label={t("forward.enabled")}
                 />
                 <span className="px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 text-[10px]">
                   {pf.forward_type}
@@ -205,14 +192,13 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => onRequestDeleteRule(idx)}
+              <IconButton
+                size="sm"
+                tone="rose"
                 title={t("common.delete")}
-                className="p-1 text-slate-400 hover:text-rose-400"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+                onClick={() => onRequestDeleteRule(idx)}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              />
             </div>
           ))}
         </div>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { HostProfileSummaryDto } from "../types";
 import { useI18n } from "@/shared/i18n";
+import { IconButton } from "@/shared/ui";
 
 interface HostCardProps {
   host: HostProfileSummaryDto;
@@ -28,9 +29,6 @@ interface HostCardProps {
   onContextMenu?: (e: React.MouseEvent, host: HostProfileSummaryDto) => void;
   shouldSuppressDblClick: () => boolean;
 }
-
-const ACTION_BTN_CLASS =
-  "inline-flex h-[22px] w-[22px] items-center justify-center rounded border border-slate-800/80 bg-slate-900/70 text-slate-400 transition-colors";
 
 export const HostCard: React.FC<HostCardProps> = ({
   host,
@@ -91,63 +89,63 @@ export const HostCard: React.FC<HostCardProps> = ({
           onDoubleClick={(e) => e.stopPropagation()}
           className="flex items-center gap-1 shrink-0 opacity-85 group-hover:opacity-100"
         >
-          <button
-            type="button"
+          <IconButton
+            size="sm"
+            bordered
+            tone="emerald"
+            title={t("common.connect")}
             onClick={(e) => {
               e.stopPropagation();
               onConnect(host);
             }}
-            title={t("common.connect")}
-            className={`${ACTION_BTN_CLASS} hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-400`}
-          >
-            <Play className="w-3 h-3" />
-          </button>
+            icon={<Play className="w-3 h-3" />}
+          />
           {onOpenSftp && (
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              bordered
+              tone="sky"
+              title={t("sftp.open_sftp_tab")}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenSftp(host);
               }}
-              title={t("sftp.open_sftp_tab")}
-              className={`${ACTION_BTN_CLASS} hover:border-sky-500/40 hover:bg-sky-500/15 hover:text-sky-400`}
-            >
-              <FolderSync className="w-3 h-3" />
-            </button>
+              icon={<FolderSync className="w-3 h-3" />}
+            />
           )}
-          <button
-            type="button"
+          <IconButton
+            size="sm"
+            bordered
+            tone="default"
+            title={t("common.duplicate")}
             onClick={(e) => {
               e.stopPropagation();
               onDuplicate(host);
             }}
-            title={t("common.duplicate")}
-            className={`${ACTION_BTN_CLASS} hover:border-slate-700 hover:bg-slate-800 hover:text-slate-200`}
-          >
-            <Copy className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
+            icon={<Copy className="w-3 h-3" />}
+          />
+          <IconButton
+            size="sm"
+            bordered
+            tone="sky"
+            title={t("common.edit")}
             onClick={(e) => {
               e.stopPropagation();
               onEdit(host.id);
             }}
-            title={t("common.edit")}
-            className={`${ACTION_BTN_CLASS} hover:border-sky-500/40 hover:bg-sky-500/15 hover:text-sky-400`}
-          >
-            <Edit2 className="w-3 h-3" />
-          </button>
-          <button
-            type="button"
+            icon={<Edit2 className="w-3 h-3" />}
+          />
+          <IconButton
+            size="sm"
+            bordered
+            tone="rose"
+            title={t("common.delete")}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(host);
             }}
-            title={t("common.delete")}
-            className={`${ACTION_BTN_CLASS} hover:border-rose-500/40 hover:bg-rose-500/15 hover:text-rose-400`}
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
+            icon={<Trash2 className="w-3 h-3" />}
+          />
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Download, FolderPlus, Upload } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import type { ContextMenuEntry } from "@/shared/ui";
+import { Button, type ContextMenuEntry } from "@/shared/ui";
 import type { DirectoryBrowser } from "../hooks/useDirectoryBrowser";
 import type { useSftpFileDrag } from "../hooks/useSftpFileDrag";
 import { buildPaneMenu } from "../menus/sftpMenus";
@@ -151,15 +151,16 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 )
               }
               actions={
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={local.selected.length === 0 || !connected}
                   onClick={() => onRequestUpload(local.selected)}
-                  className="inline-flex h-6 items-center gap-1 rounded border border-[#388bfd]/50 bg-[#1f6feb]/20 px-2 text-[11px] font-medium text-[#58a6ff] hover:bg-[#1f6feb]/30 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
+                  leftIcon={<Upload className="h-3 w-3" />}
                 >
-                  <Upload className="h-3 w-3" />
-                  <span>{t("sftp.upload_selected")}</span>
-                </button>
+                  {t("sftp.upload_selected")}
+                </Button>
               }
             />
           </div>
@@ -212,37 +213,38 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
           }
           actions={
             showLocal ? (
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="xs"
                 disabled={remote.selected.length === 0 || !connected}
                 onClick={() => onRequestDownload(remote.selected)}
-                className="inline-flex h-6 items-center gap-1 rounded border border-emerald-500/40 bg-emerald-500/15 px-2 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                leftIcon={<Download className="h-3 w-3" />}
               >
-                <Download className="h-3 w-3" />
-                <span>{t("sftp.download_selected")}</span>
-              </button>
+                {t("sftp.download_selected")}
+              </Button>
             ) : (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={!connected}
                   onClick={() => onUploadDialog(false)}
                   title={t("sftp.upload_files")}
-                  className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  leftIcon={<Upload className="h-3 w-3" />}
                 >
-                  <Upload className="h-3 w-3" />
-                  <span>{t("sftp.upload_files")}</span>
-                </button>
-                <button
-                  type="button"
+                  {t("sftp.upload_files")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
                   disabled={!connected}
                   onClick={() => onUploadDialog(true)}
                   title={t("sftp.upload_folder")}
-                  className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  leftIcon={<FolderPlus className="h-3.5 w-3.5" />}
                 >
-                  <FolderPlus className="h-3.5 w-3.5" />
-                  <span>{t("sftp.upload_folder")}</span>
-                </button>
+                  {t("sftp.upload_folder")}
+                </Button>
               </>
             )
           }

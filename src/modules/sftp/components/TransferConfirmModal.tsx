@@ -1,7 +1,7 @@
 import React from "react";
-import { ArrowRight, Download, Folder, Loader2, Upload, X } from "lucide-react";
+import { ArrowRight, Download, Folder, Upload, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell } from "@/shared/ui";
+import { Button, IconButton, ModalShell } from "@/shared/ui";
 
 export interface PendingTransfer {
   direction: "upload" | "download";
@@ -80,15 +80,13 @@ export const TransferConfirmModal: React.FC<TransferConfirmModalProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
+            <IconButton
               disabled={busy}
               onClick={onCancel}
-              className="rounded p-1 text-[#8b949e] hover:bg-[#1f242c] hover:text-[#e6edf3] disabled:opacity-50"
-              aria-label={t("common.close")}
-            >
-              <X className="h-4 w-4" />
-            </button>
+              title={t("common.close")}
+              icon={<X className="h-4 w-4" />}
+              size="sm"
+            />
           </div>
 
           <div className="space-y-3 p-4 text-xs">
@@ -118,35 +116,31 @@ export const TransferConfirmModal: React.FC<TransferConfirmModalProps> = ({
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-[#21262d] px-4 py-3">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
               disabled={busy}
               onClick={onCancel}
-              className="rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-xs font-medium text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
             >
               {t("sftp.modal_cancel")}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               autoFocus
               disabled={busy}
-              className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 ${
-                isUpload
-                  ? "bg-[#1f6feb] hover:bg-[#388bfd]"
-                  : "bg-emerald-600 hover:bg-emerald-500"
-              }`}
+              loading={busy}
+              variant={isUpload ? "primary" : "success"}
+              size="sm"
+              leftIcon={
+                isUpload ? (
+                  <Upload className="h-3.5 w-3.5" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )
+              }
             >
-              {busy ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : isUpload ? (
-                <Upload className="h-3.5 w-3.5" />
-              ) : (
-                <Download className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {t(isUpload ? "sftp.confirm_upload_btn" : "sftp.confirm_download_btn")}
-              </span>
-            </button>
+              {t(isUpload ? "sftp.confirm_upload_btn" : "sftp.confirm_download_btn")}
+            </Button>
           </div>
         </form>
       )}

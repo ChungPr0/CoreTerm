@@ -4,7 +4,6 @@ import {
   Minimize2,
   Minus,
   Move,
-  Scaling,
   Shield,
   Terminal as TerminalIcon,
   X,
@@ -148,13 +147,6 @@ export function buildTabBarWindowMenu(
       icon: <Move className="h-3.5 w-3.5" />,
       disabled: isMaximized,
       onSelect: () => onAction("move"),
-    },
-    {
-      id: "win-size",
-      label: t("window.size"),
-      icon: <Scaling className="h-3.5 w-3.5" />,
-      disabled: isMaximized,
-      onSelect: () => onAction("size"),
     },
     {
       id: "win-minimize",

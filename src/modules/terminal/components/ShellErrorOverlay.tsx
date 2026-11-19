@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
+import { Button } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 
 interface ShellErrorOverlayProps {
@@ -68,85 +69,84 @@ export const ShellErrorOverlay: React.FC<ShellErrorOverlayProps> = ({
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {onPickShell && (
-            <button
-              type="button"
-              disabled={isPickingShell}
+            <Button
+              variant="primary"
+              size="sm"
+              loading={isPickingShell}
+              leftIcon={<FolderOpen className="w-3.5 h-3.5" />}
               onClick={() => {
                 setIsPickingShell(true);
                 Promise.resolve(onPickShell(tab.tabId)).finally(() =>
                   setIsPickingShell(false)
                 );
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold transition-colors"
             >
-              <FolderOpen className="w-3.5 h-3.5" />
-              <span>{t("terminal.pick_shell")}</span>
-            </button>
+              {t("terminal.pick_shell")}
+            </Button>
           )}
 
           {onSwitchShell &&
             altShells.map((alt) => (
-              <button
+              <Button
                 key={alt.id}
-                type="button"
+                variant="outline"
+                size="sm"
+                className="text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/20"
+                leftIcon={<TerminalIcon className="w-3.5 h-3.5" />}
                 onClick={() => onSwitchShell(tab.tabId, alt)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-medium transition-colors"
               >
-                <TerminalIcon className="w-3.5 h-3.5" />
-                <span>{t("terminal.switch_shell", { name: alt.name })}</span>
-              </button>
+                {t("terminal.switch_shell", { name: alt.name })}
+              </Button>
             ))}
 
           {onRescan && (
-            <button
-              type="button"
-              disabled={isRescanning}
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={isRescanning}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
               onClick={() => {
                 setIsRescanning(true);
                 Promise.resolve(onRescan(tab.tabId)).finally(() =>
                   setIsRescanning(false)
                 );
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-medium transition-colors"
             >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${isRescanning ? "animate-spin" : ""}`}
-              />
-              <span>{t("app.rescan")}</span>
-            </button>
+              {t("app.rescan")}
+            </Button>
           )}
 
           {onOpenSettings && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Settings className="w-3.5 h-3.5" />}
               onClick={onOpenSettings}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition-colors"
             >
-              <Settings className="w-3.5 h-3.5" />
-              <span>{t("terminal.shell_settings")}</span>
-            </button>
+              {t("terminal.shell_settings")}
+            </Button>
           )}
 
           {onOpenSsh && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<Server className="w-3.5 h-3.5 text-emerald-400" />}
               onClick={onOpenSsh}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition-colors"
             >
-              <Server className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{t("terminal.ssh_list")}</span>
-            </button>
+              {t("terminal.ssh_list")}
+            </Button>
           )}
 
           {tab.shellProfile && (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<RotateCw className="w-3.5 h-3.5" />}
               onClick={onReconnect}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-medium transition-colors"
             >
-              <RotateCw className="w-3.5 h-3.5" />
-              <span>{t("session.reconnect")}</span>
-            </button>
+              {t("session.reconnect")}
+            </Button>
           )}
         </div>
       </div>

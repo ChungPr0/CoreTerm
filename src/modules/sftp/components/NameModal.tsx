@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell, useAlert } from "@/shared/ui";
+import { Button, Input, ModalShell, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 
 interface NameModalProps {
@@ -70,46 +70,42 @@ export const NameModal: React.FC<NameModalProps> = ({
       <div role="dialog" aria-modal="true">
         <div className="flex items-center justify-between border-b border-[#21262d] px-4 py-3">
           <h3 className="text-sm font-semibold text-[#e6edf3]">{title}</h3>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onCancel}
             disabled={saving}
-            className="rounded p-1 text-[#8b949e] hover:bg-[#1f242c] hover:text-[#e6edf3] disabled:opacity-50"
             aria-label={t("common.close")}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
         <form noValidate onSubmit={handleSubmit} className="space-y-3 p-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-[#8b949e]">{label}</label>
-            <input
-              ref={inputRef}
-              type="text"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              disabled={saving}
-              className="w-full rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-sm text-[#e6edf3] outline-none focus:border-[#388bfd]"
-            />
-          </div>
+          <Input
+            ref={inputRef}
+            type="text"
+            label={label}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={saving}
+          />
 
           <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={onCancel}
               disabled={saving}
-              className="rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-xs font-medium text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
             >
               {t("sftp.modal_cancel")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="submit"
-              disabled={saving}
-              className="rounded border border-[#1f6feb] bg-[#1f6feb] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#388bfd] disabled:opacity-50"
+              loading={saving}
             >
-              {saving ? "..." : confirmLabel}
-            </button>
+              {confirmLabel}
+            </Button>
           </div>
         </form>
       </div>

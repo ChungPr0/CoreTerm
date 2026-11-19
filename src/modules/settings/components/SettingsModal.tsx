@@ -25,7 +25,7 @@ import {
 } from "@/shared/defaults";
 import { type Locale, useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
-import { ModalShell } from "@/shared/ui";
+import { Button, Input, ModalShell, SegmentedControl, Select, Switch } from "@/shared/ui";
 import {
   mergeShells,
   resolveDefaultShell,
@@ -157,13 +157,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {t("settings.title")}
             </h2>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <form noValidate onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto">
@@ -173,30 +173,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Globe className="w-3.5 h-3.5 text-sky-400" />
               <span>{t("settings.lang")}</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleLangChange("vi")}
-                className={`py-2 px-3 rounded-lg border font-semibold transition-colors ${
-                  locale === "vi"
-                    ? "bg-sky-500/15 border-sky-500 text-sky-300"
-                    : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {t("settings.lang_vi")}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLangChange("en")}
-                className={`py-2 px-3 rounded-lg border font-semibold transition-colors ${
-                  locale === "en"
-                    ? "bg-sky-500/15 border-sky-500 text-sky-300"
-                    : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {t("settings.lang_en")}
-              </button>
-            </div>
+            <SegmentedControl<Locale>
+              value={locale}
+              onChange={handleLangChange}
+              options={[
+                { value: "vi", label: t("settings.lang_vi") },
+                { value: "en", label: t("settings.lang_en") },
+              ]}
+            />
           </div>
 
           {/* Launch size (columns x rows) */}
@@ -206,51 +190,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <Monitor className="w-3.5 h-3.5 text-sky-400" />
                 <span>{t("settings.launch_size")}</span>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => {
                   setCols(LAUNCH_COLS_DEFAULT);
                   setRows(LAUNCH_ROWS_DEFAULT);
                 }}
-                className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300"
+                leftIcon={<RotateCcw className="w-3 h-3" />}
+                className="text-sky-400 hover:text-sky-300"
               >
-                <RotateCcw className="w-3 h-3" />
-                <span>
-                  {t("settings.reset_win", {
-                    cols: LAUNCH_COLS_DEFAULT,
-                    rows: LAUNCH_ROWS_DEFAULT,
-                  })}
-                </span>
-              </button>
+                {t("settings.reset_win", {
+                  cols: LAUNCH_COLS_DEFAULT,
+                  rows: LAUNCH_ROWS_DEFAULT,
+                })}
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  {t("settings.cols")}
-                </label>
-                <input
-                  type="number"
-                  min={LAUNCH_COLS_MIN}
-                  max={LAUNCH_COLS_MAX}
-                  value={cols}
-                  onChange={(e) => setCols(Number(e.target.value))}
-                  className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 mb-1">
-                  {t("settings.rows")}
-                </label>
-                <input
-                  type="number"
-                  min={LAUNCH_ROWS_MIN}
-                  max={LAUNCH_ROWS_MAX}
-                  value={rows}
-                  onChange={(e) => setRows(Number(e.target.value))}
-                  className="w-full h-8 px-3 rounded bg-slate-900 border border-slate-800 text-slate-100 font-mono"
-                />
-              </div>
+              <Input
+                type="number"
+                label={t("settings.cols")}
+                min={LAUNCH_COLS_MIN}
+                max={LAUNCH_COLS_MAX}
+                value={cols}
+                onChange={(e) => setCols(Number(e.target.value))}
+                className="font-mono"
+              />
+              <Input
+                type="number"
+                label={t("settings.rows")}
+                min={LAUNCH_ROWS_MIN}
+                max={LAUNCH_ROWS_MAX}
+                value={rows}
+                onChange={(e) => setRows(Number(e.target.value))}
+                className="font-mono"
+              />
             </div>
           </div>
 
@@ -263,28 +238,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 {availableShells.length > 0 && (
-                  <select
+                  <Select
                     value={effectiveDefaultShell?.id ?? ""}
                     onChange={(e) => setDefaultShellId(e.target.value)}
-                    className="h-8 max-w-[180px] px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-sky-500"
+                    containerClassName="w-48 shrink-0"
                   >
                     {availableShells.map((shell) => (
                       <option key={shell.id} value={shell.id}>
                         {shell.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={isScanning}
                   onClick={() => void handleRescan()}
                   title={t("app.rescan")}
-                  className="h-8 px-2.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-sky-300 inline-flex items-center gap-1 text-[11px] transition-colors disabled:opacity-50"
+                  leftIcon={
+                    <RefreshCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
+                  }
                 >
-                  <RefreshCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
-                  {availableShells.length === 0 && <span>{t("app.rescan")}</span>}
-                </button>
+                  {availableShells.length === 0 ? t("app.rescan") : undefined}
+                </Button>
               </div>
             </div>
             {availableShells.length === 0 && (
@@ -308,12 +285,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <FolderSync className="w-4 h-4 text-sky-400 shrink-0" />
               <span>{t("settings.sftp_conflict_policy")}</span>
             </div>
-            <select
+            <Select
               value={sftpConflictPolicy}
               onChange={(e) =>
                 setSftpConflictPolicy(e.target.value as SftpConflictPolicy)
               }
-              className="h-8 px-2.5 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-sky-500"
+              containerClassName="w-48 shrink-0"
             >
               <option value="ASK">{t("settings.sftp_conflict_ask")}</option>
               <option value="OVERWRITE">
@@ -322,7 +299,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <option value="SKIP">{t("settings.sftp_conflict_skip")}</option>
               <option value="RENAME">{t("settings.sftp_conflict_rename")}</option>
               <option value="RESUME">{t("settings.sftp_conflict_resume")}</option>
-            </select>
+            </Select>
           </div>
 
           {/* Windows Context Menu ("Open in CoreTerm") */}
@@ -331,37 +308,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <MousePointerClick className="w-4 h-4 text-sky-400 shrink-0" />
               <span>{t("settings.context_menu_title")}</span>
             </div>
-            <button
-              type="button"
-              onClick={handleToggleContextMenu}
+            <Switch
+              checked={contextMenuDraft}
+              onChange={handleToggleContextMenu}
               aria-label={t("settings.context_menu_title")}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                contextMenuDraft ? "bg-sky-500" : "bg-slate-700"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  contextMenuDraft ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </button>
+            />
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-            >
+            <Button variant="secondary" onClick={onClose}>
               {t("common.cancel")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="submit"
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold"
+              leftIcon={<Save className="w-3.5 h-3.5" />}
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>{t("common.save")}</span>
-            </button>
+              {t("common.save")}
+            </Button>
           </div>
         </form>
     </ModalShell>

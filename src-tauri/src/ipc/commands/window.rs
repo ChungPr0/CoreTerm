@@ -140,6 +140,34 @@ pub async fn window_is_maximized(window: tauri::WebviewWindow) -> AppResult<bool
 }
 
 #[tauri::command]
+pub async fn window_get_position(window: tauri::WebviewWindow) -> AppResult<(f64, f64)> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let phys = window.outer_position().unwrap_or_default();
+    let logical = phys.to_logical::<f64>(scale);
+    Ok((logical.x, logical.y))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_set_position(window: tauri::WebviewWindow, x: f64, y: f64) -> AppResult<()> {
+    let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn window_get_size(window: tauri::WebviewWindow) -> AppResult<(f64, f64)> {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let phys = window.outer_size().unwrap_or_default();
+    let logical = phys.to_logical::<f64>(scale);
+    Ok((logical.width, logical.height))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_set_size(window: tauri::WebviewWindow, width: f64, height: f64) -> AppResult<()> {
+    let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(width, height)));
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn window_sys_command(
     window: tauri::WebviewWindow,
     action: String,

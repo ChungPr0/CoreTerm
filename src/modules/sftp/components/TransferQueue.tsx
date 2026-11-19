@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
+import { Button, IconButton } from "@/shared/ui";
 import type { SftpTransferJobDto, SftpTransferStatus } from "../types";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { fmtSize, fmtSpeed } from "@/shared/utils/formatters";
@@ -73,17 +74,17 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
         </div>
 
         {hasFinished && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={(e) => {
               e.stopPropagation();
               onClearFinished();
             }}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]"
+            leftIcon={<Trash2 className="h-3 w-3" />}
           >
-            <Trash2 className="h-3 w-3" />
-            <span>{t("sftp.queue_clear")}</span>
-          </button>
+            {t("sftp.queue_clear")}
+          </Button>
         )}
       </div>
 
@@ -168,34 +169,30 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
                     <div className="flex shrink-0 items-center gap-1">
                       {canPause && (
-                        <button
-                          type="button"
+                        <IconButton
+                          size="xs"
                           onClick={() => onPause(job.job_id)}
-                          className="rounded p-1 text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]"
                           title={t("sftp.queue_pause")}
-                        >
-                          <Pause className="h-3 w-3" />
-                        </button>
+                          icon={<Pause className="h-3 w-3" />}
+                        />
                       )}
                       {canResume && (
-                        <button
-                          type="button"
+                        <IconButton
+                          size="xs"
+                          tone="emerald"
                           onClick={() => onResume(job.job_id)}
-                          className="rounded p-1 text-emerald-400 hover:bg-[#21262d]"
                           title={t("sftp.queue_resume")}
-                        >
-                          <Play className="h-3 w-3" />
-                        </button>
+                          icon={<Play className="h-3 w-3" />}
+                        />
                       )}
                       {canCancel && (
-                        <button
-                          type="button"
+                        <IconButton
+                          size="xs"
+                          tone="rose"
                           onClick={() => onCancel(job.job_id)}
-                          className="rounded p-1 text-[#8b949e] hover:bg-[#21262d] hover:text-red-400"
                           title={t("sftp.queue_cancel")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+                          icon={<X className="h-3 w-3" />}
+                        />
                       )}
                     </div>
                   </div>

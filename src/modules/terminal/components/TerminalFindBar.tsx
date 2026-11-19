@@ -1,6 +1,7 @@
 import React from "react";
 import { ArrowDown, ArrowUp, CaseSensitive, Regex, Search, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
+import { IconButton } from "@/shared/ui";
 
 interface TerminalFindBarProps {
   isOpen: boolean;
@@ -82,62 +83,48 @@ export const TerminalFindBar: React.FC<TerminalFindBarProps> = ({
         {statusText}
       </span>
 
-      <button
-        type="button"
+      <IconButton
+        size="sm"
+        tone="sky"
+        active={caseSensitive}
         onClick={onToggleCaseSensitive}
         title={t("terminal.find_case")}
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-md border text-[11px] transition-colors ${
-          caseSensitive
-            ? "border-sky-500/50 bg-sky-500/20 text-sky-300"
-            : "border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-        }`}
-      >
-        <CaseSensitive className="w-3.5 h-3.5" />
-      </button>
+        icon={<CaseSensitive className="w-3.5 h-3.5" />}
+      />
 
-      <button
-        type="button"
+      <IconButton
+        size="sm"
+        tone="sky"
+        active={regex}
         onClick={onToggleRegex}
         title={t("terminal.find_regex")}
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-md border text-[11px] transition-colors ${
-          regex
-            ? "border-sky-500/50 bg-sky-500/20 text-sky-300"
-            : "border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-        }`}
-      >
-        <Regex className="w-3.5 h-3.5" />
-      </button>
+        icon={<Regex className="w-3.5 h-3.5" />}
+      />
 
       <div className="mx-0.5 h-4 w-px bg-slate-800" />
 
-      <button
-        type="button"
+      <IconButton
+        size="sm"
         disabled={!query || invalidRegex}
         onClick={onFindPrev}
         title={t("terminal.find_prev")}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-35 disabled:pointer-events-none transition-colors"
-      >
-        <ArrowUp className="w-3.5 h-3.5" />
-      </button>
+        icon={<ArrowUp className="w-3.5 h-3.5" />}
+      />
 
-      <button
-        type="button"
+      <IconButton
+        size="sm"
         disabled={!query || invalidRegex}
         onClick={onFindNext}
         title={t("terminal.find_next")}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-35 disabled:pointer-events-none transition-colors"
-      >
-        <ArrowDown className="w-3.5 h-3.5" />
-      </button>
+        icon={<ArrowDown className="w-3.5 h-3.5" />}
+      />
 
-      <button
-        type="button"
+      <IconButton
+        size="sm"
         onClick={onClose}
         title={t("common.close")}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        icon={<X className="w-3.5 h-3.5" />}
+      />
     </div>
   );
 };

@@ -30,6 +30,7 @@ use crate::ipc::commands::{
     sftp_list_transfers, sftp_pause_transfer, sftp_rename, sftp_resolve_conflict,
     sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, window_close,
     window_is_maximized, window_minimize, window_present, window_set_launch_size,
+    window_get_position, window_set_position, window_get_size, window_set_size,
     window_sys_command, window_toggle_maximize, AppState,
 };
 use crate::infra::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
@@ -235,6 +236,10 @@ pub fn run() {
             window_set_launch_size,
             window_present,
             window_is_maximized,
+            window_get_position,
+            window_set_position,
+            window_get_size,
+            window_set_size,
             window_sys_command,
             window_minimize,
             window_toggle_maximize,

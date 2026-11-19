@@ -2,7 +2,7 @@ import React from "react";
 import { Save, Server, X } from "lucide-react";
 import type { HostFullConfigDto } from "../types";
 import { useI18n } from "@/shared/i18n";
-import { ConfirmDeleteModal, ModalShell } from "@/shared/ui";
+import { Button, ConfirmDeleteModal, Input, ModalShell } from "@/shared/ui";
 import { useHostForm } from "../hooks/useHostForm";
 import { GroupComboBox } from "./GroupComboBox";
 import { HostAuthSection } from "./HostAuthSection";
@@ -60,29 +60,20 @@ export const HostModal: React.FC<HostModalProps> = ({
               {editingHost ? t("host.edit") : t("host.create")}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-          >
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <form noValidate onSubmit={form.handleSubmit} className="p-5 space-y-4 overflow-y-auto text-xs">
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-slate-300 font-medium mb-1">
-                {t("host.alias")} *
-              </label>
-              <input
-                ref={form.aliasInputRef}
-                type="text"
-                value={form.alias}
-                onChange={(e) => form.setAlias(e.target.value)}
-                className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
-              />
-            </div>
+            <Input
+              ref={form.aliasInputRef}
+              type="text"
+              label={`${t("host.alias")} *`}
+              value={form.alias}
+              onChange={(e) => form.setAlias(e.target.value)}
+            />
 
             <GroupComboBox
               value={form.groupName}
@@ -92,58 +83,47 @@ export const HostModal: React.FC<HostModalProps> = ({
               onOpenChange={form.setIsGroupMenuOpen}
             />
 
-            <div>
-              <label className="block text-slate-300 font-medium mb-1">
-                {t("host.tags")}
-              </label>
-              <input
-                type="text"
-                value={form.tagsInput}
-                onChange={(e) => form.setTagsInput(e.target.value)}
-                className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
-              />
-            </div>
+            <Input
+              type="text"
+              label={t("host.tags")}
+              value={form.tagsInput}
+              onChange={(e) => form.setTagsInput(e.target.value)}
+            />
           </div>
 
           <div className="grid grid-cols-12 gap-3">
             <div className="col-span-6">
-              <label className="block text-slate-300 font-medium mb-1">
-                {t("host.host")} *
-              </label>
-              <input
+              <Input
                 ref={form.hostInputRef}
                 type="text"
+                label={`${t("host.host")} *`}
                 value={form.host}
                 onChange={(e) => form.setHost(e.target.value)}
-                className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
+                className="font-mono"
               />
             </div>
 
             <div className="col-span-2">
-              <label className="block text-slate-300 font-medium mb-1">
-                {t("host.port")}
-              </label>
-              <input
+              <Input
                 ref={form.portInputRef}
                 type="number"
                 min={1}
                 max={65535}
+                label={t("host.port")}
                 value={form.port}
                 onChange={(e) => form.setPort(Number(e.target.value))}
-                className="w-full h-8 px-2.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
+                className="font-mono"
               />
             </div>
 
             <div className="col-span-4">
-              <label className="block text-slate-300 font-medium mb-1">
-                {t("host.username")} *
-              </label>
-              <input
+              <Input
                 ref={form.usernameInputRef}
                 type="text"
+                label={`${t("host.username")} *`}
                 value={form.username}
                 onChange={(e) => form.setUsername(e.target.value)}
-                className="w-full h-8 px-3 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 font-mono"
+                className="font-mono"
               />
             </div>
           </div>
@@ -191,21 +171,17 @@ export const HostModal: React.FC<HostModalProps> = ({
           />
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-            >
+            <Button variant="secondary" onClick={onClose}>
               {t("common.cancel")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="submit"
-              disabled={form.isSaving}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold"
+              loading={form.isSaving}
+              leftIcon={<Save className="w-3.5 h-3.5" />}
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>{form.isSaving ? t("common.loading") : t("common.save")}</span>
-            </button>
+              {t("common.save")}
+            </Button>
           </div>
         </form>
       </ModalShell>

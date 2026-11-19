@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import type { SessionState, TerminalTabItem } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
+import { IconButton } from "@/shared/ui";
 import { ShellIcon } from "./ShellIcon";
 
 interface TabItemProps {
@@ -224,8 +225,10 @@ export const TabItem: React.FC<TabItemProps> = ({
       )}
 
       {!isLocal && tab.tabKind !== "sftp" && onToggleSftp && (
-        <button
-          type="button"
+        <IconButton
+          size="xs"
+          tone="sky"
+          active={tab.sftpOpen}
           onClick={(e) => {
             e.stopPropagation();
             onToggleSftp(e);
@@ -233,42 +236,28 @@ export const TabItem: React.FC<TabItemProps> = ({
           title={`${t("ctx.sftp_panel")}: ${
             tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off")
           }`}
-          className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors shrink-0 ${
-            tab.sftpOpen
-              ? "bg-sky-500/20 text-sky-300"
-              : "text-slate-400 hover:bg-slate-700/70 hover:text-sky-300"
-          }`}
-        >
-          <FolderSync className="w-3 h-3" />
-        </button>
+          icon={<FolderSync className="w-3 h-3" />}
+        />
       )}
 
       {!isLocal && (
-        <button
-          type="button"
-          onClick={onReconnect}
+        <IconButton
+          size="xs"
+          tone={isOffline ? "rose" : "default"}
           disabled={isConnecting}
+          onClick={onReconnect}
           title={isConnecting ? t("status.connecting") : t("common.reconnect")}
-          className={`inline-flex h-5 w-5 items-center justify-center rounded hover:bg-slate-700/70 transition-colors shrink-0 ${
-            isConnecting
-              ? "text-sky-400 cursor-wait"
-              : isOffline
-                ? "text-rose-400 hover:text-rose-300"
-                : "text-slate-400 hover:text-sky-300"
-          }`}
-        >
-          <RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />
-        </button>
+          icon={<RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />}
+        />
       )}
 
-      <button
-        type="button"
+      <IconButton
+        size="xs"
+        tone="rose"
         onClick={onClose}
         title={t("common.close")}
-        className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors shrink-0"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        icon={<X className="w-3.5 h-3.5" />}
+      />
     </div>
   );
 };

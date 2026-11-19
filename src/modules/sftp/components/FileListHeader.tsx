@@ -13,12 +13,9 @@ import {
   Search,
 } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { PopoverMenu } from "@/shared/ui";
+import { IconButton, Input, PopoverMenu } from "@/shared/ui";
 import { splitLocalCrumbs, splitRemoteCrumbs } from "@/shared/utils/path";
 import type { LocalDriveDto } from "../types";
-
-const NAV_BTN_CLASS =
-  "inline-flex h-6 w-6 items-center justify-center rounded text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3] disabled:cursor-not-allowed disabled:opacity-35";
 
 interface FileListHeaderProps {
   kind: "local" | "remote";
@@ -154,44 +151,47 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
           )}
 
           {onBack && (
-            <button
-              type="button"
+            <IconButton
               disabled={!canGoBack}
               onClick={onBack}
               title={t("sftp.go_back")}
-              className={NAV_BTN_CLASS}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </button>
+              size="sm"
+              icon={<ArrowLeft className="h-3.5 w-3.5" />}
+            />
           )}
           {onForward && (
-            <button
-              type="button"
+            <IconButton
               disabled={!canGoForward}
               onClick={onForward}
               title={t("sftp.go_forward")}
-              className={NAV_BTN_CLASS}
-            >
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
+              size="sm"
+              icon={<ArrowRight className="h-3.5 w-3.5" />}
+            />
           )}
-          <button type="button" onClick={onUp} title={t("sftp.go_up")} className={NAV_BTN_CLASS}>
-            <CornerLeftUp className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={onHome} title={t("sftp.home")} className={NAV_BTN_CLASS}>
-            <Home className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={onRefresh} title={t("sftp.refresh")} className={NAV_BTN_CLASS}>
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-[#58a6ff]" : ""}`} />
-          </button>
-          <button
-            type="button"
+          <IconButton
+            onClick={onUp}
+            title={t("sftp.go_up")}
+            size="sm"
+            icon={<CornerLeftUp className="h-3.5 w-3.5" />}
+          />
+          <IconButton
+            onClick={onHome}
+            title={t("sftp.home")}
+            size="sm"
+            icon={<Home className="h-3.5 w-3.5" />}
+          />
+          <IconButton
+            onClick={onRefresh}
+            title={t("sftp.refresh")}
+            size="sm"
+            icon={<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-[#58a6ff]" : ""}`} />}
+          />
+          <IconButton
             onClick={onNewFolder}
             title={t("sftp.new_folder")}
-            className={NAV_BTN_CLASS}
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </button>
+            size="sm"
+            icon={<FolderPlus className="h-3.5 w-3.5" />}
+          />
         </div>
 
         {actions && <div className="flex items-center gap-1.5">{actions}</div>}
@@ -200,7 +200,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
       <div className="flex h-[41px] shrink-0 min-w-0 items-center gap-2 border-b border-[#21262d] bg-[#0d1117] px-2.5">
         {editingPath ? (
           <form noValidate onSubmit={submitPathEditor} className="flex h-7 min-w-0 flex-1 items-center">
-            <input
+            <Input
               ref={pathInputRef}
               value={pathDraft}
               onChange={(e) => setPathDraft(e.target.value)}
@@ -211,7 +211,8 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
                   setEditingPath(false);
                 }
               }}
-              className="block h-7 w-full rounded border border-[#388bfd] bg-[#161b22] px-2 font-mono text-xs text-[#e6edf3] outline-none"
+              inputSize="sm"
+              className="font-mono text-xs"
             />
           </form>
         ) : (
@@ -237,14 +238,14 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
           </div>
         )}
 
-        <div className="relative flex h-7 w-24 min-w-[76px] shrink items-center sm:w-36">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[#6e7681]" />
-          <input
+        <div className="relative flex h-7 w-28 min-w-[76px] shrink items-center sm:w-36">
+          <Input
             type="text"
             value={filter}
             onChange={(e) => onChangeFilter(e.target.value)}
             placeholder={t("sftp.filter_placeholder")}
-            className="block h-7 w-full rounded border border-[#21262d] bg-[#161b22] pl-6 pr-2 text-xs text-[#e6edf3] placeholder-[#6e7681] outline-none focus:border-[#388bfd]"
+            leftIcon={<Search className="h-3 w-3 text-[#6e7681]" />}
+            inputSize="sm"
           />
         </div>
       </div>

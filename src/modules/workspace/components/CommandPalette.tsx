@@ -11,7 +11,7 @@ import {
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import type { ShellProfile } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell } from "@/shared/ui";
+import { Button, IconButton, ModalShell } from "@/shared/ui";
 import { ShellIcon } from "./ShellIcon";
 
 interface CommandPaletteProps {
@@ -134,13 +134,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             placeholder={t("palette.search")}
             className="w-full bg-transparent text-slate-100 placeholder:text-slate-500 focus:outline-none text-xs"
           />
-          <button
-            type="button"
+          <IconButton
+            size="xs"
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-200"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+            icon={<X className="w-3.5 h-3.5" />}
+          />
         </div>
 
         <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
@@ -240,19 +238,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
                   <div className="flex items-center gap-2 text-[10px] shrink-0">
                     {onOpenSftp && (
-                      <button
-                        type="button"
+                      <Button
+                        size="xs"
+                        variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
                           onOpenSftp(host);
                           onClose();
                         }}
                         title={t("sftp.open_sftp_tab")}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-800 hover:bg-sky-500/20 border border-slate-700 hover:border-sky-500/40 text-sky-300"
+                        leftIcon={<FolderSync className="w-3 h-3 text-sky-400" />}
+                        className="h-5 px-1.5 text-[10px] border-slate-700 bg-slate-800 text-sky-300 hover:border-sky-500/40 hover:bg-sky-500/20"
                       >
-                        <FolderSync className="w-3 h-3" />
-                        <span>{t("sftp.title")}</span>
-                      </button>
+                        {t("sftp.title")}
+                      </Button>
                     )}
                     <div className="flex items-center gap-1 text-sky-400">
                       <span>{t("palette.connect")}</span>

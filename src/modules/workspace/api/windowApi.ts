@@ -54,6 +54,22 @@ export const windowApi = {
     return invoke<boolean>("window_is_maximized", {});
   },
 
+  windowGetPosition(): Promise<[number, number]> {
+    return invoke<[number, number]>("window_get_position", {});
+  },
+
+  windowSetPosition(x: number, y: number): Promise<void> {
+    return invoke<void>("window_set_position", { x, y });
+  },
+
+  windowGetSize(): Promise<[number, number]> {
+    return invoke<[number, number]>("window_get_size", {});
+  },
+
+  windowSetSize(width: number, height: number): Promise<void> {
+    return invoke<void>("window_set_size", { width, height });
+  },
+
   windowSysCommand(action: WindowSysAction): Promise<void> {
     return invoke<void>("window_sys_command", { action });
   },

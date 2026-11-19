@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Plus, Search, Server, Settings, Tag } from "lucide-react";
 import type { HostProfileSummaryDto } from "../types";
 import { useI18n } from "@/shared/i18n";
+import { IconButton, Input } from "@/shared/ui";
 import { getEditableInput } from "@/shared/utils/editableTarget";
 import { useHostDrag } from "../hooks/useHostDrag";
 import { useGroupDrag } from "../hooks/useGroupDrag";
@@ -185,44 +186,42 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
+            <IconButton
               onClick={onCreateNew}
               title={t("host.create")}
-              className="p-1.5 rounded-md bg-sky-500 hover:bg-sky-400 text-slate-950 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
-            <button
-              type="button"
+              tone="sky"
+              size="sm"
+              bordered
+              icon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
+            />
+            <IconButton
               onClick={onOpenVault}
               title={t("vault.title")}
-              className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-400 transition-colors"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
+              tone="emerald"
+              size="sm"
+              bordered
+              icon={<KeyRound className="w-3.5 h-3.5" />}
+            />
+            <IconButton
               onClick={onOpenSettings}
               title={t("settings.title")}
-              className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
+              tone="default"
+              size="sm"
+              bordered
+              icon={<Settings className="w-3.5 h-3.5" />}
+            />
           </div>
         </div>
 
         <div className="p-2.5 border-b border-slate-800/80 space-y-2">
-          <div className="relative flex items-center">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder={t("host.search")}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-950/90 border border-slate-800 rounded-md text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/70"
-            />
-          </div>
+          <Input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={t("host.search")}
+            leftIcon={<Search className="w-3.5 h-3.5 text-slate-500" />}
+            inputSize="sm"
+          />
 
           {allTags.length > 0 && (
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5">

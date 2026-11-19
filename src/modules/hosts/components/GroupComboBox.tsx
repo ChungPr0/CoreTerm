@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { PopoverMenu } from "@/shared/ui";
+import { IconButton, Input, PopoverMenu } from "@/shared/ui";
 
 interface GroupComboBoxProps {
   value: string;
@@ -23,45 +23,45 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
 
   return (
     <div ref={comboRef} className="relative">
-      <label className="block text-slate-300 font-medium mb-1">{t("host.group")}</label>
-      <div className="flex items-center h-8 rounded-lg bg-slate-950 border border-slate-800 focus-within:border-sky-500/70 transition-colors">
-        <input
-          type="text"
-          value={value}
-          maxLength={64}
-          placeholder={t("host.group_placeholder")}
-          onFocus={() => onOpenChange(true)}
-          onClick={() => onOpenChange(true)}
-          onChange={(e) => {
-            onChange(e.target.value);
-            if (!isOpen) onOpenChange(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && isOpen) {
-              e.preventDefault();
-              onOpenChange(false);
-            } else if (e.key === "ArrowDown") {
-              onOpenChange(true);
-            } else if (e.key === "Tab") {
-              onOpenChange(false);
+      <Input
+        label={t("host.group")}
+        type="text"
+        value={value}
+        maxLength={64}
+        placeholder={t("host.group_placeholder")}
+        onFocus={() => onOpenChange(true)}
+        onClick={() => onOpenChange(true)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (!isOpen) onOpenChange(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && isOpen) {
+            e.preventDefault();
+            onOpenChange(false);
+          } else if (e.key === "ArrowDown") {
+            onOpenChange(true);
+          } else if (e.key === "Tab") {
+            onOpenChange(false);
+          }
+        }}
+        rightIcon={
+          <IconButton
+            size="xs"
+            tone="sky"
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onOpenChange(!isOpen)}
+            icon={
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                  isOpen ? "rotate-180 text-sky-400" : ""
+                }`}
+              />
             }
-          }}
-          className="flex-1 min-w-0 h-full px-3 bg-transparent text-slate-100 placeholder:text-slate-500 focus:outline-none"
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onOpenChange(!isOpen)}
-          className="h-full px-2 flex items-center justify-center text-slate-400 hover:text-slate-200 shrink-0 transition-colors"
-        >
-          <ChevronDown
-            className={`w-3.5 h-3.5 transition-transform duration-150 ${
-              isOpen ? "rotate-180 text-sky-400" : ""
-            }`}
           />
-        </button>
-      </div>
+        }
+      />
 
       <PopoverMenu
         isOpen={isOpen && existingGroups.length > 0}

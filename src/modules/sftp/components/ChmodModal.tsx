@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Shield, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell } from "@/shared/ui";
+import { Button, Checkbox, Input, ModalShell } from "@/shared/ui";
 
 interface ChmodModalProps {
   isOpen: boolean;
@@ -94,14 +94,14 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
               <p className="text-[11px] text-slate-400 font-mono truncate">{targetName}</p>
             </div>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             disabled={submitting}
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-200"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-950/70">
@@ -122,11 +122,10 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
                     const bit = perm << row.shift;
                     return (
                       <td key={perm} className="py-2 px-2 text-center">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          size="sm"
                           checked={(mode & bit) !== 0}
-                          onChange={() => toggleBit(bit)}
-                          className="w-3.5 h-3.5 accent-sky-500 cursor-pointer"
+                          onCheckedChange={() => toggleBit(bit)}
                         />
                       </td>
                     );
@@ -138,32 +137,34 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <label className="text-slate-300 font-medium">{t("sftp.chmod_octal")}</label>
-          <input
+          <label className="text-slate-300 font-medium whitespace-nowrap">{t("sftp.chmod_octal")}</label>
+          <Input
             type="text"
             value={octalText}
             onChange={(e) => handleOctalChange(e.target.value)}
             placeholder="0755"
-            className="w-24 h-8 px-2.5 rounded bg-slate-950 border border-slate-700 text-slate-100 font-mono text-right focus:outline-none focus:border-sky-500"
+            maxLength={4}
+            className="font-mono text-center tracking-wider"
+            containerClassName="w-24 shrink-0"
           />
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={submitting}
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
           >
             {t("sftp.modal_cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             disabled={submitting || octalText.length === 0}
-            className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold"
+            loading={submitting}
           >
             {t("sftp.modal_confirm")}
-          </button>
+          </Button>
         </div>
       </form>
     </ModalShell>

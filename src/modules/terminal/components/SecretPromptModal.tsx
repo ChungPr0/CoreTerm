@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, KeyRound, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell, useAlert } from "@/shared/ui";
+import { Button, Checkbox, IconButton, Input, ModalShell, Switch, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { useTabsStore } from "@/modules/workspace";
 import { sftpApi, type SftpAuthPromptEventDto } from "@/modules/sftp";
@@ -134,14 +134,14 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
                 : t("auth.title_password")}
             </h3>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             disabled={submitting}
             onClick={handleDismiss}
-            className="p-1 text-slate-400 hover:text-slate-200 disabled:opacity-50"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {prompt.prompt_text && (
@@ -150,79 +150,62 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
           </p>
         )}
 
-        <div>
-          <label className="block text-slate-400 mb-1">{t("auth.secret")}</label>
-          <div className="relative">
-            <input
-              ref={inputRef}
-              type={showSecret ? "text" : "password"}
-              autoFocus
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              className="w-full pl-3 pr-9 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-100"
-            />
-            <button
-              type="button"
+        <Input
+          ref={inputRef}
+          type={showSecret ? "text" : "password"}
+          autoFocus
+          label={t("auth.secret")}
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          rightIcon={
+            <IconButton
+              size="xs"
               tabIndex={-1}
               onClick={() => setShowSecret((v) => !v)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              {showSecret ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        </div>
+              icon={showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            />
+          }
+        />
 
         <div className="flex items-center gap-4 h-6">
-          <label className="inline-flex items-center gap-2 cursor-pointer text-slate-300 select-none">
-            <input
-              type="checkbox"
-              checked={saveVault}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setSaveVault(checked);
-                if (!checked) setAutoReconnect(false);
-              }}
-            />
-            <span>{t("auth.save_vault")}</span>
-          </label>
+          <Checkbox
+            checked={saveVault}
+            onCheckedChange={(checked) => {
+              setSaveVault(checked);
+              if (!checked) setAutoReconnect(false);
+            }}
+            label={t("auth.save_vault")}
+          />
 
           <div
             className={`flex items-center transition-opacity duration-150 ${
               saveVault ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <label className="inline-flex items-center gap-2 cursor-pointer text-slate-300 select-none">
-              <input
-                type="checkbox"
-                disabled={!saveVault}
-                checked={autoReconnect && saveVault}
-                onChange={(e) => setAutoReconnect(e.target.checked)}
-              />
-              <span>{t("session.auto_reconnect")}</span>
-            </label>
+            <Switch
+              disabled={!saveVault}
+              checked={autoReconnect && saveVault}
+              onChange={(checked) => setAutoReconnect(checked)}
+              label={t("session.auto_reconnect")}
+            />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-1">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={submitting}
             onClick={handleDismiss}
-            className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300"
           >
             {t("common.cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
-            disabled={submitting}
-            className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold"
+            loading={submitting}
           >
             {t("auth.submit")}
-          </button>
+          </Button>
         </div>
       </form>
     </ModalShell>

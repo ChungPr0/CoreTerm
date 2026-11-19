@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
-import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Trash2, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
+import { Button } from "./Button";
+import { Checkbox } from "./Checkbox";
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -87,14 +89,14 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon"
               disabled={isDeleting}
               onClick={onCancel}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 disabled:opacity-50"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
 
           <div className="p-3 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1">
@@ -118,16 +120,13 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
                   : "bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-700 cursor-pointer"
               }`}
             >
-              <span className="inline-flex items-center gap-2 font-medium">
-                <input
-                  type="checkbox"
-                  disabled={checkboxDisabled || isDeleting}
-                  checked={checkboxChecked}
-                  onChange={(e) => onCheckboxChange?.(e.target.checked)}
-                  className="accent-rose-500"
-                />
-                <span>{checkboxLabel}</span>
-              </span>
+              <Checkbox
+                tone="rose"
+                disabled={checkboxDisabled || isDeleting}
+                checked={checkboxChecked}
+                onCheckedChange={onCheckboxChange}
+                label={checkboxLabel}
+              />
               {checkboxDisabled && checkboxDisabledHint && (
                 <span className="text-[10px] text-amber-300/90">
                   {checkboxDisabledHint}
@@ -154,28 +153,23 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
           )}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               disabled={isDeleting}
               onClick={onCancel}
               autoFocus
-              className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium disabled:opacity-50"
             >
               {t("common.cancel")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="danger"
               disabled={isDeleting}
+              loading={isDeleting}
               onClick={() => void onConfirm()}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold disabled:opacity-70"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
             >
-              {isDeleting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Trash2 className="w-3.5 h-3.5" />
-              )}
-              <span>{confirmLabel ?? t("common.delete")}</span>
-            </button>
+              {confirmLabel ?? t("common.delete")}
+            </Button>
           </div>
         </div>
       </div>

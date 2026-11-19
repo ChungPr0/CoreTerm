@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { IconButton } from "./IconButton";
 
 export type AlertKind = "error" | "warn" | "info" | "success";
 
@@ -99,13 +100,12 @@ const AlertCard: React.FC<{
       <p className="flex-1 min-w-0 leading-relaxed break-words select-text">
         {item.message}
       </p>
-      <button
-        type="button"
+      <IconButton
+        size="xs"
         onClick={() => onDismiss(item.id)}
-        className="p-0.5 rounded text-slate-400 hover:text-white shrink-0"
-      >
-        <X className="w-3.5 h-3.5" />
-      </button>
+        title="Dismiss"
+        icon={<X className="w-3.5 h-3.5" />}
+      />
       <div
         key={item.resetSeq}
         style={{

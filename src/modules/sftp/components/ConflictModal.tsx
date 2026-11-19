@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell } from "@/shared/ui";
+import { Button, Checkbox, ModalShell } from "@/shared/ui";
 import { fmtSize, fmtTime } from "@/shared/utils/formatters";
 import type { SftpTransferConflictEventDto } from "../types";
 
@@ -75,48 +75,41 @@ export const ConflictModal: React.FC<ConflictModalProps> = ({ conflict, onResolv
               </div>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2 pt-1 text-xs text-[#c9d1d9]">
-              <input
-                type="checkbox"
-                checked={applyAll}
-                onChange={(e) => setApplyAll(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-[#30363d] bg-[#161b22] accent-[#1f6feb]"
-              />
-              {t("sftp.conflict_apply_all")}
-            </label>
+            <Checkbox
+              checked={applyAll}
+              onCheckedChange={setApplyAll}
+              label={t("sftp.conflict_apply_all")}
+              containerClassName="pt-1 text-[#c9d1d9]"
+            />
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#21262d] px-4 py-3">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={() => onResolve("SKIP", applyAll)}
-              className="rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-xs font-medium text-[#c9d1d9] hover:bg-[#21262d]"
             >
               {t("sftp.conflict_skip")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => onResolve("RENAME", applyAll)}
-              className="rounded border border-[#30363d] bg-[#161b22] px-3 py-1.5 text-xs font-medium text-[#c9d1d9] hover:bg-[#21262d]"
             >
               {t("sftp.conflict_rename")}
-            </button>
+            </Button>
             {conflict.can_resume && (
-              <button
-                type="button"
+              <Button
+                variant="success"
                 onClick={() => onResolve("RESUME", applyAll)}
-                className="rounded border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25"
               >
                 {t("sftp.conflict_resume")}
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => onResolve("OVERWRITE", applyAll)}
-              className="rounded border border-[#1f6feb] bg-[#1f6feb] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#388bfd]"
             >
               {t("sftp.conflict_overwrite")}
-            </button>
+            </Button>
           </div>
         </div>
       )}

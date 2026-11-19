@@ -2,7 +2,7 @@ import React from "react";
 import { AlertTriangle, X } from "lucide-react";
 import type { PortProbeResultDto } from "../types";
 import { useI18n } from "@/shared/i18n";
-import { ModalShell } from "@/shared/ui";
+import { Button, ModalShell } from "@/shared/ui";
 
 interface PortConflictModalProps {
   conflicts: PortProbeResultDto[];
@@ -28,13 +28,9 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
           <AlertTriangle className="w-4 h-4 text-amber-400" />
           <h3 className="text-sm font-bold text-slate-100">{t("conflict.title")}</h3>
         </div>
-        <button
-          type="button"
-          onClick={onAbort}
-          className="p-1 text-slate-400 hover:text-slate-200"
-        >
+        <Button variant="ghost" size="icon" onClick={onAbort}>
           <X className="w-4 h-4" />
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-2">
@@ -58,20 +54,12 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-        <button
-          type="button"
-          onClick={onAbort}
-          className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
-        >
+        <Button variant="secondary" onClick={onAbort}>
           {t("conflict.abort")}
-        </button>
-        <button
-          type="button"
-          onClick={onSkipAndConnect}
-          className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold"
-        >
+        </Button>
+        <Button variant="primary" onClick={onSkipAndConnect}>
           {t("conflict.skip_connect")}
-        </button>
+        </Button>
       </div>
     </ModalShell>
   );

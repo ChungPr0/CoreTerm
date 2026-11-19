@@ -1,6 +1,7 @@
 import React from "react";
 import { Columns2, Terminal, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
+import { Button, IconButton } from "@/shared/ui";
 import type { SftpConnectionState } from "../types";
 
 interface SftpToolbarProps {
@@ -48,39 +49,34 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
 
       <div className="flex items-center gap-1.5">
         {onOpenInTerminal && remoteCwd && (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={() => onOpenInTerminal(remoteCwd)}
             title={t("sftp.open_in_terminal_tooltip")}
-            className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd] hover:text-white"
+            leftIcon={<Terminal className="h-3.5 w-3.5 text-emerald-400" />}
           >
-            <Terminal className="h-3.5 w-3.5 text-emerald-400" />
-            <span>{t("sftp.open_in_terminal")}</span>
-          </button>
+            {t("sftp.open_in_terminal")}
+          </Button>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="xs"
+          active={showLocal}
           onClick={onToggleLocalPane}
-          className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] ${
-            showLocal
-              ? "border-[#388bfd]/60 bg-[#1f6feb]/20 text-[#58a6ff]"
-              : "border-[#30363d] bg-[#0d1117] text-[#c9d1d9] hover:border-[#388bfd]"
-          }`}
+          leftIcon={<Columns2 className="h-3.5 w-3.5" />}
         >
-          <Columns2 className="h-3.5 w-3.5" />
-          <span>{t("sftp.toggle_local_pane")}</span>
-        </button>
+          {t("sftp.toggle_local_pane")}
+        </Button>
 
         {onCloseSplit && (
-          <button
-            type="button"
+          <IconButton
+            size="xs"
             onClick={onCloseSplit}
             title={t("common.close")}
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+            icon={<X className="h-3.5 w-3.5" />}
+          />
         )}
       </div>
     </div>

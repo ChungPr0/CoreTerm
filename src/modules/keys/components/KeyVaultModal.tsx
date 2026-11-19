@@ -1,7 +1,7 @@
 import React from "react";
 import { KeyRound, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { ConfirmDeleteModal, ModalShell } from "@/shared/ui";
+import { Button, ConfirmDeleteModal, ModalShell } from "@/shared/ui";
 import { useKeyVault } from "../hooks/useKeyVault";
 import { KeyGenerateImportForm } from "./KeyGenerateImportForm";
 import { KeyCardList } from "./KeyCardList";
@@ -39,13 +39,9 @@ export const KeyVaultModal: React.FC<KeyVaultModalProps> = ({
             <KeyRound className="w-4 h-4 text-emerald-400" />
             <h2 className="text-sm font-bold text-slate-100">{t("vault.title")}</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-          >
+          <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto text-xs">
