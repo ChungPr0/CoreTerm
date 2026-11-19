@@ -6,15 +6,13 @@ import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 
-export const MAX_KEY_NAME_LEN = 64;
+import {
+  MAX_KEY_NAME_LEN,
+  normalizePathInput,
+  validateKeyForm,
+} from "../utils/keyValidation";
 
-function normalizePathInput(raw: string): string {
-  const trimmed = raw.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
+export { MAX_KEY_NAME_LEN, normalizePathInput };
 
 export type KeyVaultMode = "generate" | "import";
 export type KeyAlgorithm = "ED25519" | "RSA_4096";
@@ -80,36 +78,19 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      scrollAndFocusInput(nameInputRef.current);
-      return void alert.error(t("vault.name_required"));
-    }
-    if (trimmedName.length > MAX_KEY_NAME_LEN) {
-      scrollAndFocusInput(nameInputRef.current);
-      return void alert.error(t("vault.name_too_long"));
+    const val = validateKeyForm(mode, name, sourcePath, keys);
+    if (!val.ok) {
+      if (val.errorKey === "vault.path_required" || val.errorKey === "vault.path_duplicate") {
+        scrollAndFocusInput(sourcePathInputRef.current);
+      } else {
+        scrollAndFocusInput(nameInputRef.current);
+      }
+      const msg = val.detail ? `${t(val.errorKey)} (${val.detail})` : t(val.errorKey);
+      return void alert.error(msg);
     }
 
-    const dupName = keys.some((k) => k.name.trim().toLowerCase() === trimmedName.toLowerCase());
-    if (dupName) {
-      scrollAndFocusInput(nameInputRef.current);
-      return void alert.error(t("vault.name_duplicate"));
-    }
-
-    const cleanSourcePath = normalizePathInput(sourcePath);
-    if (mode === "import") {
-      if (!cleanSourcePath) {
-        scrollAndFocusInput(sourcePathInputRef.current);
-        return void alert.error(t("vault.path_required"));
-      }
-      const dupPath = keys.find(
-        (k) => k.private_key_path.trim().toLowerCase() === cleanSourcePath.toLowerCase()
-      );
-      if (dupPath) {
-        scrollAndFocusInput(sourcePathInputRef.current);
-        return void alert.error(`${t("vault.path_duplicate")} (${dupPath.name})`);
-      }
-    }
+    const trimmedName = val.name;
+    const cleanSourcePath = val.sourcePath ?? "";
 
     setLoading(true);
     try {

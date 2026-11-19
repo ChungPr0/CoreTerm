@@ -188,4 +188,60 @@ describe("hostFormHelpers", () => {
       errorKey: "errors.host_username_empty",
     });
   });
+
+  it("maps LOCAL, REMOTE, and DYNAMIC port forward rules accurately", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.groupName = "   "; // Test default group fallback
+    fields.forwards = [
+      {
+        id: "f-local",
+        label: "Local DB",
+        forward_type: "LOCAL",
+        bind_address: "127.0.0.1",
+        bind_port: 5432,
+        target_host: "10.0.0.9",
+        target_port: 5432,
+        is_enabled: true,
+      },
+      {
+        id: "f-remote",
+        label: "Remote Web",
+        forward_type: "REMOTE",
+        bind_address: "0.0.0.0",
+        bind_port: 8080,
+        target_host: "localhost",
+        target_port: 3000,
+        is_enabled: true,
+      },
+      {
+        id: "f-dyn",
+        label: "Dynamic Proxy",
+        forward_type: "DYNAMIC",
+        bind_address: "127.0.0.1",
+        bind_port: 1080,
+        target_host: "ignored-host",
+        target_port: 9999,
+        is_enabled: false,
+      },
+    ];
+
+    const res = validateAndBuildHostPayload(fields);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.payload.group_name).toBe("Default");
+      expect(res.payload.port_forwards).toHaveLength(3);
+
+      const [loc, rem, dyn] = res.payload.port_forwards ?? [];
+      expect(loc.target_host).toBe("10.0.0.9");
+      expect(loc.target_port).toBe(5432);
+
+      expect(rem.target_host).toBe("localhost");
+      expect(rem.target_port).toBe(3000);
+
+      // DYNAMIC forces target_host and target_port to null
+      expect(dyn.target_host).toBeNull();
+      expect(dyn.target_port).toBeNull();
+      expect(dyn.is_enabled).toBe(false);
+    }
+  });
 });

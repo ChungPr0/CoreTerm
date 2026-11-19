@@ -2,6 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Shield, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { Button, Checkbox, Input, ModalShell } from "@/shared/ui";
+import {
+  cleanOctalInput,
+  modeToOctal,
+  octalToMode,
+  toggleModeBit,
+} from "../utils/chmodHelpers";
 
 interface ChmodModalProps {
   isOpen: boolean;
@@ -35,32 +41,22 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
     if (!isOpen) return;
     const masked = initialMode & 0o7777;
     setMode(masked);
-    setOctalText(
-      masked > 0o777
-        ? masked.toString(8).padStart(4, "0")
-        : masked.toString(8).padStart(3, "0")
-    );
+    setOctalText(modeToOctal(masked));
     setSubmitting(false);
   }, [isOpen, initialMode]);
 
   const toggleBit = (bit: number) => {
-    const next = mode ^ bit;
+    const next = toggleModeBit(mode, bit);
     setMode(next);
-    setOctalText(
-      next > 0o777
-        ? next.toString(8).padStart(4, "0")
-        : next.toString(8).padStart(3, "0")
-    );
+    setOctalText(modeToOctal(next));
   };
 
   const handleOctalChange = (val: string) => {
-    const cleaned = val.replace(/[^0-7]/g, "").slice(0, 4);
+    const cleaned = cleanOctalInput(val);
     setOctalText(cleaned);
-    if (cleaned.length > 0) {
-      const parsed = parseInt(cleaned, 8);
-      if (!Number.isNaN(parsed) && parsed <= 0o7777) {
-        setMode(parsed);
-      }
+    const parsed = octalToMode(cleaned);
+    if (parsed !== null) {
+      setMode(parsed);
     }
   };
 
