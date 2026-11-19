@@ -186,16 +186,78 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_single_entry_name_boundaries() {
+        assert!(validate_single_entry_name("").is_err());
+        assert!(validate_single_entry_name("   ").is_err());
+        assert!(validate_single_entry_name(".").is_err());
+        assert!(validate_single_entry_name("..").is_err());
+        assert!(validate_single_entry_name("foo/bar").is_err());
+        assert!(validate_single_entry_name("foo\\bar").is_err());
+        assert!(validate_single_entry_name("foo\0bar").is_err());
+        assert_eq!(validate_single_entry_name("  valid_name.txt  ").unwrap(), "valid_name.txt");
+        assert_eq!(validate_single_entry_name("tệp_tiếng_việt.doc").unwrap(), "tệp_tiếng_việt.doc");
+    }
+
+    #[test]
+    fn test_validate_windows_file_name_disallowed_chars_and_reserved() {
+        assert!(validate_windows_file_name("CON").is_err());
+        assert!(validate_windows_file_name("con").is_err());
+        assert!(validate_windows_file_name("Prn.txt").is_err());
+        assert!(validate_windows_file_name("AUX.tar.gz").is_err());
+        assert!(validate_windows_file_name("NUL").is_err());
+        assert!(validate_windows_file_name("com1.log").is_err());
+        assert!(validate_windows_file_name("lpt9").is_err());
+        assert!(validate_windows_file_name("trailing_space ").is_err());
+        assert!(validate_windows_file_name("trailing_dot.").is_err());
+        assert!(validate_windows_file_name("has:colon").is_err());
+        assert!(validate_windows_file_name("has*star").is_err());
+        assert!(validate_windows_file_name("has?question").is_err());
+        assert!(validate_windows_file_name("has\"quote").is_err());
+        assert!(validate_windows_file_name("has<less").is_err());
+        assert!(validate_windows_file_name("has>greater").is_err());
+        assert!(validate_windows_file_name("has|pipe").is_err());
+        assert!(validate_windows_file_name("control\x05char").is_err());
+        assert!(validate_windows_file_name("tab\tchar").is_err());
+        assert!(validate_windows_file_name("newline\nchar").is_err());
+
+        assert!(validate_windows_file_name("regular_file.txt").is_ok());
+        assert!(validate_windows_file_name(".gitignore").is_ok());
+        assert!(validate_windows_file_name("📁 Vietnamese_tệp.pdf").is_ok());
+    }
+
+    #[test]
+    fn test_parent_remote_path_and_leaf_name() {
+        assert_eq!(parent_remote_path("/"), "/");
+        assert_eq!(parent_remote_path("/var"), "/");
+        assert_eq!(parent_remote_path("/var/log/nginx"), "/var/log");
+        assert_eq!(parent_remote_path("/C:/"), "/C:/");
+        assert_eq!(parent_remote_path("/C:/Users"), "/C:/");
+        assert_eq!(parent_remote_path("/C:/Users/demo/AppData"), "/C:/Users/demo");
+
+        assert_eq!(remote_leaf_name("/"), "");
+        assert_eq!(remote_leaf_name("/var/log"), "log");
+        assert_eq!(remote_leaf_name("/var/log/"), "log");
+        assert_eq!(remote_leaf_name("/C:/Users/demo.txt"), "demo.txt");
+    }
+
+    #[test]
     fn test_next_numbered_name() {
         assert_eq!(next_numbered_name("archive.zip", 1), "archive (1).zip");
+        assert_eq!(next_numbered_name("archive.tar.gz", 2), "archive.tar (2).gz");
         assert_eq!(next_numbered_name(".env", 2), ".env (2)");
         assert_eq!(next_numbered_name("README", 3), "README (3)");
+        assert_eq!(next_numbered_name(".gitignore", 1), ".gitignore (1)");
     }
 
     #[test]
     fn test_validate_octal_mode() {
+        assert_eq!(validate_octal_mode(0).unwrap(), 0);
+        assert_eq!(validate_octal_mode(0o644).unwrap(), 0o644);
         assert_eq!(validate_octal_mode(0o755).unwrap(), 0o755);
         assert_eq!(validate_octal_mode(0o4755).unwrap(), 0o4755);
+        assert_eq!(validate_octal_mode(0o7777).unwrap(), 0o7777);
         assert!(validate_octal_mode(0o10000).is_err());
+        assert!(validate_octal_mode(0o77777).is_err());
+        assert!(validate_octal_mode(u32::MAX).is_err());
     }
 }

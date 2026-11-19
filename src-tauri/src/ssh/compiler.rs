@@ -404,4 +404,107 @@ mod tests {
         cfg.username = "user name".to_string();
         assert!(SshCommandCompiler::compile_args(&cfg).is_err());
     }
+
+    #[test]
+    fn test_compiler_strict_host_key_options() {
+        let mut cfg = sample_base_config();
+
+        cfg.options.strict_host_key_checking = "YES".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert!(args.contains(&OsString::from("StrictHostKeyChecking=yes")));
+
+        cfg.options.strict_host_key_checking = "NO".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert!(args.contains(&OsString::from("StrictHostKeyChecking=no")));
+
+        cfg.options.strict_host_key_checking = "CUSTOM_UNKNOWN".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert!(args.contains(&OsString::from("StrictHostKeyChecking=accept-new")));
+    }
+
+    #[test]
+    fn test_compiler_ipv6_and_domain_hosts() {
+        let mut cfg = sample_base_config();
+
+        // Standard IPv6
+        cfg.host = "2001:db8::1".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert_eq!(args.last().unwrap(), "2001:db8::1");
+
+        // Loopback IPv6
+        cfg.host = "::1".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert_eq!(args.last().unwrap(), "::1");
+
+        // Domain name with dashes and numbers
+        cfg.host = "api-node-01.eu-west.example.com".to_string();
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        assert_eq!(args.last().unwrap(), "api-node-01.eu-west.example.com");
+    }
+
+    #[test]
+    fn test_compiler_validation_failures_for_empty_and_unsupported_inputs() {
+        let mut cfg = sample_base_config();
+
+        // Empty host
+        cfg.host = "".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+        cfg.host = "   ".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Empty username
+        cfg.host = "10.0.0.1".to_string();
+        cfg.username = "".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+        cfg.username = "  \t ".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Missing private key path with SSH_KEY
+        cfg.username = "deploy".to_string();
+        cfg.private_key_path = None;
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+        cfg.private_key_path = Some("   ".to_string());
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+
+        // Unsupported auth method
+        cfg.private_key_path = Some("C:\\key".to_string());
+        cfg.auth_method = "KERBEROS_TICKET".to_string();
+        assert!(SshCommandCompiler::compile_args(&cfg).is_err());
+    }
+
+    #[test]
+    fn test_compiler_handles_disabled_and_partial_port_forwards() {
+        let mut cfg = sample_base_config();
+        cfg.port_forwards = vec![
+            PortForwardRuleDto {
+                id: "pf-disabled".to_string(),
+                host_id: "host-1".to_string(),
+                label: "Disabled Rule".to_string(),
+                forward_type: "LOCAL".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 8080,
+                target_host: Some("localhost".to_string()),
+                target_port: Some(80),
+                is_enabled: false,
+            },
+            PortForwardRuleDto {
+                id: "pf-incomplete-remote".to_string(),
+                host_id: "host-1".to_string(),
+                label: "Incomplete Remote".to_string(),
+                forward_type: "REMOTE".to_string(),
+                bind_address: "0.0.0.0".to_string(),
+                bind_port: 9000,
+                target_host: None,
+                target_port: None,
+                is_enabled: true,
+            },
+        ];
+
+        let args = SshCommandCompiler::compile_args(&cfg).unwrap();
+        let str_args: Vec<String> = args.iter().map(|s| s.to_string_lossy().to_string()).collect();
+
+        // Disabled and incomplete rules should not produce forward flags
+        assert!(!str_args.contains(&"-L".to_string()));
+        assert!(!str_args.contains(&"-R".to_string()));
+    }
 }

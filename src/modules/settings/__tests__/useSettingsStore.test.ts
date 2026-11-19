@@ -57,5 +57,65 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().settings.customShells).toEqual([customShell]);
     expect(useSettingsStore.getState().settings.defaultShellId).toBe("custom:nu");
     expect(useSettingsStore.getState().settings.defaultShellProfile).toEqual(customShell);
+
+    // Upserting existing custom shell updates its details in place
+    const updatedCustomShell = {
+      ...customShell,
+      name: "Nushell 2.0",
+      args: ["--login", "--config", "none"],
+    };
+    useSettingsStore.getState().addCustomShell(updatedCustomShell, false);
+    expect(useSettingsStore.getState().settings.customShells).toEqual([updatedCustomShell]);
+    expect(useSettingsStore.getState().settings.defaultShellId).toBe("custom:nu");
+  });
+
+  it("recovers with default settings when localStorage contains corrupted JSON", async () => {
+    const storageMock = {
+      getItem: () => "{corrupted-json-data",
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storageMock);
+    vi.resetModules();
+
+    const { useSettingsStore } = await import("../useSettingsStore");
+    const settings = useSettingsStore.getState().settings;
+    expect(settings.launchCols).toBeGreaterThan(0);
+    expect(settings.launchRows).toBeGreaterThan(0);
+    expect(settings.sftpConflictPolicy).toBe("ASK");
+    expect(settings.customShells).toEqual([]);
+  });
+
+  it("sanitizes out-of-range dimensions and unknown conflict policies from storage", async () => {
+    const rawSaved = JSON.stringify({
+      launchCols: -50,
+      launchRows: 999999,
+      sftpConflictPolicy: "INVALID_UNKNOWN_POLICY",
+      defaultShellId: "   ",
+      customShells: [
+        { id: "s1", name: "S1", executable: "s1.exe", args: [] },
+        { id: "s1", name: "Duplicate", executable: "s1.exe", args: [] }, // duplicate ID
+        { id: "invalid", name: "NoExe", args: "not-an-array" }, // malformed
+      ],
+    });
+
+    const storageMock = {
+      getItem: () => rawSaved,
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storageMock);
+    vi.resetModules();
+
+    const { useSettingsStore } = await import("../useSettingsStore");
+    const settings = useSettingsStore.getState().settings;
+
+    // Must be clamped to reasonable bounds
+    expect(settings.launchCols).toBeGreaterThanOrEqual(40);
+    expect(settings.launchRows).toBeLessThanOrEqual(200);
+    expect(settings.sftpConflictPolicy).toBe("ASK");
+    // Duplicates and malformed shells filtered out
+    expect(settings.customShells).toHaveLength(1);
+    expect(settings.customShells[0].id).toBe("s1");
   });
 });

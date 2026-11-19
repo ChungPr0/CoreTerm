@@ -72,4 +72,46 @@ describe("formatters & path utils", () => {
   it("quotes posix cd command safely", () => {
     expect(posixCdCmd("/var/my 'dir'/")).toBe("cd -- '/var/my '\\''dir'\\'''\r");
   });
+
+  it("handles edge cases in formatters", () => {
+    expect(fmtSize(-100)).toBe("-");
+    expect(fmtSize(Number.NaN)).toBe("-");
+    expect(fmtSize(500)).toBe("500 B");
+    expect(fmtSize(1024 * 1024)).toBe("1.0 MB");
+    expect(fmtSize(1024 * 1024 * 1024)).toBe("1.0 GB");
+    expect(fmtSize(1024 * 1024 * 1024 * 1024)).toBe("1.0 TB");
+
+    expect(fmtSpeed(-50)).toBe("");
+    expect(fmtSpeed(1024 * 1024 * 5)).toBe("5.0 MB/s");
+
+    expect(fmtMode(0o644)).toBe("0644");
+    expect(fmtMode(0o700)).toBe("0700");
+    expect(fmtMode(0o777)).toBe("0777");
+    expect(fmtMode(0)).toBe("0000");
+  });
+
+  it("handles boundary edge cases in posix and local path navigation", () => {
+    // Empty & whitespace inputs
+    expect(normPosix("   ")).toBe("");
+    expect(posixParent("")).toBe("/");
+    expect(posixParent("   ")).toBe("/");
+    expect(localParent("")).toBe("/");
+    expect(localParent("   ")).toBe("/");
+
+    // Deep posix parents
+    expect(posixParent("/a/b/c/d")).toBe("/a/b/c");
+    expect(posixParent("/a")).toBe("/");
+    expect(posixParent("/")).toBe("/");
+
+    // Mixed Windows drive local parent resolution
+    expect(localParent("D:")).toBe("D:\\");
+    expect(localParent("D:/")).toBe("D:\\");
+    expect(localParent("D:\\")).toBe("D:\\");
+    expect(localParent("D:\\Project\\app")).toBe("D:\\Project");
+    expect(localParent("D:\\Project")).toBe("D:\\");
+
+    // Empty joinRemote
+    expect(joinRemote("", "file.txt")).toBe("file.txt");
+    expect(joinRemote("/var/www", "sub/file.txt")).toBe("/var/www/sub/file.txt");
+  });
 });

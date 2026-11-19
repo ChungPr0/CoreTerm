@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { HostFullConfigDto } from "../../types";
-import { createHostFormFields, validateAndBuildHostPayload } from "../hostFormHelpers";
+import {
+  clampReconnectInterval,
+  createHostFormFields,
+  isAutoReconnectAllowed,
+  validateAndBuildHostPayload,
+} from "../hostFormHelpers";
 
 const SAMPLE_HOST: HostFullConfigDto = {
   id: "h-1",
@@ -119,6 +124,68 @@ describe("hostFormHelpers", () => {
     expect(validateAndBuildHostPayload({ ...fields, username: "user with space" })).toEqual({
       ok: false,
       errorKey: "errors.host_username_invalid_chars",
+    });
+  });
+
+  it("handles boundary reconnection intervals and auto-reconnect eligibility", () => {
+    expect(clampReconnectInterval(-10)).toBe(1);
+    expect(clampReconnectInterval(0)).toBe(2);
+    expect(clampReconnectInterval(Number.NaN)).toBe(2);
+    expect(clampReconnectInterval(10)).toBe(10);
+    expect(clampReconnectInterval(100)).toBe(60);
+
+    expect(isAutoReconnectAllowed("SSH_KEY")).toBe(true);
+    expect(isAutoReconnectAllowed("PASSWORD", "SAVED")).toBe(true);
+    expect(isAutoReconnectAllowed("PASSWORD", "PROMPT_EVERY_TIME")).toBe(false);
+    expect(isAutoReconnectAllowed("PASSWORD", null)).toBe(false);
+  });
+
+  it("rejects non-integer and boundary invalid ports", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    expect(validateAndBuildHostPayload({ ...fields, port: 0 })).toEqual({
+      ok: false,
+      errorKey: "errors.host_port_range",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, port: -22 })).toEqual({
+      ok: false,
+      errorKey: "errors.host_port_range",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, port: 65536 })).toEqual({
+      ok: false,
+      errorKey: "errors.host_port_range",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, port: 22.5 })).toEqual({
+      ok: false,
+      errorKey: "errors.host_port_range",
+    });
+  });
+
+  it("disallows autoReconnect when password mode is PROMPT_EVERY_TIME", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    fields.authMethod = "PASSWORD";
+    fields.passwordMode = "PROMPT_EVERY_TIME";
+    fields.autoReconnect = true;
+
+    const res = validateAndBuildHostPayload(fields);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.payload.options?.auto_reconnect).toBe(false);
+    }
+  });
+
+  it("rejects empty alias, empty host, and empty username", () => {
+    const fields = createHostFormFields(SAMPLE_HOST);
+    expect(validateAndBuildHostPayload({ ...fields, alias: "   " })).toEqual({
+      ok: false,
+      errorKey: "errors.host_alias_empty",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, host: "   " })).toEqual({
+      ok: false,
+      errorKey: "errors.host_host_empty",
+    });
+    expect(validateAndBuildHostPayload({ ...fields, username: "   " })).toEqual({
+      ok: false,
+      errorKey: "errors.host_username_empty",
     });
   });
 });
