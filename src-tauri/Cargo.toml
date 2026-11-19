@@ -1,6 +1,6 @@
 [package]
 name = "coreterm"
-version = "0.4.1"
+version = "0.4.2"
 description = "CoreTerm - Multi-Tab Terminal & SSH Client"
 authors = ["ChungPr0"]
 edition = "2021"
