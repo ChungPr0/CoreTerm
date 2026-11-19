@@ -175,7 +175,7 @@
     "launch_size": "Kích thước khởi chạy",
     "cols": "Số cột (Chiều rộng)",
     "rows": "Số dòng (Chiều cao)",
-    "reset_win": "Mặc định Windows ({{cols}} × {{rows}})",
+    "reset_win": "Mặc định",
     "sftp_conflict_policy": "Thao tác với tệp trùng lặp SFTP",
     "default_shell": "Shell mặc định",
     "custom_shells": "Shell tùy chỉnh",

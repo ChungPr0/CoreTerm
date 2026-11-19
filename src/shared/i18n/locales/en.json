@@ -175,7 +175,7 @@
     "launch_size": "Launch Size",
     "cols": "Columns (Width)",
     "rows": "Rows (Height)",
-    "reset_win": "Windows Default ({{cols}} × {{rows}})",
+    "reset_win": "Default",
     "sftp_conflict_policy": "SFTP Duplicate File Action",
     "default_shell": "Default Local Shell",
     "custom_shells": "Custom Shells",

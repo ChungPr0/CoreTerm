@@ -112,7 +112,7 @@ describe("useSettingsStore", () => {
 
     // Must be clamped to reasonable bounds
     expect(settings.launchCols).toBeGreaterThanOrEqual(40);
-    expect(settings.launchRows).toBeLessThanOrEqual(200);
+    expect(settings.launchRows).toBeLessThanOrEqual(50);
     expect(settings.sftpConflictPolicy).toBe("ASK");
     // Duplicates and malformed shells filtered out
     expect(settings.customShells).toHaveLength(1);

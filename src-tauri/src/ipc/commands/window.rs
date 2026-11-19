@@ -70,7 +70,18 @@ fn apply_launch_size(
     if window.is_maximized().unwrap_or(false) {
         return;
     }
-    let (target_w, target_h) = calc_launch_dims(cols, rows, width, height);
+    let (mut target_w, mut target_h) = calc_launch_dims(cols, rows, width, height);
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let scale = monitor.scale_factor();
+        let size = monitor.size();
+        let mon_w = (size.width as f64) / scale;
+        let mon_h = (size.height as f64) / scale;
+        if mon_w > 100.0 && mon_h > 100.0 {
+            // Keep window within the usable monitor boundaries
+            target_w = target_w.min((mon_w - 40.0).max(640.0));
+            target_h = target_h.min((mon_h - 60.0).max(380.0));
+        }
+    }
     let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(
         target_w, target_h,
     )));
@@ -194,6 +205,10 @@ mod tests {
         assert_eq!(
             calc_launch_dims(20, 5, Some(200.0), Some(100.0)),
             (640.0, 380.0)
+        );
+        assert_eq!(
+            calc_launch_dims(999, 999, None, None),
+            (1899.0, 1010.0)
         );
     }
 }

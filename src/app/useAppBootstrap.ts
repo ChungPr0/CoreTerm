@@ -131,10 +131,6 @@ export function useAppBootstrap({
   const saveAndApplySettings = useCallback(
     (next: AppSettingsValues) => {
       updateSettings(next);
-      const winSize = calcWinSize(next.launchCols, next.launchRows);
-      windowApi
-        .windowSetLaunchSize(next.launchCols, next.launchRows, winSize.width, winSize.height)
-        .catch(() => {});
     },
     [updateSettings]
   );

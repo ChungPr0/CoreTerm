@@ -200,10 +200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 leftIcon={<RotateCcw className="w-3 h-3" />}
                 className="text-sky-400 hover:text-sky-300"
               >
-                {t("settings.reset_win", {
-                  cols: LAUNCH_COLS_DEFAULT,
-                  rows: LAUNCH_ROWS_DEFAULT,
-                })}
+                {t("settings.reset_win")}
               </Button>
             </div>
 

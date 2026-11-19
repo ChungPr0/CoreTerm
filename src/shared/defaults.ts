@@ -3,9 +3,9 @@ import type { ConflictStrategy, SftpConflictPolicy } from "./types/ipc";
 export const LAUNCH_COLS_DEFAULT = 120;
 export const LAUNCH_ROWS_DEFAULT = 30;
 export const LAUNCH_COLS_MIN = 40;
-export const LAUNCH_COLS_MAX = 300;
+export const LAUNCH_COLS_MAX = 200;
 export const LAUNCH_ROWS_MIN = 10;
-export const LAUNCH_ROWS_MAX = 120;
+export const LAUNCH_ROWS_MAX = 50;
 
 export const DEFAULT_SHELL_ID = "powershell";
 export const DEFAULT_SHELL_PRIORITY = ["powershell", "pwsh", "cmd", "git-bash"] as const;
