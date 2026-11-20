@@ -66,4 +66,5 @@ export interface TerminalTabItem {
   sftpOpen?: boolean;
   sftpSplitRatio?: number;
   sftpState?: SftpConnectionState;
+  reconnectSource?: "tab" | "auto" | "banner";
 }

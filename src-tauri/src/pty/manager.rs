@@ -343,7 +343,8 @@ impl PtySessionManager {
             .shell_profile
             .or_else(|| self.tab_shell_map.get(&tab_id).map(|v| v.value().clone()));
 
-        let _ = self.disconnect_session_only(app, &tab_id);
+        let _ = self.terminate_active_session(&tab_id);
+        std::thread::sleep(std::time::Duration::from_millis(50));
         self.connect(
             app,
             hosts,

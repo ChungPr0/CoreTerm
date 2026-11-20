@@ -66,7 +66,15 @@ export interface PortProbeResultDto {
   rule_id: string;
   bind_address: string;
   bind_port: number;
-  status: "AVAILABLE" | "SHARED_WITH_ACTIVE_TAB" | "CONFLICT_EXTERNAL";
+  status:
+    | "AVAILABLE"
+    | "SHARED_WITH_ACTIVE_TAB"
+    | "CONFLICT_EXTERNAL"
+    | "PERMISSION_DENIED"
+    | "INVALID_PORT"
+    | "INVALID_ADDRESS"
+    | "ADDR_NOT_AVAILABLE"
+    | "BIND_FAILED";
   owner_tab_id: string | null;
   conflicting_pid: number | null;
   conflicting_process_name: string | null;

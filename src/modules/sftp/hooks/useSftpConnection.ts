@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
+import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import { extractRawErrorMessage } from "@/shared/utils/formatError";
 import { localFsApi } from "../api/localFsApi";
 import { sftpApi } from "../api/sftpApi";
@@ -205,6 +206,7 @@ export function useSftpConnection({
     paused: pauseAutoReconnect,
     intervalSec: reconnectIntervalSec,
     onReconnect: () => {
+      useTabsStore.getState().bumpReconnectToken(tabId, "auto");
       void connectSftp();
     },
   });

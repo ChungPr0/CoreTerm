@@ -114,7 +114,18 @@ impl ActiveTunnelRegistry {
             }
 
             let bind_target = format!("{}:{}", rule.bind_address, rule.bind_port);
-            match TcpListener::bind(&bind_target) {
+            let mut bind_attempt = TcpListener::bind(&bind_target);
+            if bind_attempt.is_err() {
+                for _ in 0..3 {
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    bind_attempt = TcpListener::bind(&bind_target);
+                    if bind_attempt.is_ok() {
+                        break;
+                    }
+                }
+            }
+
+            match bind_attempt {
                 Ok(listener) => {
                     drop(listener);
                     results.push(PortProbeResultDto {
@@ -211,7 +222,27 @@ impl ActiveTunnelRegistry {
             };
         }
 
-        let norm_addr = Self::normalize_addr(bind_address);
+        let norm_addr = match crate::infra::db::port_forward_repo::validate_and_normalize_bind_address(bind_address) {
+            Ok(addr) => {
+                let trimmed = addr.trim();
+                if trimmed.is_empty() || trimmed == "localhost" {
+                    "127.0.0.1".to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            }
+            Err(_) => {
+                return PortProbeResultDto {
+                    rule_id: String::new(),
+                    bind_address: bind_address.to_string(),
+                    bind_port,
+                    status: "INVALID_ADDRESS".to_string(),
+                    owner_tab_id: None,
+                    conflicting_pid: None,
+                    conflicting_process_name: None,
+                };
+            }
+        };
 
         let key = (norm_addr.clone(), bind_port);
         if let Some(entry) = self.tunnels.get(&key) {
@@ -284,12 +315,22 @@ impl ActiveTunnelRegistry {
                         conflicting_pid: None,
                         conflicting_process_name: None,
                     }
-                } else {
+                } else if e.kind() == std::io::ErrorKind::AddrInUse {
                     PortProbeResultDto {
                         rule_id: String::new(),
                         bind_address: bind_address.to_string(),
                         bind_port,
                         status: "CONFLICT_EXTERNAL".to_string(),
+                        owner_tab_id: None,
+                        conflicting_pid: None,
+                        conflicting_process_name: None,
+                    }
+                } else {
+                    PortProbeResultDto {
+                        rule_id: String::new(),
+                        bind_address: bind_address.to_string(),
+                        bind_port,
+                        status: "BIND_FAILED".to_string(),
                         owner_tab_id: None,
                         conflicting_pid: None,
                         conflicting_process_name: None,

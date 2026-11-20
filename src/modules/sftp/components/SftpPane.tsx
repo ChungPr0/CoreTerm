@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
+import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import { ReconnectBanner, useAlert, type ContextMenuEntry } from "@/shared/ui";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import { copyText } from "@/shared/utils/clipboard";
@@ -135,15 +136,12 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   connStateRef.current = conn.connState;
   markDisconnectRef.current = conn.markDisconnectedOnError;
 
-  const wasOfflineRef = useRef(false);
-  if (conn.sftpOffline) {
-    wasOfflineRef.current = true;
-  } else if (conn.connState === "CONNECTED") {
-    wasOfflineRef.current = false;
-  }
+  const isAutoReconnect = Boolean(tab.autoReconnect && tab.canAutoReconnect !== false);
+  const showSftpConnectingBanner =
+    conn.connState === "CONNECTING" &&
+    (tab.reconnectSource === "auto" || tab.reconnectSource === "banner");
   const showSftpReconnect =
-    mode === "full" &&
-    (conn.sftpOffline || (wasOfflineRef.current && conn.connState === "CONNECTING"));
+    mode === "full" && (conn.sftpOffline || showSftpConnectingBanner);
 
   const hasSftpModal =
     transfers.conflicts.length > 0 ||
@@ -261,6 +259,11 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     }
   }, [canConnect, conn, local.cwdRef]);
 
+  const manualReconnectSftp = useCallback(() => {
+    useTabsStore.getState().bumpReconnectToken(tab.tabId, "banner");
+    reconnectSftp();
+  }, [reconnectSftp, tab.tabId]);
+
   return (
     <div
       onContextMenu={(e) => {
@@ -377,7 +380,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         <ReconnectBanner
           isDisconnected={conn.sftpOffline}
           isConnecting={conn.connState === "CONNECTING"}
-          onReconnect={reconnectSftp}
+          isAutoReconnect={isAutoReconnect}
+          onReconnect={manualReconnectSftp}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();

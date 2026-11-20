@@ -29,7 +29,7 @@ interface TerminalViewportProps {
   pauseAutoReconnect?: boolean;
   availableShells?: ShellProfile[];
   onPresentWindow?: (size: LaunchWinSize) => Promise<boolean>;
-  onReconnect: (tabId: string) => void;
+  onReconnect: (tabId: string, source?: "tab" | "auto" | "banner") => void;
   onSwitchShell?: (tabId: string, profile: ShellProfile) => void;
   onPickShell?: (tabId: string) => Promise<void> | void;
   onRescan?: (tabId: string) => Promise<void> | void;
@@ -102,7 +102,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
     paused: pauseAutoReconnect,
     intervalSec: tab.reconnectIntervalSec,
     onReconnect: () => {
-      useTabsStore.getState().bumpReconnectToken(tab.tabId);
+      useTabsStore.getState().bumpReconnectToken(tab.tabId, "auto");
     },
   });
 
@@ -114,15 +114,16 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
     tab.state === "AUTH_FAILED" ||
     tab.state === "PORT_CONFLICT";
   const isLocalErr = tab.hostId === "local" && tab.state === "ERROR";
+  const isAutoReconnect = Boolean(
+    tab.hostId !== "local" &&
+    tab.canAutoReconnect !== false &&
+    tab.autoReconnect
+  );
 
-  const wasDisconnectedRef = useRef(false);
-  if (isDisconnected) {
-    wasDisconnectedRef.current = true;
-  } else if (tab.state === "ONLINE") {
-    wasDisconnectedRef.current = false;
-  }
+  const showConnectingBanner =
+    isConnecting && (tab.reconnectSource === "auto" || tab.reconnectSource === "banner");
   const showReconnectBanner =
-    !isLocalErr && (isDisconnected || (wasDisconnectedRef.current && isConnecting));
+    !isLocalErr && (isDisconnected || showConnectingBanner);
 
   useEffect(() => {
     if (tab.state === "ONLINE") {
@@ -139,7 +140,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
 
   const manualReconnect = () => {
     lastAlertErrRef.current = null;
-    onReconnect(tab.tabId);
+    onReconnect(tab.tabId, "banner");
   };
 
   return (
@@ -173,6 +174,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
         <ReconnectBanner
           isDisconnected={isDisconnected}
           isConnecting={isConnecting}
+          isAutoReconnect={isAutoReconnect}
           onReconnect={manualReconnect}
           onContextMenu={(e) => {
             e.preventDefault();

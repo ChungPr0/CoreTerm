@@ -179,12 +179,17 @@ export function useSessionController({
   );
 
   const reconnectTab = useCallback(
-    (tabId: string, e?: React.MouseEvent) => {
-      if (e) {
+    (
+      tabId: string,
+      e?: React.MouseEvent | "tab" | "auto" | "banner",
+      source: "tab" | "auto" | "banner" = "tab"
+    ) => {
+      const actualSource = typeof e === "string" ? e : source;
+      if (e && typeof e !== "string") {
         e.stopPropagation();
         selectTab(tabId);
       }
-      useTabsStore.getState().bumpReconnectToken(tabId);
+      useTabsStore.getState().bumpReconnectToken(tabId, actualSource);
     },
     [selectTab]
   );

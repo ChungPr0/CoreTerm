@@ -139,6 +139,7 @@
     "port_occupied_unknown": "Cổng {{port}} đang bị chiếm bởi tiến trình khác",
     "port_active_tab": "Cổng {{port}} đang mở trong tab SSH khác",
     "port_privileged": "Cổng < 1024 có thể yêu cầu quyền Administrator/Root",
+    "port_warning": "Cảnh báo",
     "duplicate_port_warning": "Cổng {{port}} đang trùng với rule '{{name}}'",
     "flow_preview": "Mô phỏng luồng",
     "check_all": "Kiểm tra tất cả cổng"

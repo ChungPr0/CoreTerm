@@ -30,7 +30,7 @@ interface TabsStoreState {
   ) => void;
   closeOtherTabs: (keepTabId: string, onDispose?: TabDisposeCallback) => void;
   reorderTab: (tabId: string, toIndex: number) => void;
-  bumpReconnectToken: (tabId: string) => void;
+  bumpReconnectToken: (tabId: string, source?: "tab" | "auto" | "banner") => void;
   toggleSftpSplit: (tabId: string) => void;
   resizeSftpSplit: (tabId: string, ratio: number) => void;
   setSftpModalOpen: (tabId: string, open: boolean) => void;
@@ -173,7 +173,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       return { tabs: next };
     }),
 
-  bumpReconnectToken: (tabId) =>
+  bumpReconnectToken: (tabId, source = "tab") =>
     set((s) => ({
       tabs: s.tabs.map((tab) =>
         tab.tabId === tabId
@@ -182,6 +182,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
               state: "CONNECTING",
               errorMessage: null,
               reconnectToken: tab.reconnectToken + 1,
+              reconnectSource: source,
               ...(tab.tabKind === "sftp" ? { sftpState: "CONNECTING" as const } : {}),
             }
           : tab
@@ -236,6 +237,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
           ? {
               ...tab,
               sftpState,
+              ...(sftpState === "CONNECTED" ? { reconnectSource: undefined } : {}),
               ...(tab.tabKind === "sftp" ? { state: sftpToTabState(sftpState) } : {}),
             }
           : tab
@@ -246,7 +248,13 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((tab) =>
         tab.tabId === tabId
-          ? { ...tab, state, errorMessage, activeForwards }
+          ? {
+              ...tab,
+              state,
+              errorMessage,
+              activeForwards,
+              ...(state === "ONLINE" ? { reconnectSource: undefined } : {}),
+            }
           : tab
       ),
     })),

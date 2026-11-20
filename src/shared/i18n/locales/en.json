@@ -139,6 +139,7 @@
     "port_occupied_unknown": "Port {{port}} is in use by another process",
     "port_active_tab": "Port {{port}} is open in another SSH tab",
     "port_privileged": "Ports < 1024 usually require Administrator/Root privileges",
+    "port_warning": "Warning",
     "duplicate_port_warning": "Port {{port}} conflicts with rule '{{name}}'",
     "flow_preview": "Traffic Flow Preview",
     "check_all": "Check All Ports"

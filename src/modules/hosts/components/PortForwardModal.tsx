@@ -52,6 +52,16 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
   const [portProbe, setPortProbe] = useState<PortProbeResultDto | null>(null);
   const [isCheckingPort, setIsCheckingPort] = useState(false);
 
+  const isPrivilegedLocal = useMemo(() => {
+    const p = Number(portLocal);
+    return Number.isInteger(p) && p > 0 && p < 1024;
+  }, [portLocal]);
+
+  const isPrivilegedRemote = useMemo(() => {
+    const p = Number(portRemote);
+    return Number.isInteger(p) && p > 0 && p < 1024;
+  }, [portRemote]);
+
   const portLocalInputRef = useRef<HTMLInputElement>(null);
   const ipRemoteInputRef = useRef<HTMLInputElement>(null);
   const portRemoteInputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +102,17 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
     }
     const portNum = Number(portLocal);
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+      setPortProbe(null);
+      setIsCheckingPort(false);
+      return;
+    }
+
+    const cleanIp = ipLocal.trim();
+    if (
+      cleanIp.startsWith("-") ||
+      /\s/.test(cleanIp) ||
+      /[;`&$|]/.test(cleanIp)
+    ) {
       setPortProbe(null);
       setIsCheckingPort(false);
       return;
@@ -261,44 +282,13 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
   const renderLocalStatusBadge = () => {
     if (forwardType === "REMOTE") return null;
-    if (isCheckingPort) {
-      return (
-        <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 font-sans">
-          <RefreshCw className="w-3 h-3 animate-spin" />
-          <span>{t("forward.checking")}</span>
-        </span>
-      );
-    }
-    if (portProbe?.status === "AVAILABLE") {
-      return (
-        <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 font-sans">
-          <CheckCircle2 className="w-3 h-3" />
-          <span>{t("forward.port_ready")}</span>
-        </span>
-      );
-    }
-    if (portProbe?.status === "SHARED_WITH_ACTIVE_TAB") {
-      return (
-        <span
-          className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans"
-          title={t("forward.port_active_tab", { port: portLocal })}
-        >
-          <Info className="w-3 h-3 shrink-0" />
-          <span>{t("forward.port_in_use_tab")}</span>
-        </span>
-      );
-    }
-    if (portProbe) {
-      let tooltipText = "";
-      if (portProbe.conflicting_process_name) {
-        tooltipText = `${portProbe.conflicting_process_name}${
-          portProbe.conflicting_pid != null ? ` (PID: ${portProbe.conflicting_pid})` : ""
-        }`;
-      } else if (Number(portLocal) < 1024) {
-        tooltipText = t("forward.port_privileged");
-      } else {
-        tooltipText = t("forward.port_occupied_unknown", { port: portLocal });
-      }
+
+    if (portProbe?.status === "CONFLICT_EXTERNAL") {
+      const tooltipText = portProbe.conflicting_process_name
+        ? `${portProbe.conflicting_process_name}${
+            portProbe.conflicting_pid != null ? ` (PID: ${portProbe.conflicting_pid})` : ""
+          }`
+        : t("forward.port_occupied_unknown", { port: portLocal });
 
       return (
         <span
@@ -310,6 +300,49 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
         </span>
       );
     }
+
+    if (portProbe?.status === "SHARED_WITH_ACTIVE_TAB") {
+      return (
+        <span
+          className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans"
+          title={t("forward.port_active_tab", { port: portLocal })}
+        >
+          <Info className="w-3 h-3 shrink-0" />
+          <span>{t("forward.port_in_use_tab")}</span>
+        </span>
+      );
+    }
+
+    if (isPrivilegedLocal) {
+      return (
+        <span
+          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans"
+          title={t("forward.port_privileged")}
+        >
+          <AlertCircle className="w-3 h-3 shrink-0" />
+          <span>{t("forward.port_warning")}</span>
+        </span>
+      );
+    }
+
+    if (isCheckingPort) {
+      return (
+        <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 font-sans">
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          <span>{t("forward.checking")}</span>
+        </span>
+      );
+    }
+
+    if (portProbe?.status === "AVAILABLE") {
+      return (
+        <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 font-sans">
+          <CheckCircle2 className="w-3 h-3" />
+          <span>{t("forward.port_ready")}</span>
+        </span>
+      );
+    }
+
     return null;
   };
 
@@ -465,6 +498,15 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
                     <span>REMOTE</span>
                   </div>
+                  {forwardType === "REMOTE" && isPrivilegedRemote && (
+                    <span
+                      className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans"
+                      title={t("forward.port_privileged")}
+                    >
+                      <AlertCircle className="w-3 h-3 shrink-0" />
+                      <span>{t("forward.port_warning")}</span>
+                    </span>
+                  )}
                 </div>
 
                 <Input
