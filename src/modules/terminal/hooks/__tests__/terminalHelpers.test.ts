@@ -161,7 +161,7 @@ describe("terminalHelpers", () => {
     dispose();
   });
 
-  it("handles Ctrl+Shift+C/V/L in terminal without leaking to PTY and passes Ctrl+Shift+A through", () => {
+  it("handles Ctrl+Shift+C/V/L/A in terminal without leaking to PTY and passes plain Ctrl+A..Z (except F) through", () => {
     let keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
     const termClear = vi.fn();
     const termSelectAll = vi.fn();
@@ -219,37 +219,53 @@ describe("terminalHelpers", () => {
     expect(clearEv.stopPropagation).toHaveBeenCalledTimes(1);
     expect(termClear).toHaveBeenCalledTimes(1);
 
-    // Ctrl+Shift+A is no longer intercepted; it passes through untouched.
-    const selectAllEv = makeKey({ key: "a", ctrlKey: true, shiftKey: true });
-    expect(keyHandler!(selectAllEv.event)).toBe(true);
-    expect(selectAllEv.preventDefault).not.toHaveBeenCalled();
-    expect(selectAllEv.stopPropagation).not.toHaveBeenCalled();
-    expect(termSelectAll).not.toHaveBeenCalled();
+    // Ctrl+Shift+A selects all terminal buffer content without leaking to PTY.
+    const selectAllEv = makeKey({ key: "A", ctrlKey: true, shiftKey: true });
+    expect(keyHandler!(selectAllEv.event)).toBe(false);
+    expect(selectAllEv.preventDefault).toHaveBeenCalledTimes(1);
+    expect(selectAllEv.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(termSelectAll).toHaveBeenCalledTimes(1);
 
     // Repeat and blocked states still consume handled shortcuts without firing actions.
-    const repeatEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true, repeat: true });
-    expect(keyHandler!(repeatEv.event)).toBe(false);
+    const repeatClearEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true, repeat: true });
+    expect(keyHandler!(repeatClearEv.event)).toBe(false);
     expect(termClear).toHaveBeenCalledTimes(1);
+
+    const repeatSelectAllEv = makeKey({ key: "a", ctrlKey: true, shiftKey: true, repeat: true });
+    expect(keyHandler!(repeatSelectAllEv.event)).toBe(false);
+    expect(termSelectAll).toHaveBeenCalledTimes(1);
 
     blocked = true;
-    const blockedEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true });
-    expect(keyHandler!(blockedEv.event)).toBe(false);
+    const blockedClearEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true });
+    expect(keyHandler!(blockedClearEv.event)).toBe(false);
     expect(termClear).toHaveBeenCalledTimes(1);
+
+    const blockedSelectAllEv = makeKey({ key: "A", ctrlKey: true, shiftKey: true });
+    expect(keyHandler!(blockedSelectAllEv.event)).toBe(false);
+    expect(termSelectAll).toHaveBeenCalledTimes(1);
     blocked = false;
 
-    // Plain Ctrl+L and Ctrl+A pass straight to PTY untouched.
-    for (const key of ["l", "a", "w", "b", "e"]) {
-      const plain = makeKey({ key, ctrlKey: true, shiftKey: false });
+    // Ctrl+F and Ctrl+Shift+F are blocked from PTY so Terminal Find handles them.
+    const plainFind = makeKey({ key: "f", ctrlKey: true, shiftKey: false });
+    expect(keyHandler!(plainFind.event)).toBe(false);
+    const shiftFind = makeKey({ key: "F", ctrlKey: true, shiftKey: true });
+    expect(keyHandler!(shiftFind.event)).toBe(false);
+
+    // All plain Ctrl+A..Z except Ctrl+F pass straight to PTY untouched.
+    for (const letter of "abcdefghijklmnopqrstuvwxyz") {
+      if (letter === "f") continue;
+      const plain = makeKey({ key: letter, ctrlKey: true, shiftKey: false });
       expect(keyHandler!(plain.event)).toBe(true);
       expect(plain.preventDefault).not.toHaveBeenCalled();
+      expect(plain.stopPropagation).not.toHaveBeenCalled();
     }
 
     // Alt/Meta-modified events pass through untouched.
-    const altEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true, altKey: true });
+    const altEv = makeKey({ key: "A", ctrlKey: true, shiftKey: true, altKey: true });
     expect(keyHandler!(altEv.event)).toBe(true);
     const metaEv = makeKey({ key: "L", ctrlKey: true, shiftKey: true, metaKey: true });
     expect(keyHandler!(metaEv.event)).toBe(true);
     expect(termClear).toHaveBeenCalledTimes(1);
-    expect(termSelectAll).not.toHaveBeenCalled();
+    expect(termSelectAll).toHaveBeenCalledTimes(1);
   });
 });

@@ -65,7 +65,7 @@ describe("buildTerminalContextItems", () => {
     const selectAllItem = items.find((i) => i.id === "term-select-all");
     expect(selectAllItem).toBeDefined();
     if (selectAllItem && selectAllItem.type !== "separator") {
-      expect(selectAllItem.shortcut).toBeUndefined();
+      expect(selectAllItem.shortcut).toBe("Ctrl+Shift+A");
     }
 
     const shortcutsById = Object.fromEntries(
@@ -76,6 +76,7 @@ describe("buildTerminalContextItems", () => {
     expect(shortcutsById).toEqual({
       "term-copy": "Ctrl+Shift+C",
       "term-paste": "Ctrl+Shift+V",
+      "term-select-all": "Ctrl+Shift+A",
       "term-clear": "Ctrl+Shift+L",
       "term-find": "Ctrl+Shift+F",
       "new-tab": "Ctrl+Shift+T",

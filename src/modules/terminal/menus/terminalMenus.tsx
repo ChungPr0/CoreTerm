@@ -68,6 +68,7 @@ export function buildTerminalContextItems({
       id: "term-select-all",
       label: t("ctx.select_all"),
       icon: <TextSelect className="h-3.5 w-3.5" />,
+      shortcut: "Ctrl+Shift+A",
       onSelect: actions.selectAll,
     },
     {

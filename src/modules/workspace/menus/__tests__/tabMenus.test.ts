@@ -172,6 +172,10 @@ describe("buildTabContextItems", () => {
     expect(sshIds).toContain("tab-sftp-separate");
     expect(sshIds).not.toContain("tab-ssh-open");
 
+    const findTabItem = sshItems.find((i) => i.id === "tab-find");
+    expect(findTabItem && findTabItem.type !== "separator" && findTabItem.shortcut).toBe(
+      "Ctrl+Shift+F"
+    );
     const sftpSplitItem = sshItems.find((i) => i.id === "tab-sftp-split");
     expect(sftpSplitItem && sftpSplitItem.type !== "separator" && sftpSplitItem.shortcut).toBe(
       "Ctrl+Shift+E"

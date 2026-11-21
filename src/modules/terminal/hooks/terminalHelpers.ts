@@ -194,7 +194,7 @@ export async function loadWebgl(
   }
 }
 
-/** Handles terminal-scoped Ctrl+Shift shortcuts (C/V/L) without leaking to PTY or WebView2. */
+/** Handles terminal-scoped Ctrl+Shift shortcuts (C/V/L/A) without leaking to PTY or WebView2. */
 export function bindTerminalShortcuts(
   term: Terminal,
   isCancelled: () => boolean,
@@ -207,7 +207,7 @@ export function bindTerminalShortcuts(
       return false;
     }
     if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-      if (key === "c" || key === "v" || key === "l") {
+      if (key === "c" || key === "v" || key === "l" || key === "a") {
         e.preventDefault();
         e.stopPropagation();
         if (!e.repeat && !isBlocked?.()) {
@@ -218,6 +218,8 @@ export function bindTerminalShortcuts(
             void readText().then((txt) => {
               if (!isCancelled() && txt) term.paste(txt);
             });
+          } else if (key === "a") {
+            term.selectAll();
           } else {
             term.clear();
           }

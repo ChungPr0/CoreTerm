@@ -102,20 +102,49 @@ describe("handleGlobalKeyDown", () => {
     expect(opts.onCloseActiveTab).not.toHaveBeenCalled();
   });
 
-  it("leaves plain Ctrl+W/L/A/B/E and Ctrl+Shift+L/A/C/V untouched", () => {
-    for (const key of ["w", "l", "a", "b", "e"]) {
-      const opts = makeOpts();
-      const { event, preventDefault, stopPropagation } = makeKeyEvent({
-        key,
-        ctrlKey: true,
-        shiftKey: false,
-      });
-      handleGlobalKeyDown(event, opts);
-      expect(preventDefault).not.toHaveBeenCalled();
-      expect(stopPropagation).not.toHaveBeenCalled();
-      expect(opts.onCloseActiveTab).not.toHaveBeenCalled();
-      expect(opts.onToggleSidebar).not.toHaveBeenCalled();
-      expect(opts.onToggleSftpSplit).not.toHaveBeenCalled();
+  it("handles plain Ctrl+F for Terminal Find and suppresses WebView2 Find even with a modal open", () => {
+    const opts = makeOpts();
+    const { event, preventDefault, stopPropagation } = makeKeyEvent({
+      key: "f",
+      ctrlKey: true,
+      shiftKey: false,
+    });
+    handleGlobalKeyDown(event, opts);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(opts.onCloseContextMenu).toHaveBeenCalledTimes(1);
+    expect(opts.onFindInTerminal).toHaveBeenCalledTimes(1);
+
+    const modalOpts = makeOpts({ hasAnyModal: true });
+    const modalEv = makeKeyEvent({ key: "f", ctrlKey: true, shiftKey: false });
+    handleGlobalKeyDown(modalEv.event, modalOpts);
+    expect(modalEv.preventDefault).toHaveBeenCalledTimes(1);
+    expect(modalEv.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(modalOpts.onFindInTerminal).not.toHaveBeenCalled();
+  });
+
+  it("leaves all plain Ctrl+A..Z (except Ctrl+F) and Ctrl+Shift+L/A/C/V untouched", () => {
+    for (const letter of "abcdefghijklmnopqrstuvwxyz") {
+      if (letter === "f") continue;
+      for (const key of [letter, letter.toUpperCase()]) {
+        const opts = makeOpts();
+        const { event, preventDefault, stopPropagation } = makeKeyEvent({
+          key,
+          ctrlKey: true,
+          shiftKey: false,
+        });
+        handleGlobalKeyDown(event, opts);
+        expect(preventDefault).not.toHaveBeenCalled();
+        expect(stopPropagation).not.toHaveBeenCalled();
+        expect(opts.onTogglePalette).not.toHaveBeenCalled();
+        expect(opts.onNewLocalTab).not.toHaveBeenCalled();
+        expect(opts.onCloseActiveTab).not.toHaveBeenCalled();
+        expect(opts.onToggleSidebar).not.toHaveBeenCalled();
+        expect(opts.onToggleSftpSplit).not.toHaveBeenCalled();
+        expect(opts.onFindInTerminal).not.toHaveBeenCalled();
+        expect(opts.onOpenSettings).not.toHaveBeenCalled();
+        expect(opts.onCloseContextMenu).not.toHaveBeenCalled();
+      }
     }
 
     for (const key of ["L", "A", "C", "V"]) {
