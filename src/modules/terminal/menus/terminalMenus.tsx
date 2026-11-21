@@ -74,13 +74,14 @@ export function buildTerminalContextItems({
       id: "term-clear",
       label: t("ctx.clear_terminal"),
       icon: <Eraser className="h-3.5 w-3.5" />,
+      shortcut: "Ctrl+Shift+L",
       onSelect: actions.clear,
     },
     {
       id: "term-find",
       label: t("ctx.find"),
       icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-      shortcut: "Ctrl+F",
+      shortcut: "Ctrl+Shift+F",
       onSelect: () => onFindInTab(tab.tabId),
     },
   ];

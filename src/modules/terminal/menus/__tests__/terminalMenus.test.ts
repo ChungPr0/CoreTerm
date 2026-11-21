@@ -62,6 +62,12 @@ describe("buildTerminalContextItems", () => {
     }
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
 
+    const selectAllItem = items.find((i) => i.id === "term-select-all");
+    expect(selectAllItem).toBeDefined();
+    if (selectAllItem && selectAllItem.type !== "separator") {
+      expect(selectAllItem.shortcut).toBeUndefined();
+    }
+
     const shortcutsById = Object.fromEntries(
       items
         .filter((i): i is Extract<typeof i, { type?: "item" }> => i.type !== "separator" && Boolean(i.shortcut))
@@ -70,10 +76,34 @@ describe("buildTerminalContextItems", () => {
     expect(shortcutsById).toEqual({
       "term-copy": "Ctrl+Shift+C",
       "term-paste": "Ctrl+Shift+V",
-      "term-find": "Ctrl+F",
+      "term-clear": "Ctrl+Shift+L",
+      "term-find": "Ctrl+Shift+F",
       "new-tab": "Ctrl+Shift+T",
       "term-settings": "Ctrl+,",
     });
+  });
+
+  it("includes Ctrl+Shift+E shortcut alongside ON/OFF badge on SSH SFTP Panel item", () => {
+    const items = buildTerminalContextItems({
+      t,
+      tab: baseTab({ hostId: "h1", sftpOpen: true }),
+      actions: baseActions(),
+      isAppElevated: false,
+      shellProfiles: [PS],
+      defaultShellProfile: PS,
+      onNewLocalTab: vi.fn(),
+      onFindInTab: vi.fn(),
+      onReconnectTab: vi.fn(),
+      onToggleSftp: vi.fn(),
+      onOpenSettings: vi.fn(),
+    });
+
+    const sftpItem = items.find((i) => i.id === "term-sftp-split");
+    expect(sftpItem).toBeDefined();
+    if (sftpItem && sftpItem.type !== "separator") {
+      expect(sftpItem.shortcut).toBe("Ctrl+Shift+E");
+      expect(sftpItem.badge).toEqual({ text: "ctx.state_on", active: true });
+    }
   });
 });
 

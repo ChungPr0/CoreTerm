@@ -154,7 +154,11 @@ export function useTerminalSession({
     let cancelled = false;
     const isCancelled = () => cancelled || terminalRef.current !== term;
     const disposeScrollback = bindScrollbackSync(term, container);
-    bindTerminalShortcuts(term, () => cancelled);
+    bindTerminalShortcuts(
+      term,
+      () => cancelled,
+      () => suppressAutoFocusRef.current
+    );
 
     const textEncoder = new TextEncoder();
     const onDataDisposable = term.onData((data) => {

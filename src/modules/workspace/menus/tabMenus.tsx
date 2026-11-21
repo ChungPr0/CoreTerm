@@ -151,6 +151,7 @@ export function buildTabContextItems({
       id: "tab-close",
       label: t("ctx.close_tab"),
       icon: <X className="h-3.5 w-3.5" />,
+      shortcut: "Ctrl+Shift+W",
       onSelect: () => onCloseTab(tab.tabId),
     }
   );

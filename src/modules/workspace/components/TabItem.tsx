@@ -235,7 +235,7 @@ export const TabItem: React.FC<TabItemProps> = ({
           }}
           title={`${t("ctx.sftp_panel")}: ${
             tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off")
-          }`}
+          } (Ctrl+Shift+E)`}
           icon={<FolderSync className="w-3 h-3" />}
         />
       )}
@@ -255,7 +255,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         size="xs"
         tone="rose"
         onClick={onClose}
-        title={t("common.close")}
+        title={`${t("common.close")} (Ctrl+Shift+W)`}
         icon={<X className="w-3.5 h-3.5" />}
       />
     </div>

@@ -126,6 +126,22 @@ export const App: React.FC = () => {
     [sessions]
   );
 
+  const closeActiveTab = useCallback(() => {
+    if (sessions.activeTabId) {
+      sessions.closeTabById(sessions.activeTabId);
+    }
+  }, [sessions]);
+
+  const toggleActiveSftpSplit = useCallback(() => {
+    const activeId = sessions.activeTabId;
+    if (!activeId) return;
+    const activeTab = sessions.tabs.find((item) => item.tabId === activeId);
+    if (!activeTab || activeTab.hostId === "local" || activeTab.tabKind === "sftp") {
+      return;
+    }
+    sessions.toggleSftpSplit(activeId);
+  }, [sessions]);
+
   useGlobalShortcuts({
     hasBlockingModal,
     hasAnyModal: hasModalOpen,
@@ -133,6 +149,9 @@ export const App: React.FC = () => {
     hasContextMenu: !!contextMenu,
     onTogglePalette: () => setIsPaletteOpen((v) => !v),
     onNewLocalTab: sessions.newLocalTab,
+    onCloseActiveTab: closeActiveTab,
+    onToggleSidebar: toggleSidebar,
+    onToggleSftpSplit: toggleActiveSftpSplit,
     onFindInTerminal: () => triggerFindInTab(),
     onOpenSettings: () => setIsSettingsOpen(true),
     onCloseContextMenu: closeMenu,

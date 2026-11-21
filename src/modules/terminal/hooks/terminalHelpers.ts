@@ -194,10 +194,11 @@ export async function loadWebgl(
   }
 }
 
-/** Prevents WebView2 default accelerators on Ctrl+Shift+C/V so clipboard fires once. */
+/** Handles terminal-scoped Ctrl+Shift shortcuts (C/V/L) without leaking to PTY or WebView2. */
 export function bindTerminalShortcuts(
   term: Terminal,
-  isCancelled: () => boolean
+  isCancelled: () => boolean,
+  isBlocked?: () => boolean
 ): void {
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
@@ -206,17 +207,19 @@ export function bindTerminalShortcuts(
       return false;
     }
     if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-      if (key === "c" || key === "v") {
+      if (key === "c" || key === "v" || key === "l") {
         e.preventDefault();
         e.stopPropagation();
-        if (!e.repeat) {
+        if (!e.repeat && !isBlocked?.()) {
           if (key === "c") {
             const selected = term.getSelection();
             if (selected) void copyText(selected);
-          } else {
+          } else if (key === "v") {
             void readText().then((txt) => {
               if (!isCancelled() && txt) term.paste(txt);
             });
+          } else {
+            term.clear();
           }
         }
         return false;

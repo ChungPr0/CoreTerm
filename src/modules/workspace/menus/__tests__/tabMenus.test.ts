@@ -172,6 +172,15 @@ describe("buildTabContextItems", () => {
     expect(sshIds).toContain("tab-sftp-separate");
     expect(sshIds).not.toContain("tab-ssh-open");
 
+    const sftpSplitItem = sshItems.find((i) => i.id === "tab-sftp-split");
+    expect(sftpSplitItem && sftpSplitItem.type !== "separator" && sftpSplitItem.shortcut).toBe(
+      "Ctrl+Shift+E"
+    );
+    const closeTabItem = sshItems.find((i) => i.id === "tab-close");
+    expect(closeTabItem && closeTabItem.type !== "separator" && closeTabItem.shortcut).toBe(
+      "Ctrl+Shift+W"
+    );
+
     const sftpIds = buildTabContextItems({
       ...common,
       tab: baseTab({ hostId: "h1", tabKind: "sftp" }),

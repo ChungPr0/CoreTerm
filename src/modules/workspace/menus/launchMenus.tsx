@@ -124,6 +124,7 @@ export function buildSftpPanelItem(
       text: tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off"),
       active: Boolean(tab.sftpOpen),
     },
+    shortcut: "Ctrl+Shift+E",
     onSelect: () => onToggleSftp(tab.tabId),
   };
 }

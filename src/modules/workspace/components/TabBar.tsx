@@ -118,7 +118,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         size="md"
         disabled={isModalOpen}
         onClick={onToggleSidebar}
-        title={t("app.menu")}
+        title={`${t("app.menu")} (Ctrl+Shift+B)`}
         icon={<Menu className="w-4 h-4" />}
         className="ml-1.5 mr-1 shrink-0"
       />
