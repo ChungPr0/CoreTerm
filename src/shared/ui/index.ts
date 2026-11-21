@@ -1,3 +1,4 @@
+export { ActionModal, type ActionModalProps, type ActionModalTone, type ActionModalSize } from "./ActionModal";
 export { AlertProvider, useAlert, type AlertKind } from "./AlertProvider";
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from "./Button";
 export { Checkbox, type CheckboxProps } from "./Checkbox";

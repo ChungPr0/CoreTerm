@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { FolderPlus, X } from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
-import { Button, Input, ModalShell, useAlert } from "@/shared/ui";
+import { ActionModal, Input, useAlert } from "@/shared/ui";
 
 interface GroupModalProps {
   isOpen: boolean;
@@ -34,8 +34,7 @@ export const GroupModal: React.FC<GroupModalProps> = ({
     return () => window.cancelAnimationFrame(raf);
   }, [isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (isSubmitting) return;
     const trimmed = name.trim();
     if (!trimmed) {
@@ -64,33 +63,21 @@ export const GroupModal: React.FC<GroupModalProps> = ({
   };
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen={isOpen}
       onClose={onClose}
-      closeDisabled={isSubmitting}
-      closeOnBackdrop
-      panelClassName="bg-slate-900 border border-slate-700/80 rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.85)] w-full max-w-sm overflow-hidden flex flex-col text-xs select-none"
+      busy={isSubmitting}
+      title={t("group.create_title")}
+      icon={<FolderPlus className="h-4 w-4" />}
+      iconTone="primary"
+      size="sm"
+      confirmLabel={t("common.add")}
+      confirmVariant="primary"
+      confirmIcon={<FolderPlus className="h-3.5 w-3.5" />}
+      cancelLabel={t("common.cancel")}
+      onConfirm={handleSubmit}
     >
-      <div
-        data-tauri-drag-region="deep"
-        className="px-5 py-3 border-b border-slate-800 flex items-center justify-between shrink-0"
-      >
-        <div className="flex items-center gap-2">
-          <FolderPlus className="w-4 h-4 text-sky-400" />
-          <h2 className="text-sm font-bold text-slate-100">{t("group.create_title")}</h2>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={isSubmitting}
-          onClick={onClose}
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <form noValidate onSubmit={handleSubmit} className="p-5 space-y-4">
+      <div className="rounded border border-[#21262d] bg-[#161b22] p-3.5">
         <Input
           ref={inputRef}
           type="text"
@@ -101,24 +88,7 @@ export const GroupModal: React.FC<GroupModalProps> = ({
           maxLength={MAX_GROUP_NAME_LEN}
           disabled={isSubmitting}
         />
-
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button
-            variant="secondary"
-            disabled={isSubmitting}
-            onClick={onClose}
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            loading={isSubmitting}
-          >
-            {t("common.add")}
-          </Button>
-        </div>
-      </form>
-    </ModalShell>
+      </div>
+    </ActionModal>
   );
 };

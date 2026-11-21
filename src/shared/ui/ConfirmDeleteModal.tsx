@@ -1,7 +1,7 @@
-import React, { useEffect } from "react";
-import { AlertTriangle, Trash2, X } from "lucide-react";
+import React from "react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button } from "./Button";
+import { ActionModal } from "./ActionModal";
 import { Checkbox } from "./Checkbox";
 
 interface ConfirmDeleteModalProps {
@@ -41,138 +41,71 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
 }) => {
   const { t } = useI18n();
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isDeleting) {
-        e.preventDefault();
-        e.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [isOpen, isDeleting, onCancel]);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      data-modal-root="true"
-      onClick={() => {
-        if (!isDeleting) onCancel();
-      }}
-      className="absolute inset-0 z-[70] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+    <ActionModal
+      isOpen={isOpen}
+      onClose={onCancel}
+      busy={isDeleting}
+      title={title}
+      subtitle={t("common.delete_confirm_title")}
+      icon={<Trash2 className="h-4 w-4" />}
+      iconTone="danger"
+      size="md"
+      confirmLabel={confirmLabel ?? t("common.delete")}
+      confirmVariant="danger"
+      confirmIcon={<Trash2 className="h-3.5 w-3.5" />}
+      cancelLabel={t("common.cancel")}
+      confirmAutoFocus
+      onConfirm={onConfirm}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-slate-900 border border-slate-700/80 rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.85)] w-full max-w-md max-h-full overflow-y-auto text-xs select-none"
-      >
-        <div className="h-1 bg-gradient-to-r from-rose-600 via-rose-500 to-amber-500" />
-
-        <div className="p-5 space-y-4">
-          <div
-            data-tauri-drag-region="deep"
-            className="flex items-start justify-between gap-3"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">
-                  {t("common.delete_confirm_title")}
-                </div>
-                <h3 className="text-sm font-bold text-slate-100 mt-0.5">
-                  {title}
-                </h3>
-              </div>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              disabled={isDeleting}
-              onClick={onCancel}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-950/90 border border-slate-800 space-y-1">
-            <div className="font-semibold text-slate-100 break-words">
-              {itemName}
-            </div>
-            {itemDetail && (
-              <div className="text-[11px] text-slate-400 font-mono break-all">
-                {itemDetail}
-              </div>
-            )}
-          </div>
-
-          {checkboxLabel && (
-            <label
-              className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border text-xs select-none transition-colors ${
-                checkboxDisabled
-                  ? "bg-slate-950/50 border-slate-800/70 text-slate-500 cursor-not-allowed"
-                  : checkboxChecked
-                  ? "bg-rose-950/45 border-rose-500/50 text-rose-200 cursor-pointer"
-                  : "bg-slate-950/70 border-slate-800 text-slate-200 hover:border-slate-700 cursor-pointer"
-              }`}
-            >
-              <Checkbox
-                tone="rose"
-                disabled={checkboxDisabled || isDeleting}
-                checked={checkboxChecked}
-                onCheckedChange={onCheckboxChange}
-                label={checkboxLabel}
-              />
-              {checkboxDisabled && checkboxDisabledHint && (
-                <span className="text-[10px] text-amber-300/90">
-                  {checkboxDisabledHint}
-                </span>
-              )}
-            </label>
-          )}
-
-          {note && (
-            <div
-              className={`p-2.5 rounded-lg border flex items-start gap-2 text-[11px] ${
-                noteTone === "danger"
-                  ? "bg-rose-950/60 border-rose-800/80 text-rose-200"
-                  : "bg-slate-950/60 border-slate-800 text-slate-300"
-              }`}
-            >
-              <AlertTriangle
-                className={`w-4 h-4 shrink-0 mt-0.5 ${
-                  noteTone === "danger" ? "text-rose-400" : "text-amber-400"
-                }`}
-              />
-              <span>{note}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <Button
-              variant="secondary"
-              disabled={isDeleting}
-              onClick={onCancel}
-              autoFocus
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              variant="danger"
-              disabled={isDeleting}
-              loading={isDeleting}
-              onClick={() => void onConfirm()}
-              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-            >
-              {confirmLabel ?? t("common.delete")}
-            </Button>
-          </div>
-        </div>
+      <div className="rounded border border-[#21262d] bg-[#161b22] px-3.5 py-3 space-y-1">
+        <div className="font-semibold text-[#e6edf3] break-words">{itemName}</div>
+        {itemDetail && (
+          <div className="text-[11px] text-[#8b949e] font-mono break-all">{itemDetail}</div>
+        )}
       </div>
-    </div>
+
+      {checkboxLabel && (
+        <label
+          className={`flex items-center justify-between gap-2 p-2.5 rounded border text-xs select-none transition-colors ${
+            checkboxDisabled
+              ? "bg-[#161b22]/50 border-[#21262d] text-[#484f58] cursor-not-allowed"
+              : checkboxChecked
+              ? "bg-rose-950/30 border-rose-500/40 text-rose-200 cursor-pointer"
+              : "bg-[#161b22] border-[#21262d] text-[#c9d1d9] hover:border-[#30363d] cursor-pointer"
+          }`}
+        >
+          <Checkbox
+            tone="rose"
+            disabled={checkboxDisabled || isDeleting}
+            checked={checkboxChecked}
+            onCheckedChange={onCheckboxChange}
+            label={checkboxLabel}
+          />
+          {checkboxDisabled && checkboxDisabledHint && (
+            <span className="text-[10px] text-amber-300/90 font-mono">
+              {checkboxDisabledHint}
+            </span>
+          )}
+        </label>
+      )}
+
+      {note && (
+        <div
+          className={`p-2.5 rounded border flex items-start gap-2 text-[11px] ${
+            noteTone === "danger"
+              ? "bg-rose-950/40 border-rose-800/60 text-rose-200"
+              : "bg-amber-950/30 border-amber-800/40 text-amber-200"
+          }`}
+        >
+          <AlertTriangle
+            className={`w-4 h-4 shrink-0 mt-0.5 ${
+              noteTone === "danger" ? "text-rose-400" : "text-amber-400"
+            }`}
+          />
+          <span className="leading-snug">{note}</span>
+        </div>
+      )}
+    </ActionModal>
   );
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, KeyRound, X } from "lucide-react";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button, Checkbox, IconButton, Input, ModalShell, Switch, useAlert } from "@/shared/ui";
+import { ActionModal, Checkbox, IconButton, Input, Switch, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { useTabsStore } from "@/modules/workspace";
 import { sftpApi, type SftpAuthPromptEventDto } from "@/modules/sftp";
@@ -68,8 +68,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
 
   if (!prompt) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!secret) return void alert.error(t("auth.secret_required"));
     setSubmitting(true);
     try {
@@ -115,41 +114,26 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
   };
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen
       onClose={handleDismiss}
-      closeDisabled={submitting}
-      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-sm max-h-full overflow-y-auto text-xs select-none"
+      busy={submitting}
+      title={
+        prompt.prompt_type === "KEY_PASSPHRASE"
+          ? t("auth.title_passphrase")
+          : t("auth.title_password")
+      }
+      subtitle={prompt.prompt_text || undefined}
+      icon={<KeyRound className="h-4 w-4" />}
+      iconTone="primary"
+      size="sm"
+      confirmLabel={t("auth.submit")}
+      confirmVariant="primary"
+      confirmIcon={<KeyRound className="h-3.5 w-3.5" />}
+      cancelLabel={t("common.cancel")}
+      onConfirm={handleSubmit}
     >
-      <form noValidate onSubmit={handleSubmit} className="p-5 space-y-4">
-        <div
-          data-tauri-drag-region="deep"
-          className="flex items-center justify-between"
-        >
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-sky-400" />
-            <h3 className="text-sm font-bold text-slate-100">
-              {prompt.prompt_type === "KEY_PASSPHRASE"
-                ? t("auth.title_passphrase")
-                : t("auth.title_password")}
-            </h3>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={submitting}
-            onClick={handleDismiss}
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {prompt.prompt_text && (
-          <p className="text-[11px] font-mono text-slate-400 break-all">
-            {prompt.prompt_text}
-          </p>
-        )}
-
+      <div className="rounded border border-[#21262d] bg-[#161b22] p-3.5 space-y-3">
         <Input
           ref={inputRef}
           type={showSecret ? "text" : "password"}
@@ -167,7 +151,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
           }
         />
 
-        <div className="flex items-center gap-4 h-6">
+        <div className="flex items-center gap-4 h-6 pt-1">
           <Checkbox
             checked={saveVault}
             onCheckedChange={(checked) => {
@@ -190,24 +174,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
             />
           </div>
         </div>
-
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button
-            variant="secondary"
-            disabled={submitting}
-            onClick={handleDismiss}
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            loading={submitting}
-          >
-            {t("auth.submit")}
-          </Button>
-        </div>
-      </form>
-    </ModalShell>
+      </div>
+    </ActionModal>
   );
 };

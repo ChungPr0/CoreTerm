@@ -1,8 +1,8 @@
 import React from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 import type { PortProbeResultDto } from "../types";
 import { useI18n } from "@/shared/i18n";
-import { Button, ModalShell } from "@/shared/ui";
+import { ActionModal } from "@/shared/ui";
 
 interface PortConflictModalProps {
   conflicts: PortProbeResultDto[];
@@ -18,49 +18,38 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
   const { t } = useI18n();
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen={conflicts.length > 0}
       onClose={onAbort}
-      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-y-auto p-5 space-y-4 text-xs select-none"
+      title={t("conflict.title")}
+      icon={<AlertTriangle className="h-4 w-4" />}
+      iconTone="warning"
+      size="md"
+      confirmLabel={t("conflict.skip_connect")}
+      confirmVariant="primary"
+      confirmIcon={<ArrowRight className="h-3.5 w-3.5" />}
+      cancelLabel={t("conflict.abort")}
+      onConfirm={onSkipAndConnect}
     >
-      <div data-tauri-drag-region="deep" className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-400" />
-          <h3 className="text-sm font-bold text-slate-100">{t("conflict.title")}</h3>
-        </div>
-        <Button variant="ghost" size="icon" onClick={onAbort}>
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <div className="space-y-2">
+      <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
         {conflicts.map((c) => (
           <div
             key={c.rule_id}
-            className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between font-mono"
+            className="p-3 rounded border border-[#21262d] bg-[#161b22] flex items-center justify-between font-mono text-xs"
           >
             <div>
-              <span className="text-slate-400">{t("conflict.port")}: </span>
+              <span className="text-[#8b949e]">{t("conflict.port")}: </span>
               <span className="text-amber-300 font-semibold">
                 {c.bind_address}:{c.bind_port}
               </span>
             </div>
-            <div className="text-slate-300">
+            <div className="text-[#c9d1d9]">
               {c.conflicting_process_name ?? t("conflict.process")}
               {c.conflicting_pid ? ` (PID ${c.conflicting_pid})` : ""}
             </div>
           </div>
         ))}
       </div>
-
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-        <Button variant="secondary" onClick={onAbort}>
-          {t("conflict.abort")}
-        </Button>
-        <Button variant="primary" onClick={onSkipAndConnect}>
-          {t("conflict.skip_connect")}
-        </Button>
-      </div>
-    </ModalShell>
+    </ActionModal>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FolderOpen, Pencil, Plus, Terminal as TerminalIcon, Trash2 } from "lucide-react";
+import { FolderOpen, Pencil, Plus, Save, Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
 import { Button, IconButton, Input } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
@@ -266,6 +266,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
               variant="primary"
               size="xs"
               loading={validating}
+              leftIcon={<Save className="w-3 h-3" />}
               onClick={() => void saveShell()}
             >
               {t("common.save")}

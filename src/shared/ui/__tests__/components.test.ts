@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { Button, Checkbox, IconButton, Input, SegmentedControl, Select, Switch } from "../index";
+import { ActionModal, Button, Checkbox, IconButton, Input, SegmentedControl, Select, Switch } from "../index";
 
 describe("Shared UI Form Components", () => {
-  it("exports Button, IconButton, SegmentedControl, Input, Select, Checkbox, Switch properly", () => {
+  it("exports ActionModal, Button, IconButton, SegmentedControl, Input, Select, Checkbox, Switch properly", () => {
+    expect(ActionModal).toBeDefined();
     expect(Button).toBeDefined();
     expect(IconButton).toBeDefined();
     expect(SegmentedControl).toBeDefined();

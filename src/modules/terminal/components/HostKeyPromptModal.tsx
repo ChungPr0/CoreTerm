@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { RotateCcw, ShieldAlert, X } from "lucide-react";
+import { Check, RotateCcw, ShieldAlert } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button, IconButton, ModalShell, useAlert } from "@/shared/ui";
+import { ActionModal, Button, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { sftpApi, type SftpHostKeyPromptEventDto } from "@/modules/sftp";
 import { sessionApi } from "../api/sessionApi";
@@ -74,75 +74,62 @@ export const HostKeyPromptModal: React.FC<HostKeyPromptModalProps> = ({
   };
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen
       onClose={handleDismiss}
-      closeDisabled={submitting}
-      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-md max-h-full overflow-y-auto p-5 space-y-4 text-xs select-none"
-    >
-      <div
-        data-tauri-drag-region="deep"
-        className="flex items-center justify-between"
-      >
-        <div className="flex items-center gap-2">
-          <ShieldAlert
-            className={`w-4 h-4 ${
-              isChangedWarning ? "text-rose-400" : "text-amber-400"
-            }`}
-          />
-          <h3 className="text-sm font-bold text-slate-100">
-            {isChangedWarning ? t("hostkey.changed_title") : t("hostkey.title")}
-          </h3>
-        </div>
-        <IconButton
-          size="xs"
-          onClick={handleDismiss}
-          disabled={submitting}
-          title={t("common.close")}
-          icon={<X className="w-4 h-4" />}
-        />
-      </div>
+      busy={submitting}
+      title={isChangedWarning ? t("hostkey.changed_title") : t("hostkey.title")}
+      icon={<ShieldAlert className="h-4 w-4" />}
+      iconTone={isChangedWarning ? "danger" : "warning"}
+      size="md"
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={submitting}
+            onClick={() => handleDecision("REJECT")}
+          >
+            {t("hostkey.reject")}
+          </Button>
 
-      <div className="p-3 rounded bg-slate-950 border border-slate-800 font-mono space-y-1.5">
-        <div className="flex items-center justify-between text-slate-300">
+          {isChangedWarning ? (
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={submitting}
+              loading={submitting}
+              leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+              onClick={() => handleDecision("REMOVE_OLD_AND_ACCEPT")}
+            >
+              {t("hostkey.reset")}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={submitting}
+              loading={submitting}
+              leftIcon={<Check className="w-3.5 h-3.5" />}
+              onClick={() => handleDecision("ACCEPT")}
+            >
+              {t("hostkey.accept")}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="p-3.5 rounded border border-[#21262d] bg-[#161b22] font-mono space-y-1.5 text-xs">
+        <div className="flex items-center justify-between text-[#c9d1d9]">
           <span>
             {prompt.host}:{prompt.port}
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+          <span className="px-1.5 py-0.5 rounded bg-[#21262d] text-[10px] text-[#8b949e]">
             {prompt.algorithm}
           </span>
         </div>
-        <div className="text-sky-400 break-all">{prompt.fingerprint}</div>
+        <div className="text-[#58a6ff] break-all">{prompt.fingerprint}</div>
       </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          variant="secondary"
-          disabled={submitting}
-          onClick={() => handleDecision("REJECT")}
-        >
-          {t("hostkey.reject")}
-        </Button>
-
-        {isChangedWarning ? (
-          <Button
-            variant="danger"
-            disabled={submitting}
-            leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
-            onClick={() => handleDecision("REMOVE_OLD_AND_ACCEPT")}
-          >
-            {t("hostkey.reset")}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            disabled={submitting}
-            onClick={() => handleDecision("ACCEPT")}
-          >
-            {t("hostkey.accept")}
-          </Button>
-        )}
-      </div>
-    </ModalShell>
+    </ActionModal>
   );
 };
