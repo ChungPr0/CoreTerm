@@ -111,6 +111,28 @@ pub(super) fn spawn_output_batcher(
     (tx, handle)
 }
 
+fn resolve_exit_status(
+    host_id: &str,
+    exit_code: Option<u32>,
+    auth_failed_reason: Option<String>,
+    connect_failed_reason: Option<String>,
+) -> (&'static str, Option<String>) {
+    if let Some(reason) = auth_failed_reason {
+        ("AUTH_FAILED", Some(reason))
+    } else if let Some(reason) = connect_failed_reason {
+        ("ERROR", Some(reason))
+    } else if host_id == "local" {
+        // Local shells (e.g. cmd.exe, bash) inherit the last command's non-zero exit code
+        // when the user runs `exit`; treat post-spawn exit as normal disconnect, not a shell launch error.
+        ("DISCONNECTED", None)
+    } else {
+        match exit_code {
+            Some(0) | None => ("DISCONNECTED", None),
+            Some(code) => ("ERROR", Some(format!("Process exited with code {code}"))),
+        }
+    }
+}
+
 pub(super) fn finalize_reader_exit(ctx: ReaderExitCtx<'_>, meta: ReaderExitMeta) {
     let removed = ctx
         .sessions_map
@@ -120,16 +142,12 @@ pub(super) fn finalize_reader_exit(ctx: ReaderExitCtx<'_>, meta: ReaderExitMeta)
     }
 
     if !meta.was_manual {
-        let (final_state, err_msg) = if let Some(reason) = meta.auth_failed_reason {
-            ("AUTH_FAILED", Some(reason))
-        } else if let Some(reason) = meta.connect_failed_reason {
-            ("ERROR", Some(reason))
-        } else {
-            match meta.exit_code {
-                Some(0) | None => ("DISCONNECTED", None),
-                Some(code) => ("ERROR", Some(format!("Process exited with code {code}"))),
-            }
-        };
+        let (final_state, err_msg) = resolve_exit_status(
+            &meta.host_id,
+            meta.exit_code,
+            meta.auth_failed_reason,
+            meta.connect_failed_reason,
+        );
 
         let exit_banner = match meta.exit_code {
             Some(0) | None => "\r\n\x1b[90m[Session closed.]\x1b[0m\r\n".to_string(),
@@ -144,6 +162,51 @@ pub(super) fn finalize_reader_exit(ctx: ReaderExitCtx<'_>, meta: ReaderExitMeta)
             final_state,
             vec![],
             err_msg,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_exit_status;
+
+    #[test]
+    fn local_shell_nonzero_exit_is_disconnected_not_launch_error() {
+        assert_eq!(
+            resolve_exit_status("local", Some(9009), None, None),
+            ("DISCONNECTED", None)
+        );
+        assert_eq!(
+            resolve_exit_status("local", Some(1), None, None),
+            ("DISCONNECTED", None)
+        );
+        assert_eq!(
+            resolve_exit_status("local", Some(0), None, None),
+            ("DISCONNECTED", None)
+        );
+    }
+
+    #[test]
+    fn local_shell_with_connect_error_preserves_error_state() {
+        assert_eq!(
+            resolve_exit_status("local", Some(1), None, Some("Failed to spawn".into())),
+            ("ERROR", Some("Failed to spawn".into()))
+        );
+    }
+
+    #[test]
+    fn ssh_session_nonzero_exit_reports_error() {
+        assert_eq!(
+            resolve_exit_status("host-1", Some(255), None, None),
+            ("ERROR", Some("Process exited with code 255".into()))
+        );
+        assert_eq!(
+            resolve_exit_status("host-1", Some(0), None, None),
+            ("DISCONNECTED", None)
+        );
+        assert_eq!(
+            resolve_exit_status("host-1", Some(255), Some("Auth failed".into()), None),
+            ("AUTH_FAILED", Some("Auth failed".into()))
         );
     }
 }

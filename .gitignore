@@ -12,3 +12,6 @@ dist-ssr/
 # Agent
 .agents/
 skills-lock.json
+
+#docs
+docs/

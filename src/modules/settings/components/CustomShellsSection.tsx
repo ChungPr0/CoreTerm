@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FolderOpen, Pencil, Plus, Save, Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
 import { Button, IconButton, Input } from "@/shared/ui";
@@ -17,12 +17,16 @@ interface CustomShellsSectionProps {
   customShells: ShellProfile[];
   onChange: (next: ShellProfile[]) => void;
   onFirstAdd?: (profile: ShellProfile) => void;
+  onRequestDelete?: (shell: ShellProfile) => void;
+  onEditorDirtyChange?: (dirty: boolean) => void;
 }
 
 export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
   customShells,
   onChange,
   onFirstAdd,
+  onRequestDelete,
+  onEditorDirtyChange,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -42,6 +46,36 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
     setExecutable("");
     setArgsText("");
   };
+
+  useEffect(() => {
+    if (editingId && !customShells.some((s) => s.id === editingId)) {
+      resetEditor();
+    }
+  }, [customShells, editingId]);
+
+  useEffect(() => {
+    if (!onEditorDirtyChange) return;
+    if (isAdding) {
+      onEditorDirtyChange(
+        Boolean(name.trim() || executable.trim() || argsText.trim())
+      );
+      return;
+    }
+    if (editingId !== null) {
+      const original = customShells.find((s) => s.id === editingId);
+      if (!original) {
+        onEditorDirtyChange(false);
+        return;
+      }
+      onEditorDirtyChange(
+        name !== original.name ||
+          executable !== original.executable ||
+          argsText !== formatShellArgs(original.args)
+      );
+      return;
+    }
+    onEditorDirtyChange(false);
+  }, [argsText, customShells, editingId, executable, isAdding, name, onEditorDirtyChange]);
 
   const openAdd = () => {
     setEditingId(null);
@@ -197,6 +231,10 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                     tone="rose"
                     title={t("common.delete")}
                     onClick={() => {
+                      if (onRequestDelete) {
+                        onRequestDelete(shell);
+                        return;
+                      }
                       if (editingId === shell.id) resetEditor();
                       onChange(customShells.filter((c) => c.id !== shell.id));
                     }}

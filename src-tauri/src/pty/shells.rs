@@ -428,6 +428,45 @@ mod tests {
             None
         );
         assert_eq!(resolve_shell_exe("   "), None);
+        assert_eq!(resolve_shell_exe("  \"\"  "), None);
+        assert_eq!(resolve_shell_exe("./nonexistent_custom_shell.exe"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_shell_exe_finds_path_commands_with_and_without_exe_extension() {
+        let resolved_bare = resolve_shell_exe("cmd").expect("cmd should resolve from PATH");
+        assert!(
+            resolved_bare.to_ascii_lowercase().ends_with("cmd.exe"),
+            "expected cmd.exe path, got {resolved_bare}"
+        );
+        let resolved_ext = resolve_shell_exe("cmd.exe").expect("cmd.exe should resolve from PATH");
+        assert!(
+            resolved_ext.to_ascii_lowercase().ends_with("cmd.exe"),
+            "expected cmd.exe path, got {resolved_ext}"
+        );
+        assert_eq!(resolve_shell_exe("definitely_nonexistent_shell_xyz_123"), None);
+    }
+
+    #[test]
+    fn is_default_powershell_distinguishes_custom_args() {
+        let custom_ps_nologo = ShellProfile {
+            id: "custom:ps1".into(),
+            kind: "custom".into(),
+            name: "Custom PS".into(),
+            executable: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".into(),
+            args: vec!["-NoLogo".into()],
+        };
+        assert!(is_default_powershell(&custom_ps_nologo));
+
+        let custom_ps_with_script = ShellProfile {
+            id: "custom:ps2".into(),
+            kind: "custom".into(),
+            name: "Custom PS Script".into(),
+            executable: r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".into(),
+            args: vec!["-NoLogo".into(), "-NoProfile".into()],
+        };
+        assert!(!is_default_powershell(&custom_ps_with_script));
     }
 
     #[tokio::test]

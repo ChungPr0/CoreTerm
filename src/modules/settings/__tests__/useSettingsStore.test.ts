@@ -117,5 +117,143 @@ describe("useSettingsStore", () => {
     // Duplicates and malformed shells filtered out
     expect(settings.customShells).toHaveLength(1);
     expect(settings.customShells[0].id).toBe("s1");
+    expect(settings.customShells[0].kind).toBe("custom");
+  });
+
+  it("manages custom shell addition without changing default and supports deletion", async () => {
+    const storeMap = new Map<string, string>();
+    const storageMock = {
+      getItem: (k: string) => storeMap.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k: string) => {
+        storeMap.delete(k);
+      },
+    };
+    vi.stubGlobal("localStorage", storageMock);
+    vi.resetModules();
+
+    const { useSettingsStore } = await import("../useSettingsStore");
+    const initialDefaultId = useSettingsStore.getState().settings.defaultShellId;
+
+    const firstCustom = {
+      id: "custom:bash",
+      kind: "custom",
+      name: "Portable Bash",
+      executable: "D:\\Portable\\bash.exe",
+      args: ["--login"],
+    };
+    useSettingsStore.getState().addCustomShell(firstCustom, false);
+    expect(useSettingsStore.getState().settings.customShells).toEqual([firstCustom]);
+    expect(useSettingsStore.getState().settings.defaultShellId).toBe(initialDefaultId);
+
+    const secondCustom = {
+      id: "custom:fish",
+      kind: "custom",
+      name: "Fish",
+      executable: "D:\\Portable\\fish.exe",
+      args: [],
+    };
+    useSettingsStore.getState().addCustomShell(secondCustom, true);
+    expect(useSettingsStore.getState().settings.customShells).toEqual([firstCustom, secondCustom]);
+    expect(useSettingsStore.getState().settings.defaultShellId).toBe("custom:fish");
+    expect(useSettingsStore.getState().settings.defaultShellProfile).toEqual(secondCustom);
+
+    // Deleting a custom shell via updateSettings persists the remaining list
+    const current = useSettingsStore.getState().settings;
+    useSettingsStore.getState().updateSettings({
+      ...current,
+      customShells: current.customShells.filter((s) => s.id !== "custom:fish"),
+      defaultShellId: "powershell",
+      defaultShellProfile: undefined,
+    });
+    expect(useSettingsStore.getState().settings.customShells).toEqual([firstCustom]);
+    const persisted = JSON.parse(storeMap.get("coreterm_settings") ?? "{}");
+    expect(persisted.customShells).toEqual([firstCustom]);
+  });
+
+  it("filters out malformed customShells entries and non-array values on load", async () => {
+    const rawSaved = JSON.stringify({
+      customShells: [
+        { id: "  ", name: "Blank Id", executable: "a.exe", args: [] },
+        { id: "c1", name: "   ", executable: "a.exe", args: [] },
+        { id: "c2", name: "Blank Exe", executable: "  ", args: [] },
+        { id: "c3", name: "Bad Args Element", executable: "a.exe", args: ["--ok", 123] },
+        { id: "c4", name: "Valid Shell", executable: "D:\\ok.exe", args: ["-NoLogo"] },
+      ],
+    });
+    const storageMock = {
+      getItem: () => rawSaved,
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", storageMock);
+    vi.resetModules();
+
+    const { useSettingsStore } = await import("../useSettingsStore");
+    expect(useSettingsStore.getState().settings.customShells).toEqual([
+      {
+        id: "c4",
+        kind: "custom",
+        name: "Valid Shell",
+        executable: "D:\\ok.exe",
+        args: ["-NoLogo"],
+      },
+    ]);
+  });
+
+  it("detects unsaved settings changes accurately via hasSettingsChanges", async () => {
+    const { hasSettingsChanges } = await import("../settingsDiff");
+    const baseShell = {
+      id: "custom:nu",
+      kind: "custom",
+      name: "Nushell",
+      executable: "D:\\Tools\\nu.exe",
+      args: ["--login"],
+    };
+    const saved = {
+      launchCols: 100,
+      launchRows: 30,
+      sftpConflictPolicy: "ASK" as const,
+      defaultShellId: "powershell",
+      customShells: [baseShell],
+    };
+    const unchangedDraft = {
+      cols: 100,
+      rows: 30,
+      sftpConflictPolicy: "ASK" as const,
+      effectiveDefaultShellId: "powershell",
+      initialEffectiveDefaultShellId: "powershell",
+      customShells: [{ ...baseShell, args: ["--login"] }],
+      contextMenuDraft: false,
+      contextMenuOriginal: false,
+      hasDirtyShellEditor: false,
+    };
+
+    expect(hasSettingsChanges(saved, unchangedDraft)).toBe(false);
+    expect(hasSettingsChanges(saved, { ...unchangedDraft, cols: 120 })).toBe(true);
+    expect(hasSettingsChanges(saved, { ...unchangedDraft, rows: 40 })).toBe(true);
+    expect(
+      hasSettingsChanges(saved, { ...unchangedDraft, sftpConflictPolicy: "OVERWRITE" })
+    ).toBe(true);
+    expect(
+      hasSettingsChanges(saved, { ...unchangedDraft, effectiveDefaultShellId: "custom:nu" })
+    ).toBe(true);
+    expect(
+      hasSettingsChanges(saved, { ...unchangedDraft, contextMenuDraft: true })
+    ).toBe(true);
+    expect(
+      hasSettingsChanges(saved, { ...unchangedDraft, hasDirtyShellEditor: true })
+    ).toBe(true);
+    expect(
+      hasSettingsChanges(saved, {
+        ...unchangedDraft,
+        customShells: [{ ...baseShell, args: ["--login", "-i"] }],
+      })
+    ).toBe(true);
+    expect(
+      hasSettingsChanges(saved, { ...unchangedDraft, customShells: [] })
+    ).toBe(true);
   });
 });

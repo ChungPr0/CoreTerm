@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Check,
   FolderSync,
   Globe,
@@ -26,13 +27,24 @@ import {
 } from "@/shared/defaults";
 import { type Locale, useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
-import { Button, Input, ModalShell, SegmentedControl, Select, Switch } from "@/shared/ui";
 import {
+  ActionModal,
+  Button,
+  ConfirmDeleteModal,
+  Input,
+  ModalShell,
+  SegmentedControl,
+  Select,
+  Switch,
+} from "@/shared/ui";
+import {
+  formatShellArgs,
   mergeShells,
   resolveDefaultShell,
   sessionApi,
   useShellsStore,
 } from "@/modules/terminal";
+import { hasSettingsChanges } from "../settingsDiff";
 import type { AppSettingsValues } from "../types";
 import { CustomShellsSection } from "./CustomShellsSection";
 
@@ -70,6 +82,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const resetFeedbackTimerRef = useRef<number | null>(null);
   const [contextMenuOriginal, setContextMenuOriginal] = useState(false);
   const [contextMenuDraft, setContextMenuDraft] = useState(false);
+  const [deletingShell, setDeletingShell] = useState<ShellProfile | null>(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [hasDirtyShellEditor, setHasDirtyShellEditor] = useState(false);
 
   const isDefaultLaunchSize =
     cols === LAUNCH_COLS_DEFAULT && rows === LAUNCH_ROWS_DEFAULT;
@@ -121,12 +136,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     [availableShells, defaultShellId]
   );
 
+  const initialEffectiveDefaultShellId = useMemo(() => {
+    const initialAvailable = mergeShells(systemShells, settings.customShells ?? []);
+    return (
+      resolveDefaultShell(initialAvailable, settings.defaultShellId || DEFAULT_SHELL_ID)?.id ??
+      ""
+    );
+  }, [systemShells, settings.customShells, settings.defaultShellId]);
+
+  const isDirty = useMemo(
+    () =>
+      hasSettingsChanges(settings, {
+        cols,
+        rows,
+        sftpConflictPolicy,
+        effectiveDefaultShellId: effectiveDefaultShell?.id ?? "",
+        initialEffectiveDefaultShellId,
+        customShells,
+        contextMenuDraft,
+        contextMenuOriginal,
+        hasDirtyShellEditor,
+      }),
+    [
+      settings,
+      cols,
+      rows,
+      sftpConflictPolicy,
+      effectiveDefaultShell,
+      initialEffectiveDefaultShellId,
+      customShells,
+      contextMenuDraft,
+      contextMenuOriginal,
+      hasDirtyShellEditor,
+    ]
+  );
+
+  const hasChildConfirmModal = deletingShell !== null || showDiscardConfirm;
+
+  const handleRequestClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    onClose();
+  };
+
   useEffect(() => {
     if (!isOpen) {
       clearResetFeedback();
+      setDeletingShell(null);
+      setShowDiscardConfirm(false);
+      setHasDirtyShellEditor(false);
       return;
     }
     clearResetFeedback();
+    setDeletingShell(null);
+    setShowDiscardConfirm(false);
+    setHasDirtyShellEditor(false);
     setCols(settings.launchCols);
     setRows(settings.launchRows);
     setSftpConflictPolicy(settings.sftpConflictPolicy ?? DEFAULT_CONFLICT_POLICY);
@@ -182,9 +248,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
+    <>
     <ModalShell
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleRequestClose}
+      closeDisabled={hasChildConfirmModal}
       panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-full overflow-hidden flex flex-col text-xs select-none"
     >
         <div
@@ -200,7 +268,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onClose}
+            onClick={handleRequestClose}
           >
             <X className="w-4 h-4" />
           </Button>
@@ -353,6 +421,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onFirstAdd={(profile) => {
               if (availableShells.length === 0) setDefaultShellId(profile.id);
             }}
+            onRequestDelete={setDeletingShell}
+            onEditorDirtyChange={setHasDirtyShellEditor}
           />
 
           {/* SFTP file conflict default policy */}
@@ -396,7 +466,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
-            <Button variant="secondary" onClick={onClose}>
+            <Button variant="secondary" onClick={handleRequestClose}>
               {t("common.cancel")}
             </Button>
             <Button
@@ -409,5 +479,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </form>
     </ModalShell>
+
+    <ConfirmDeleteModal
+      isOpen={deletingShell !== null}
+      title={t("settings.shell_delete_title")}
+      itemName={deletingShell?.name ?? ""}
+      itemDetail={
+        deletingShell
+          ? formatShellArgs(deletingShell.args)
+            ? `${deletingShell.executable} ${formatShellArgs(deletingShell.args)}`
+            : deletingShell.executable
+          : undefined
+      }
+      onCancel={() => setDeletingShell(null)}
+      onConfirm={() => {
+        if (!deletingShell) return;
+        setCustomShells((prev) => prev.filter((c) => c.id !== deletingShell.id));
+        setDeletingShell(null);
+      }}
+    />
+
+    <ActionModal
+      isOpen={showDiscardConfirm}
+      onClose={() => setShowDiscardConfirm(false)}
+      title={t("settings.discard_title")}
+      icon={<AlertTriangle className="h-4 w-4" />}
+      iconTone="warning"
+      size="sm"
+      confirmLabel={t("settings.discard_confirm")}
+      confirmVariant="danger"
+      confirmIcon={<X className="h-3.5 w-3.5" />}
+      cancelLabel={t("settings.discard_keep")}
+      confirmAutoFocus
+      onConfirm={() => {
+        setShowDiscardConfirm(false);
+        onClose();
+      }}
+    >
+      <p className="text-xs text-slate-300 leading-relaxed">
+        {t("settings.discard_desc")}
+      </p>
+    </ActionModal>
+    </>
   );
 };

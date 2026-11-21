@@ -174,8 +174,21 @@ impl PtySessionManager {
         if is_admin && !app_elevated {
             let profile = local_profile.unwrap_or_else(default_shell_profile);
             #[cfg(windows)]
-            crate::infra::os::elevated_pty::validate_elevated_shell(&profile.executable, &profile.args)
-                .map_err(CoreError::Validation)?;
+            if let Err(msg) = crate::infra::os::elevated_pty::validate_elevated_shell(
+                &profile.executable,
+                &profile.args,
+            ) {
+                let err = CoreError::Validation(msg);
+                emit_status(
+                    app,
+                    &req.tab_id,
+                    &req.host_id,
+                    "ERROR",
+                    vec![],
+                    Some(err.to_string()),
+                );
+                return Err(err);
+            }
             return self.connect_elevated_local(app, req, &profile, on_output);
         }
 

@@ -88,6 +88,7 @@ impl PtySessionManager {
                 .name(format!("elevated-pty-reader-{reader_tab_id}"))
                 .spawn(move || {
                     let mut exit_code: Option<u32> = None;
+                    let mut connect_failed_reason: Option<String> = None;
 
                     loop {
                         match pipe_reader.read_next_frame() {
@@ -106,9 +107,10 @@ impl PtySessionManager {
                                 break;
                             }
                             Ok(Some((elevated_pty::FRAME_ERROR, payload))) => {
-                                let msg = String::from_utf8_lossy(&payload);
+                                let msg = String::from_utf8_lossy(&payload).into_owned();
                                 let _ = on_output
                                     .send(format!("\r\n\x1b[31m✖ {msg}\x1b[0m\r\n").into_bytes());
+                                connect_failed_reason = Some(msg);
                                 exit_code = Some(1);
                                 break;
                             }
@@ -142,7 +144,7 @@ impl PtySessionManager {
                             was_manual,
                             exit_code,
                             auth_failed_reason: None,
-                            connect_failed_reason: None,
+                            connect_failed_reason,
                         },
                     );
                 })
