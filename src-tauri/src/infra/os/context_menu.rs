@@ -124,7 +124,32 @@ pub fn is_context_menu_registered() -> bool {
 
 #[cfg(windows)]
 pub fn register_context_menu() -> Result<(), String> {
-    let exe = current_exe().map_err(|e| format!("Failed to get current executable path: {e}"))?;
+    #[allow(unused_mut)]
+    let mut exe = current_exe().map_err(|e| format!("Failed to get current executable path: {e}"))?;
+
+    #[cfg(debug_assertions)]
+    {
+        // When running in debug mode (e.g. `npm run tauri dev`), the debug executable connects
+        // to `http://localhost:1420` (Vite dev server) and does not embed static UI assets.
+        // If registered to Windows Explorer context menu, right-clicking a folder on system startup
+        // will fail with ERR_CONNECTION_REFUSED (localhost refused to connect).
+        // Check if a release binary exists in sibling target/release directory to register instead.
+        if let Some(parent) = exe.parent() {
+            if parent.ends_with("debug") {
+                if let Some(rel_dir) = parent.parent().map(|p| p.join("release")) {
+                    let rel_exe = rel_dir.join("coreterm.exe");
+                    if rel_exe.exists() {
+                        exe = rel_exe;
+                    } else {
+                        return Err(
+                            "Cannot register debug executable to context menu because it requires the Vite dev server (localhost:1420). Please build release first (npm run build && npm run tauri build).".to_string()
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     let exe_str = exe.to_string_lossy().to_string();
 
     register_single_shell_key(KEY_DIR_SHELL, &exe_str)?;
@@ -187,17 +212,8 @@ pub fn is_installed_version() -> bool {
     false
 }
 
-/// Auto-heals / updates context menu if the user moved the executable,
-/// or auto-enables for installer versions (NSIS setup / MSI).
 #[cfg(windows)]
-pub fn sync_context_menu_if_enabled() {
-    if !is_context_menu_registered() {
-        if is_installed_version() {
-            let _ = register_context_menu();
-        }
-        return;
-    }
-    // Read command string and compare with current_exe
+pub fn get_registered_command() -> Result<String, String> {
     let cmd_path = format!("{KEY_DIR_SHELL}\\command");
     let wide_cmd = to_wide_null(&cmd_path);
     let mut hkey: HKEY = std::ptr::null_mut();
@@ -211,7 +227,7 @@ pub fn sync_context_menu_if_enabled() {
         )
     };
     if status != ERROR_SUCCESS || hkey.is_null() {
-        return;
+        return Err("Failed to open registry key".to_string());
     }
 
     let mut buf = [0u16; 1024];
@@ -230,14 +246,52 @@ pub fn sync_context_menu_if_enabled() {
 
     if res == ERROR_SUCCESS {
         let u16_slice = &buf[..(len as usize / std::mem::size_of::<u16>())];
-        let current_reg_val = String::from_utf16_lossy(u16_slice)
+        Ok(String::from_utf16_lossy(u16_slice)
             .trim_matches('\0')
-            .to_string();
-        if let Ok(exe) = current_exe() {
-            let exe_str = exe.to_string_lossy();
-            if !current_reg_val.contains(&*exe_str) {
-                // Moved portable exe! Re-register cleanly
+            .to_string())
+    } else {
+        Err(format!("RegQueryValueExW failed with code {res}"))
+    }
+}
+
+#[cfg(windows)]
+pub fn sync_context_menu_if_enabled() {
+    #[cfg(debug_assertions)]
+    {
+        if is_context_menu_registered() {
+            if let Ok(cmd) = get_registered_command() {
+                if cmd.contains(r"\target\debug\") || cmd.contains("/target/debug/") {
+                    if let Ok(exe) = current_exe() {
+                        if let Some(parent) = exe.parent() {
+                            if parent.ends_with("debug") {
+                                if let Some(rel) = parent.parent().map(|p| p.join("release").join("coreterm.exe")) {
+                                    if rel.exists() {
+                                        let _ = register_context_menu();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        if !is_context_menu_registered() {
+            if is_installed_version() {
                 let _ = register_context_menu();
+            }
+            return;
+        }
+
+        if let Ok(current_reg_val) = get_registered_command() {
+            if let Ok(exe) = current_exe() {
+                let exe_str = exe.to_string_lossy();
+                if !current_reg_val.contains(&*exe_str) {
+                    let _ = register_context_menu();
+                }
             }
         }
     }

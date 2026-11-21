@@ -385,7 +385,7 @@
     "key_path_empty": "Private key file path cannot be empty.",
     "key_file_not_found": "Key file not found: {{path}}",
     "key_path_duplicate": "This key file is already in Vault as \"{{name}}\".",
-    "key_fingerprint_duplicate": "This SSH key already exists in Vault as \"{{name}}\" (duplicate key fingerprint).",
+    "key_fingerprint_duplicate": "This SSH key already exists in Vault as \"{{name}}\".",
     "key_not_found": "SSH key not found in Vault ({{id}}).",
     "key_unsupported_type": "Unsupported SSH key type: {{type}}",
     "key_generation_failed": "SSH key generation failed: {{detail}}",
@@ -460,6 +460,16 @@
     "sftp_failed_rename": "Failed to rename remote entry: {{detail}}",
     "sftp_failed_chmod": "Failed to update permissions: {{detail}}",
     "sftp_failed_delete": "Failed to delete remote item: {{detail}}",
-    "sftp_failed_stat": "Failed to inspect remote item: {{detail}}"
+    "sftp_failed_stat": "Failed to inspect remote item: {{detail}}",
+    "sftp_invalid_posix_mode": "Invalid permission mode (must be 0000..7777).",
+    "local_cannot_rename_root": "Cannot rename drive or root path: \"{{path}}\".",
+    "local_target_already_exists": "Target already exists: \"{{path}}\".",
+    "sftp_local_shell_unsupported": "SFTP cannot connect to local terminal.",
+    "sftp_already_connected": "SFTP session is already connected.",
+    "sftp_still_connecting": "SFTP session is still connecting.",
+    "shell_profile_empty": "Shell profile name and executable cannot be empty.",
+    "clipboard_failed": "Failed to access clipboard.",
+    "context_menu_debug_blocked": "Cannot register context menu for debug builds. Please build release first.",
+    "context_menu_windows_only": "Context menu is only supported on Windows."
   }
 }

@@ -101,6 +101,18 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
     pattern: /^Target host (?:cannot start with hyphen|contains invalid characters):/i,
     key: "errors.forward_target_host_invalid",
   },
+  {
+    pattern: /^(?:LOCAL|REMOTE) port forward requires a target host$/i,
+    key: "errors.forward_target_required",
+  },
+  {
+    pattern: /^(?:LOCAL|REMOTE) port forward requires a valid target port$/i,
+    key: "errors.forward_port_range",
+  },
+  {
+    pattern: /^Bind port must be between 1 and 65535$/i,
+    key: "errors.forward_port_range",
+  },
   { pattern: /UAC_CANCELLED/i, key: "errors.session_uac_cancelled" },
   {
     pattern: /^Executable '(.+?)' is not an authorized interactive shell for elevated execution$/i,
@@ -113,6 +125,10 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
     params: (m) => ({ arg: m[1] }),
   },
   { pattern: /^Elevated shell executable cannot be empty$/i, key: "errors.session_shell_exe_empty" },
+  {
+    pattern: /^Shell profile name and executable cannot be empty$/i,
+    key: "errors.shell_profile_empty",
+  },
   { pattern: /^Path to delete cannot be empty$/i, key: "errors.local_delete_empty" },
   {
     pattern: /^Deleting drive or root path is strictly prohibited:\s*'(.+?)'$/i,
@@ -131,6 +147,16 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   {
     pattern: /^Deleting application data directory is prohibited:\s*'(.+?)'$/i,
     key: "errors.local_delete_app_data",
+    params: (m) => ({ path: m[1] }),
+  },
+  {
+    pattern: /^Cannot rename root path:\s*(.+)$/i,
+    key: "errors.local_cannot_rename_root",
+    params: (m) => ({ path: m[1] }),
+  },
+  {
+    pattern: /^Target already exists:\s*(.+)$/i,
+    key: "errors.local_target_already_exists",
     params: (m) => ({ path: m[1] }),
   },
   { pattern: /^Group name cannot be empty$/i, key: "errors.group_name_empty" },
@@ -199,6 +225,18 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   {
     pattern: /^(?:SFTP session not found for|No connecting SFTP session for)\s*(.+)$/i,
     key: "errors.sftp_session_not_found",
+  },
+  {
+    pattern: /^SFTP cannot connect to the local shell/i,
+    key: "errors.sftp_local_shell_unsupported",
+  },
+  {
+    pattern: /^SFTP session is (?:already authenticated|already connected)$/i,
+    key: "errors.sftp_already_connected",
+  },
+  {
+    pattern: /^SFTP session is still connecting$/i,
+    key: "errors.sftp_still_connecting",
   },
   {
     pattern: /^(?:Connection lost|Connection closed|Broken pipe)$/i,
@@ -306,6 +344,22 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
     pattern: /^Failed to (?:stat remote path|inspect remote target):\s*(.+)$/i,
     key: "errors.sftp_failed_stat",
     params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Invalid POSIX mode:/i,
+    key: "errors.sftp_invalid_posix_mode",
+  },
+  {
+    pattern: /^Failed to open (?:Windows )?clipboard$/i,
+    key: "errors.clipboard_failed",
+  },
+  {
+    pattern: /^Cannot register debug executable to context menu/i,
+    key: "errors.context_menu_debug_blocked",
+  },
+  {
+    pattern: /^Context menu registration is only supported on Windows$/i,
+    key: "errors.context_menu_windows_only",
   },
 ];
 

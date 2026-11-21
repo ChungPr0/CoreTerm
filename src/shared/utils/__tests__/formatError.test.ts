@@ -116,6 +116,41 @@ describe("formatError utils", () => {
         "Kết nối SFTP đã hết thời gian chờ",
         "SFTP connection timed out",
       ],
+      [
+        "Validation error: LOCAL port forward requires a target host",
+        "Host đích",
+        "Target host",
+      ],
+      [
+        "Validation error: Bind port must be between 1 and 65535",
+        "65535",
+        "65535",
+      ],
+      [
+        "Internal error: Failed to open Windows clipboard",
+        "bộ nhớ tạm",
+        "clipboard",
+      ],
+      [
+        "Validation error: Cannot rename root path: /",
+        "thư mục gốc",
+        "root path",
+      ],
+      [
+        "Validation error: Target already exists: D:\\foo",
+        "đã tồn tại",
+        "already exists",
+      ],
+      [
+        "Validation error: Invalid POSIX mode: 0o10000 (expected 0000..=7777)",
+        "Quyền không hợp lệ",
+        "Invalid permission mode",
+      ],
+      [
+        "Validation error: SFTP cannot connect to the local shell pseudo-host",
+        "terminal cục bộ",
+        "local terminal",
+      ],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {
