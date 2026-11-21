@@ -7,6 +7,8 @@ export type SftpPaneKind = "local" | "remote";
 export interface SftpDragPreview {
   fromKind: SftpPaneKind;
   targetKind: SftpPaneKind | null;
+  targetDir?: string | null;
+  targetDirName?: string | null;
   label: string;
   count: number;
   clientX: number;
@@ -18,12 +20,14 @@ interface ActiveSftpDrag extends PointerDragBase {
   paths: string[];
   label: string;
   targetKind: SftpPaneKind | null;
+  targetDir?: string | null;
+  targetDirName?: string | null;
 }
 
 interface UseSftpFileDragOpts {
   enabled: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
-  onDropTransfer: (fromKind: SftpPaneKind, paths: string[]) => void;
+  onDropTransfer: (fromKind: SftpPaneKind, paths: string[], targetDir?: string) => void;
 }
 
 /**
@@ -72,10 +76,31 @@ export function useSftpFileDrag({
     onMove: (drag, e) => {
       const targetKind = findTargetPane(drag.fromKind, e.clientX, e.clientY);
       drag.targetKind = targetKind;
+
+      let targetDir: string | null = null;
+      let targetDirName: string | null = null;
+
+      if (targetKind) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const rowEl = el?.closest<HTMLElement>("[data-sftp-dir-row]");
+        if (rowEl) {
+          const rowPane = rowEl.closest<HTMLElement>("[data-sftp-pane]")?.getAttribute("data-sftp-pane");
+          if (rowPane === targetKind) {
+            targetDir = rowEl.getAttribute("data-sftp-dir-path");
+            targetDirName = rowEl.getAttribute("data-sftp-dir-name");
+          }
+        }
+      }
+
+      drag.targetDir = targetDir;
+      drag.targetDirName = targetDirName;
+
       document.body.style.cursor = targetKind ? "copy" : "grabbing";
       setDragPreview({
         fromKind: drag.fromKind,
         targetKind,
+        targetDir,
+        targetDirName,
         label: drag.label,
         count: drag.paths.length,
         clientX: e.clientX,
@@ -85,7 +110,7 @@ export function useSftpFileDrag({
     onEnd: (drag, commit) => {
       setDragPreview(null);
       if (commit && drag?.isDragging && drag.targetKind) {
-        onDropTransfer(drag.fromKind, drag.paths);
+        onDropTransfer(drag.fromKind, drag.paths, drag.targetDir || undefined);
       }
     },
   });

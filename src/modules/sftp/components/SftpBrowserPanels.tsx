@@ -34,6 +34,7 @@ interface SftpBrowserPanelsProps {
   onRequestDownload: (paths: string[]) => void;
   onUploadDialog: (directory: boolean) => void;
   onReloadLocal: () => void;
+  onRefreshLocalDrives?: () => void;
 }
 
 export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
@@ -61,12 +62,12 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
   onRequestDownload,
   onUploadDialog,
   onReloadLocal,
+  onRefreshLocalDrives,
 }) => {
   const { t } = useI18n();
 
   const refreshLocal = () => {
-    if (local.cwdRef.current || local.homeRef.current) local.refresh();
-    else onReloadLocal();
+    onReloadLocal();
   };
 
   const refreshRemote = () => {
@@ -123,9 +124,11 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
             <FileList
               {...sharedProps("local", local)}
               onRefresh={refreshLocal}
+              onRefreshDrives={onRefreshLocalDrives}
               title={t("sftp.local_pane")}
               drives={localDrives}
               dropActive={fileDrag.dragPreview?.targetKind === "local"}
+              dropTargetDir={fileDrag.dragPreview?.targetKind === "local" ? fileDrag.dragPreview.targetDir : null}
               dropLabel={t("sftp.drop_to_download")}
               onContextMenuItem={(item, e) =>
                 onShowMenu(
@@ -184,6 +187,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
           showPerms
           emptyMessage={remoteEmptyMessage}
           dropActive={nativeDragActive || fileDrag.dragPreview?.targetKind === "remote"}
+          dropTargetDir={fileDrag.dragPreview?.targetKind === "remote" ? fileDrag.dragPreview.targetDir : null}
           dropLabel={nativeDragActive ? t("sftp.drop_hint") : t("sftp.drop_to_upload")}
           onContextMenuItem={(item, e) =>
             onShowMenu(

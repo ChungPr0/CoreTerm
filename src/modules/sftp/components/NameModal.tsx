@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Edit3, FolderPlus } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button, Input, ModalShell, useAlert } from "@/shared/ui";
+import { ActionModal, Input, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 
 interface NameModalProps {
   isOpen: boolean;
+  kind?: "mkdir" | "rename";
   title: string;
+  subTitle?: string;
   label: string;
   initialValue: string;
   confirmLabel: string;
@@ -16,7 +18,9 @@ interface NameModalProps {
 
 export const NameModal: React.FC<NameModalProps> = ({
   isOpen,
+  kind = "mkdir",
   title,
+  subTitle,
   label,
   initialValue,
   confirmLabel,
@@ -41,11 +45,17 @@ export const NameModal: React.FC<NameModalProps> = ({
   }, [isOpen, initialValue]);
 
   const trimmed = value.trim();
+  const isMkdir = kind === "mkdir";
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (saving) return;
     if (!trimmed) return void alert.error(t("sftp.name_required"));
+    if (trimmed === "." || trimmed === "..") {
+      return void alert.error(t("errors.sftp_entry_name_invalid", { name: trimmed }));
+    }
+    if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
+      return void alert.error(t("errors.sftp_entry_name_separators", { name: trimmed }));
+    }
     setSaving(true);
     try {
       await onSubmit(trimmed);
@@ -57,58 +67,46 @@ export const NameModal: React.FC<NameModalProps> = ({
   };
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen={isOpen}
       onClose={onCancel}
-      closeDisabled={saving}
-      closeOnBackdrop
-      positionClassName="fixed inset-0"
-      backdropClassName="bg-black/75"
-      containerClassName="select-none items-center justify-center p-4"
-      panelClassName="w-full max-w-sm rounded-lg border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl"
+      busy={saving}
+      title={title}
+      subtitle={subTitle}
+      icon={
+        isMkdir ? (
+          <FolderPlus className="h-4 w-4" />
+        ) : (
+          <Edit3 className="h-4 w-4" />
+        )
+      }
+      iconTone={isMkdir ? "primary" : "warning"}
+      size="md"
+      confirmLabel={confirmLabel}
+      confirmVariant="primary"
+      confirmIcon={
+        isMkdir ? (
+          <FolderPlus className="h-3.5 w-3.5" />
+        ) : (
+          <Edit3 className="h-3.5 w-3.5" />
+        )
+      }
+      confirmDisabled={saving || !trimmed}
+      cancelLabel={t("sftp.modal_cancel")}
+      onConfirm={handleSubmit}
     >
-      <div role="dialog" aria-modal="true">
-        <div className="flex items-center justify-between border-b border-[#21262d] px-4 py-3">
-          <h3 className="text-sm font-semibold text-[#e6edf3]">{title}</h3>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onCancel}
-            disabled={saving}
-            aria-label={t("common.close")}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <form noValidate onSubmit={handleSubmit} className="space-y-3 p-4">
-          <Input
-            ref={inputRef}
-            type="text"
-            label={label}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={saving}
-          />
-
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <Button
-              variant="secondary"
-              onClick={onCancel}
-              disabled={saving}
-            >
-              {t("sftp.modal_cancel")}
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              loading={saving}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
-        </form>
+      <div className="rounded border border-[#21262d] bg-[#161b22] px-3.5 py-3">
+        <label className="block text-[11px] font-medium text-[#8b949e] mb-1.5">
+          {label}
+        </label>
+        <Input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={saving}
+        />
       </div>
-    </ModalShell>
+    </ActionModal>
   );
 };

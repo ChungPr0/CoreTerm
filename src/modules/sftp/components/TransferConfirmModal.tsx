@@ -1,7 +1,7 @@
 import React from "react";
-import { ArrowRight, Download, Folder, Upload, X } from "lucide-react";
+import { ArrowRight, Download, Folder, Upload } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button, IconButton, ModalShell } from "@/shared/ui";
+import { ActionModal } from "@/shared/ui";
 
 export interface PendingTransfer {
   direction: "upload" | "download";
@@ -37,113 +37,57 @@ export const TransferConfirmModal: React.FC<TransferConfirmModalProps> = ({
   const remaining = count - previewNames.length;
 
   return (
-    <ModalShell
+    <ActionModal
       isOpen={!!transfer}
       onClose={onCancel}
-      closeDisabled={busy}
-      closeOnBackdrop
-      positionClassName="fixed inset-0"
-      backdropClassName="bg-black/75"
-      containerClassName="select-none items-center justify-center p-4"
-      panelClassName="w-full max-w-md rounded-lg border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl"
+      busy={busy}
+      title={t(isUpload ? "sftp.confirm_upload_title" : "sftp.confirm_download_title")}
+      subtitle={t(isUpload ? "sftp.confirm_upload_desc" : "sftp.confirm_download_desc", {
+        count,
+      })}
+      icon={isUpload ? <Upload className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+      iconTone={isUpload ? "primary" : "success"}
+      size="md"
+      confirmLabel={t(isUpload ? "sftp.confirm_upload_btn" : "sftp.confirm_download_btn")}
+      confirmVariant={isUpload ? "primary" : "success"}
+      confirmIcon={
+        isUpload ? (
+          <Upload className="h-3.5 w-3.5" />
+        ) : (
+          <Download className="h-3.5 w-3.5" />
+        )
+      }
+      cancelLabel={t("sftp.modal_cancel")}
+      confirmAutoFocus
+      onConfirm={onConfirm}
     >
       {transfer && (
-        <form
-          noValidate
-          role="dialog"
-          aria-modal="true"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!busy) void onConfirm();
-          }}
-        >
-          <div className="flex items-start justify-between gap-3 border-b border-[#21262d] px-4 py-3">
-            <div className="flex items-start gap-2.5 min-w-0">
-              <div
-                className={`mt-0.5 rounded p-1.5 shrink-0 ${
-                  isUpload
-                    ? "bg-[#1f6feb]/20 text-[#58a6ff]"
-                    : "bg-emerald-500/15 text-emerald-400"
-                }`}
-              >
-                {isUpload ? <Upload className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+        <>
+          <div className="space-y-1 rounded border border-[#21262d] bg-[#161b22] px-3 py-2 font-mono text-[11px]">
+            {previewNames.map((name, idx) => (
+              <div key={`${name}-${idx}`} className="truncate text-[#e6edf3]">
+                • {name}
               </div>
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-[#e6edf3]">
-                  {t(isUpload ? "sftp.confirm_upload_title" : "sftp.confirm_download_title")}
-                </h3>
-                <p className="mt-0.5 text-xs text-[#8b949e]">
-                  {t(isUpload ? "sftp.confirm_upload_desc" : "sftp.confirm_download_desc", {
-                    count,
-                  })}
-                </p>
+            ))}
+            {remaining > 0 && (
+              <div className="text-[#8b949e]">
+                {t("sftp.confirm_more_items", { count: remaining })}
               </div>
-            </div>
-
-            <IconButton
-              disabled={busy}
-              onClick={onCancel}
-              title={t("common.close")}
-              icon={<X className="h-4 w-4" />}
-              size="sm"
-            />
+            )}
           </div>
 
-          <div className="space-y-3 p-4 text-xs">
-            <div className="space-y-1 rounded border border-[#21262d] bg-[#161b22] px-3 py-2 font-mono text-[11px]">
-              {previewNames.map((name, idx) => (
-                <div key={`${name}-${idx}`} className="truncate text-[#e6edf3]">
-                  • {name}
-                </div>
-              ))}
-              {remaining > 0 && (
-                <div className="text-[#8b949e]">
-                  {t("sftp.confirm_more_items", { count: remaining })}
-                </div>
-              )}
+          <div className="rounded border border-[#21262d] bg-[#161b22] px-3 py-2">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#8b949e]">
+              <Folder className="h-3.5 w-3.5 text-amber-400" />
+              <span>{t("sftp.confirm_dest_label")}</span>
+              <ArrowRight className="h-3 w-3 text-[#484f58]" />
             </div>
-
-            <div className="rounded border border-[#21262d] bg-[#161b22] px-3 py-2">
-              <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[#8b949e]">
-                <Folder className="h-3.5 w-3.5 text-amber-400" />
-                <span>{t("sftp.confirm_dest_label")}</span>
-                <ArrowRight className="h-3 w-3 text-[#484f58]" />
-              </div>
-              <div className="break-all font-mono text-[11px] text-[#e6edf3]">
-                {transfer.destDir}
-              </div>
+            <div className="break-all font-mono text-[11px] text-[#e6edf3]">
+              {transfer.destDir}
             </div>
           </div>
-
-          <div className="flex items-center justify-end gap-2 border-t border-[#21262d] px-4 py-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={onCancel}
-            >
-              {t("sftp.modal_cancel")}
-            </Button>
-            <Button
-              type="submit"
-              autoFocus
-              disabled={busy}
-              loading={busy}
-              variant={isUpload ? "primary" : "success"}
-              size="sm"
-              leftIcon={
-                isUpload ? (
-                  <Upload className="h-3.5 w-3.5" />
-                ) : (
-                  <Download className="h-3.5 w-3.5" />
-                )
-              }
-            >
-              {t(isUpload ? "sftp.confirm_upload_btn" : "sftp.confirm_download_btn")}
-            </Button>
-          </div>
-        </form>
+        </>
       )}
-    </ModalShell>
+    </ActionModal>
   );
 };

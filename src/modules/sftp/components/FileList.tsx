@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { File, FileSymlink, Folder, RefreshCw } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { fmtMode, fmtSize, fmtTime } from "@/shared/utils/formatters";
@@ -22,6 +22,7 @@ interface FileListProps {
   drives?: LocalDriveDto[];
   actions?: React.ReactNode;
   dropActive?: boolean;
+  dropTargetDir?: string | null;
   dropLabel?: string;
   emptyMessage?: string;
   canGoBack?: boolean;
@@ -35,6 +36,7 @@ interface FileListProps {
   onUp: () => void;
   onHome: () => void;
   onRefresh: () => void;
+  onRefreshDrives?: () => void;
   onNewFolder: () => void;
   onRenameItem: (item: FileItem) => void;
   onDeletePaths: (paths: string[]) => void;
@@ -59,6 +61,7 @@ export const FileList: React.FC<FileListProps> = ({
   drives,
   actions,
   dropActive = false,
+  dropTargetDir = null,
   dropLabel,
   emptyMessage,
   canGoBack = false,
@@ -72,6 +75,7 @@ export const FileList: React.FC<FileListProps> = ({
   onUp,
   onHome,
   onRefresh,
+  onRefreshDrives,
   onNewFolder,
   onRenameItem,
   onDeletePaths,
@@ -105,6 +109,24 @@ export const FileList: React.FC<FileListProps> = ({
     onRenameItem,
     onDeletePaths,
   });
+
+  const prevSelectedRef = useRef<string[]>([]);
+  useEffect(() => {
+    if (selected.length > 0 && selected !== prevSelectedRef.current) {
+      const firstPath = selected[0];
+      try {
+        const el = tableWrapRef.current?.querySelector<HTMLElement>(
+          `[data-path="${CSS.escape(firstPath)}"]`
+        );
+        if (el) {
+          el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      } catch {
+        // Ignore CSS.escape syntax edge case
+      }
+    }
+    prevSelectedRef.current = selected;
+  }, [selected, visibleItems]);
 
   const toggleSort = (key: SortKey) => {
     if (colDragActiveRef.current) return;
@@ -141,6 +163,7 @@ export const FileList: React.FC<FileListProps> = ({
         onUp={onUp}
         onHome={onHome}
         onRefresh={onRefresh}
+        onRefreshDrives={onRefreshDrives}
         onNewFolder={onNewFolder}
       />
 
@@ -173,9 +196,18 @@ export const FileList: React.FC<FileListProps> = ({
           <tbody>
             {visibleItems.map((item, idx) => {
               const isSelected = selectedSet.has(item.path);
+              const isDropTarget = !!(item.isDir && dropTargetDir && dropTargetDir === item.path);
               return (
                 <tr
                   key={item.path}
+                  data-path={item.path}
+                  {...(item.isDir
+                    ? {
+                        "data-sftp-dir-row": "true",
+                        "data-sftp-dir-path": item.path,
+                        "data-sftp-dir-name": item.name,
+                      }
+                    : {})}
                   onPointerDown={(e) => {
                     onStartRowDrag?.(item, isSelected ? selected : [item.path], e);
                   }}
@@ -202,8 +234,10 @@ export const FileList: React.FC<FileListProps> = ({
                     if (!isSelected) onSelect([item.path]);
                     onContextMenuItem(item, e);
                   }}
-                  className={`cursor-pointer select-none ${
-                    isSelected
+                  className={`cursor-pointer select-none transition-colors duration-100 ${
+                    isDropTarget
+                      ? "ring-2 ring-inset ring-[#58a6ff] bg-[#1f6feb]/35 text-[#e6edf3]"
+                      : isSelected
                       ? "bg-[#1f6feb]/25 text-[#e6edf3]"
                       : "text-[#c9d1d9] hover:bg-[#161b22]"
                   }`}

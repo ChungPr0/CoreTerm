@@ -178,9 +178,9 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   const fileDrag = useSftpFileDrag({
     enabled: showLocal && conn.connState === "CONNECTED",
     containerRef,
-    onDropTransfer: (fromKind, paths) => {
-      if (fromKind === "local") requestUpload(paths);
-      else void requestDownload(paths);
+    onDropTransfer: (fromKind, paths, targetDir) => {
+      if (fromKind === "local") requestUpload(paths, targetDir);
+      else void requestDownload(paths, targetDir);
     },
   });
 
@@ -216,17 +216,17 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     if (nameModal.kind === "mkdir") {
       if (nameModal.targetKind === "remote") {
         await sftpApi.sftpCreateDir(tab.tabId, remote.cwd, name);
-        remote.refresh();
+        remote.refresh([name]);
       } else {
         await localFsApi.localCreateDir(local.cwd, name);
-        local.refresh();
+        local.refresh([name]);
       }
     } else if (nameModal.targetKind === "remote") {
       await sftpApi.sftpRename(tab.tabId, nameModal.item.path, name);
-      remote.refresh();
+      remote.refresh([name]);
     } else {
       await localFsApi.localRename(nameModal.item.path, name);
-      local.refresh();
+      local.refresh([name]);
     }
     setNameModal(null);
   };
@@ -318,7 +318,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         onRequestUpload={requestUpload}
         onRequestDownload={(paths) => void requestDownload(paths)}
         onUploadDialog={(dir) => void transfers.uploadViaDialog(dir)}
-        onReloadLocal={() => void conn.loadLocalFs()}
+        onReloadLocal={() => void conn.refreshLocalFs()}
+        onRefreshLocalDrives={() => void conn.refreshLocalDrives()}
       />
 
       <TransferQueue

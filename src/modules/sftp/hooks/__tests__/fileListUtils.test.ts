@@ -3,7 +3,9 @@ import type { FileItem } from "../../types";
 import {
   EMPTY_HISTORY,
   fitColumns,
+  normalizePath,
   pushDirHistory,
+  resolveItemInCwd,
   sortAndFilterItems,
 } from "../fileListUtils";
 
@@ -100,5 +102,41 @@ describe("fileListUtils", () => {
     expect(sortAndFilterItems(specialList, "(prod)", "name", "asc").map((i) => i.name)).toEqual([
       "app(prod).log",
     ]);
+  });
+
+  describe("normalizePath", () => {
+    it("normalizes backslashes and trailing slashes", () => {
+      expect(normalizePath("D:\\folder\\sub\\")).toBe("D:/folder/sub");
+      expect(normalizePath("/remote/path/")).toBe("/remote/path");
+      expect(normalizePath("/")).toBe("/");
+    });
+  });
+
+  describe("resolveItemInCwd", () => {
+    it("returns subfolder path when dest is inside a subfolder", () => {
+      expect(resolveItemInCwd("/remote", "/remote/my_folder/test.txt")).toBe("/remote/my_folder");
+      expect(resolveItemInCwd("/remote/", "/remote/my_folder/sub/test.txt")).toBe("/remote/my_folder");
+      expect(resolveItemInCwd("D:\\Downloads", "D:\\Downloads\\my_folder\\test.txt")).toBe(
+        "D:\\Downloads\\my_folder"
+      );
+    });
+
+    it("returns direct item path when dest is in cwd", () => {
+      expect(resolveItemInCwd("/remote", "/remote/test.txt")).toBe("/remote/test.txt");
+      expect(resolveItemInCwd("D:\\Downloads", "D:\\Downloads\\test.txt")).toBe(
+        "D:\\Downloads\\test.txt"
+      );
+    });
+
+    it("handles linux root cwd", () => {
+      expect(resolveItemInCwd("/", "/etc/nginx/nginx.conf")).toBe("/etc");
+      expect(resolveItemInCwd("/", "/root.txt")).toBe("/root.txt");
+    });
+
+    it("returns null when dest is outside cwd or identical to cwd", () => {
+      expect(resolveItemInCwd("/remote", "/other/path/test.txt")).toBeNull();
+      expect(resolveItemInCwd("/remote", "/remote")).toBeNull();
+      expect(resolveItemInCwd("", "/remote/test.txt")).toBeNull();
+    });
   });
 });

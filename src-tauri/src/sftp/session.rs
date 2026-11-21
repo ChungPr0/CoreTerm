@@ -299,6 +299,11 @@ impl RemoteSftpClient {
 
     pub async fn create_dir(&self, parent_dir: &str, name: &str) -> CoreResult<String> {
         let target = join_remote_path(parent_dir, name)?;
+        if self.try_stat(&target).await?.is_some() {
+            return Err(CoreError::Validation(format!(
+                "Destination '{target}' already exists"
+            )));
+        }
         self.sftp
             .create_dir(&target)
             .await

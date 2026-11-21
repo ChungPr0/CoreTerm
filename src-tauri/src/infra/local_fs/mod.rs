@@ -152,6 +152,12 @@ pub fn create_dir(parent_dir: &str, name: &str) -> CoreResult<String> {
     let valid_name = validate_single_entry_name(name)?;
     validate_windows_file_name(valid_name)?;
     let target = Path::new(parent_dir.trim()).join(valid_name);
+    if target.exists() {
+        return Err(CoreError::Validation(format!(
+            "Destination '{}' already exists",
+            clean_display_path(&target)
+        )));
+    }
     fs::create_dir(&target)?;
     Ok(clean_display_path(&target))
 }

@@ -316,6 +316,10 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
     params: (m) => ({ path: m[1], detail: m[2] }),
   },
   {
+    pattern: /^Failed to create remote directory: Failure$/i,
+    key: "errors.sftp_mkdir_failed_exists",
+  },
+  {
     pattern: /^Failed to list remote directory:\s*(.+)$/i,
     key: "errors.sftp_failed_list",
     params: (m) => ({ detail: m[1] }),

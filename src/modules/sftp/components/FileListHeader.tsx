@@ -34,6 +34,7 @@ interface FileListHeaderProps {
   onUp: () => void;
   onHome: () => void;
   onRefresh: () => void;
+  onRefreshDrives?: () => void;
   onNewFolder: () => void;
 }
 
@@ -54,6 +55,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
   onUp,
   onHome,
   onRefresh,
+  onRefreshDrives,
   onNewFolder,
 }) => {
   const { t } = useI18n();
@@ -111,7 +113,10 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
               <button
                 ref={driveBtnRef}
                 type="button"
-                onClick={() => setDriveMenuOpen((v) => !v)}
+                onClick={() => {
+                  onRefreshDrives?.();
+                  setDriveMenuOpen((v) => !v);
+                }}
                 className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd]"
               >
                 <HardDrive className="h-3 w-3 text-[#8b949e]" />

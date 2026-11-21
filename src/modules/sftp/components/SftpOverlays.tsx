@@ -58,10 +58,16 @@ export const SftpOverlays: React.FC<SftpOverlaysProps> = ({
 
       <NameModal
         isOpen={nameModal !== null}
+        kind={nameModal?.kind ?? "mkdir"}
         title={
           nameModal?.kind === "rename"
             ? t("sftp.modal_rename_title")
             : t("sftp.modal_new_folder_title")
+        }
+        subTitle={
+          nameModal?.kind === "rename"
+            ? t("sftp.modal_rename_sub", { name: nameModal.item.name })
+            : t("sftp.modal_new_folder_sub")
         }
         label={
           nameModal?.kind === "rename"
@@ -102,13 +108,16 @@ export const SftpOverlays: React.FC<SftpOverlaysProps> = ({
           </span>
           {dragPreview.targetKind && (
             <span
-              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold max-w-[100px] truncate ${
                 dragPreview.targetKind === "remote"
                   ? "bg-[#1f6feb]/25 text-[#58a6ff]"
                   : "bg-emerald-500/20 text-emerald-300"
               }`}
+              title={dragPreview.targetDirName || undefined}
             >
-              {dragPreview.targetKind === "remote"
+              {dragPreview.targetDirName
+                ? `→ ${dragPreview.targetDirName}`
+                : dragPreview.targetKind === "remote"
                 ? t("sftp.confirm_upload_btn")
                 : t("sftp.confirm_download_btn")}
             </span>

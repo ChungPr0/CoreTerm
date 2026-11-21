@@ -153,6 +153,39 @@ export function useSftpConnection({
     }
   }, []);
 
+  const refreshLocalDrives = useCallback(async () => {
+    try {
+      const drives = await localFsApi.localListDrives();
+      if (mountedRef.current) {
+        setLocalDrives(drives);
+      }
+      return drives;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const refreshLocalFs = useCallback(async () => {
+    const drives = await localFsApi.localListDrives().catch(() => [] as LocalDriveDto[]);
+    if (!mountedRef.current) return;
+    setLocalDrives(drives);
+
+    const curCwd = localRef.current.cwdRef.current;
+    if (curCwd) {
+      const curDrive = drives.find(
+        (d) =>
+          curCwd.toLowerCase().startsWith(d.path.toLowerCase()) ||
+          `${curCwd.toLowerCase().replace(/[\\/]+$/, "")}\\` === d.path.toLowerCase()
+      );
+      if (!curDrive && drives.length > 0) {
+        const fallback = localRef.current.homeRef.current || drives[0].path;
+        await localRef.current.loadDir(fallback, () => !mountedRef.current);
+        return;
+      }
+    }
+    localRef.current.refresh();
+  }, []);
+
   // Load local filesystem immediately without waiting on remote SFTP auth/network.
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -242,6 +275,8 @@ export function useSftpConnection({
     clearErrorDedup,
     connectSftp,
     loadLocalFs,
+    refreshLocalDrives,
+    refreshLocalFs,
     handleStatus,
     markDisconnectedOnError,
   };

@@ -52,7 +52,12 @@ export function useDirectoryBrowser({
   }, []);
 
   const loadDir = useCallback(
-    async (path: string, isStaleFn?: () => boolean, recordHistory = true) => {
+    async (
+      path: string,
+      isStaleFn?: () => boolean,
+      recordHistory = true,
+      selectPaths?: string[]
+    ) => {
       if (!path) return;
       const seq = ++loadSeqRef.current;
       setLoading(true);
@@ -62,7 +67,27 @@ export function useDirectoryBrowser({
         cwdRef.current = res.path;
         setCwd(res.path);
         setItems(res.items);
-        setSelected([]);
+        if (selectPaths && selectPaths.length > 0) {
+          const selectSet = new Set(
+            selectPaths.map((p) => p.replace(/[\\/]+$/, "").toLowerCase())
+          );
+          // Only match by basename if the caller passed a plain name without path separators
+          // (such as from a modal prompt like mkdir or rename)
+          const plainNames = new Set(
+            selectPaths
+              .filter((p) => !p.includes("/") && !p.includes("\\"))
+              .map((p) => p.toLowerCase())
+          );
+          const matched = res.items
+            .filter((it) => {
+              const normPath = it.path.replace(/[\\/]+$/, "").toLowerCase();
+              return selectSet.has(normPath) || plainNames.has(it.name.toLowerCase());
+            })
+            .map((it) => it.path);
+          setSelected(matched);
+        } else {
+          setSelected([]);
+        }
         if (recordHistory) {
           setHistory((prev) => {
             const next = pushDirHistory(prev, res.path);
@@ -107,10 +132,13 @@ export function useDirectoryBrowser({
     if (home) void loadDir(home);
   }, [loadDir]);
 
-  const refresh = useCallback(() => {
-    const cur = cwdRef.current || homeRef.current;
-    if (cur) void loadDir(cur, undefined, false);
-  }, [loadDir]);
+  const refresh = useCallback(
+    (selectPaths?: string[]) => {
+      const cur = cwdRef.current || homeRef.current;
+      if (cur) void loadDir(cur, undefined, false, selectPaths);
+    },
+    [loadDir]
+  );
 
   return {
     cwd,

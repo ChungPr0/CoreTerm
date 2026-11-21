@@ -66,6 +66,40 @@ export function fitColumns(raw: ColWidths, total: number): ColWidths {
   return { name: 0, size: Math.max(0, total - mtime - perms), mtime, perms };
 }
 
+export function normalizePath(p: string): string {
+  const norm = p.replace(/\\/g, "/");
+  return norm === "/" ? "/" : norm.replace(/\/+$/, "");
+}
+
+/**
+ * Given the current directory displayed in a pane (`cwd`) and the destination path
+ * of a transfer (`destPath`), returns the exact item path inside `cwd` that corresponds
+ * to this transfer.
+ * - If `destPath` is inside a subfolder of `cwd`, returns the path to that direct subfolder.
+ * - If `destPath` is directly in `cwd`, returns `destPath` itself (with cwd separator style).
+ * - If `destPath` is outside `cwd`, returns null.
+ */
+export function resolveItemInCwd(cwd: string, destPath: string): string | null {
+  if (!cwd || !destPath) return null;
+  const normCwd = normalizePath(cwd);
+  const normDest = normalizePath(destPath);
+
+  const normCwdLower = normCwd.toLowerCase();
+  const normDestLower = normDest.toLowerCase();
+
+  const prefix = normCwdLower === "/" ? "/" : normCwdLower + "/";
+  if (normDestLower.startsWith(prefix)) {
+    const rel = normDest.slice(prefix.length);
+    const topName = rel.split("/")[0];
+    if (!topName) return null;
+    const sep = cwd.includes("\\") ? "\\" : "/";
+    const trimmedCwd = normCwd === "/" ? "" : cwd.replace(/[\\/]+$/, "");
+    return `${trimmedCwd}${sep}${topName}`;
+  }
+
+  return null;
+}
+
 export function sortAndFilterItems(
   items: FileItem[],
   filter: string,

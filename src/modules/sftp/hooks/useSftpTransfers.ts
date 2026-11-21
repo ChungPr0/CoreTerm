@@ -11,6 +11,7 @@ import type {
 import type { ConflictAction } from "../components/ConflictModal";
 import type { PendingTransfer } from "../components/TransferConfirmModal";
 import type { DirectoryBrowser } from "./useDirectoryBrowser";
+import { resolveItemInCwd } from "./fileListUtils";
 
 interface UseSftpTransfersOptions {
   tabId: string;
@@ -20,6 +21,11 @@ interface UseSftpTransfersOptions {
   remoteBrowser: DirectoryBrowser;
   localBrowser: DirectoryBrowser;
   onError: (err: unknown) => void;
+}
+
+function pathBaseName(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, "");
+  return trimmed.split(/[\\/]/).pop() || p;
 }
 
 export function useSftpTransfers({
@@ -44,6 +50,10 @@ export function useSftpTransfers({
   const alertedJobsRef = useRef(new Set<string>());
   const remoteRefreshTimerRef = useRef<number | null>(null);
   const localRefreshTimerRef = useRef<number | null>(null);
+  const pendingHighlightRef = useRef<{ local: Set<string>; remote: Set<string> }>({
+    local: new Set(),
+    remote: new Set(),
+  });
   const remoteRef = useRef(remoteBrowser);
   const localRef = useRef(localBrowser);
   const onErrorRef = useRef(onError);
@@ -70,15 +80,37 @@ export function useSftpTransfers({
   const scheduleDirRefresh = useCallback((direction: "UPLOAD" | "DOWNLOAD") => {
     const timerRef = direction === "UPLOAD" ? remoteRefreshTimerRef : localRefreshTimerRef;
     const browserRef = direction === "UPLOAD" ? remoteRef : localRef;
+    const targetKind = direction === "UPLOAD" ? "remote" : "local";
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
-      if (mountedRef.current) browserRef.current.refresh();
+      if (mountedRef.current) {
+        const highlightSet = pendingHighlightRef.current[targetKind];
+        const highlightList = Array.from(highlightSet);
+        highlightSet.clear();
+        browserRef.current.refresh(highlightList.length > 0 ? highlightList : undefined);
+      }
     }, 250);
   }, []);
 
   const runTransfer = useCallback(
     async (pending: PendingTransfer) => {
+      const targetKind = pending.direction === "upload" ? "remote" : "local";
+      const browserRef = targetKind === "remote" ? remoteRef : localRef;
+      const curCwd = browserRef.current.cwdRef.current;
+      if (curCwd) {
+        const itemInCwd = resolveItemInCwd(curCwd, pending.destDir);
+        if (itemInCwd) {
+          pendingHighlightRef.current[targetKind].add(itemInCwd);
+        } else {
+          for (const p of pending.paths) {
+            const fileName = pathBaseName(p);
+            const sep = curCwd.includes("\\") ? "\\" : "/";
+            const fullPath = `${curCwd.replace(/[\\/]+$/, "")}${sep}${fileName}`;
+            pendingHighlightRef.current[targetKind].add(fullPath);
+          }
+        }
+      }
       const added =
         pending.direction === "upload"
           ? await sftpApi.sftpUpload(tabId, pending.paths, pending.destDir, policyRef.current)
@@ -97,16 +129,16 @@ export function useSftpTransfers({
     [tabId, scheduleDirRefresh]
   );
 
-  const requestUpload = useCallback((localPaths: string[]) => {
-    const destDir = remoteRef.current.cwdRef.current;
+  const requestUpload = useCallback((localPaths: string[], targetDestDir?: string) => {
+    const destDir = targetDestDir || remoteRef.current.cwdRef.current;
     if (connStateRef.current !== "CONNECTED" || !destDir || localPaths.length === 0) return;
     setPendingTransfer({ direction: "upload", paths: localPaths, destDir });
   }, [connStateRef]);
 
   const requestDownload = useCallback(
-    async (remotePaths: string[]) => {
+    async (remotePaths: string[], targetDestDir?: string) => {
       if (connStateRef.current !== "CONNECTED" || remotePaths.length === 0) return;
-      let destDir = showLocalRef.current ? localRef.current.cwdRef.current : "";
+      let destDir = targetDestDir || (showLocalRef.current ? localRef.current.cwdRef.current : "");
       if (!destDir) {
         const picked = await openNativeDialog({
           directory: true,
@@ -165,6 +197,15 @@ export function useSftpTransfers({
       onErrorRef.current(job.error_message);
     } else if (job.status === "COMPLETED") {
       if (job.direction === "UPLOAD" || job.direction === "DOWNLOAD") {
+        const targetKind = job.direction === "UPLOAD" ? "remote" : "local";
+        const browserRef = targetKind === "remote" ? remoteRef : localRef;
+        const curCwd = browserRef.current.cwdRef.current;
+        if (curCwd && job.dest_path) {
+          const itemInCwd = resolveItemInCwd(curCwd, job.dest_path);
+          if (itemInCwd) {
+            pendingHighlightRef.current[targetKind].add(itemInCwd);
+          }
+        }
         scheduleDirRefresh(job.direction);
       }
     }
