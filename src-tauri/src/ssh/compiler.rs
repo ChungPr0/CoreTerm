@@ -411,7 +411,7 @@ mod tests {
 
         cfg.options.strict_host_key_checking = "YES".to_string();
         let args = SshCommandCompiler::compile_args(&cfg).unwrap();
-        assert!(args.contains(&OsString::from("StrictHostKeyChecking=yes")));
+        assert!(args.contains(&OsString::from("StrictHostKeyChecking=ask")));
 
         cfg.options.strict_host_key_checking = "NO".to_string();
         let args = SshCommandCompiler::compile_args(&cfg).unwrap();

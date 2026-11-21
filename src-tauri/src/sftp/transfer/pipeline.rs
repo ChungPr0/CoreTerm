@@ -129,6 +129,21 @@ pub async fn run_transfer_with_offset(
 
     match job.direction {
         TransferDirection::Upload => {
+            if offset > 0 {
+                let source_meta = tokio::fs::metadata(&job.source_path).await?;
+                if source_meta.len() < offset {
+                    return Err(CoreError::Validation(
+                        "Source file was truncated while paused".to_string(),
+                    ));
+                }
+                let dest_meta = ctx.client.try_stat(&dest_path).await?;
+                let dest_len = dest_meta.map(|a| a.len()).unwrap_or(0);
+                if dest_len < offset {
+                    return Err(CoreError::Validation(
+                        "Remote destination file was deleted or corrupted while paused".to_string(),
+                    ));
+                }
+            }
             let mut reader = tokio::fs::File::open(&job.source_path).await?;
             if offset > 0 {
                 reader.seek(SeekFrom::Start(offset)).await?;
@@ -143,6 +158,18 @@ pub async fn run_transfer_with_offset(
             stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer, run_gen).await
         }
         TransferDirection::Download => {
+            if offset > 0 {
+                let dest_len = match tokio::fs::metadata(&dest_path).await {
+                    Ok(m) => m.len(),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+                    Err(e) => return Err(CoreError::Io(e)),
+                };
+                if dest_len < offset {
+                    return Err(CoreError::Validation(
+                        "Destination file was deleted or corrupted while paused".to_string(),
+                    ));
+                }
+            }
             let mut reader = ctx.client.open_read(&job.source_path).await?;
             if offset > 0 {
                 reader
@@ -179,6 +206,8 @@ where
     let mut last_emit = Instant::now();
     let mut speed_window_start = Instant::now();
     let mut speed_window_bytes = 0u64;
+    let mut last_disk_check = Instant::now();
+    let dest_path = job.dest_path.lock().map(|g| g.clone()).unwrap_or_default();
 
     loop {
         if job.is_superseded(run_gen) {
@@ -204,6 +233,35 @@ where
 
         if read_bytes == 0 {
             writer.shutdown().await.map_err(CoreError::Io)?;
+            if job.direction == TransferDirection::Download && !dest_path.is_empty() {
+                match tokio::fs::metadata(&dest_path).await {
+                    Ok(meta) if meta.is_dir() => {
+                        return Err(CoreError::Validation(
+                            "Destination file was deleted or corrupted during transfer".to_string(),
+                        ));
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(CoreError::Validation(
+                            "Destination file was deleted or corrupted during transfer".to_string(),
+                        ));
+                    }
+                    _ => {}
+                }
+            } else if job.direction == TransferDirection::Upload {
+                match tokio::fs::metadata(&job.source_path).await {
+                    Ok(meta) if meta.is_dir() => {
+                        return Err(CoreError::Validation(
+                            "Source file was deleted or corrupted during transfer".to_string(),
+                        ));
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(CoreError::Validation(
+                            "Source file was deleted or corrupted during transfer".to_string(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
             return Ok(TransferEndState::Completed);
         }
 
@@ -218,6 +276,48 @@ where
         job.transferred_bytes
             .fetch_add(read_bytes as u64, Ordering::Relaxed);
         speed_window_bytes += read_bytes as u64;
+
+        if last_disk_check.elapsed() >= Duration::from_millis(500) {
+            last_disk_check = Instant::now();
+            match job.direction {
+                TransferDirection::Download => {
+                    if !dest_path.is_empty() {
+                        match tokio::fs::metadata(&dest_path).await {
+                            Ok(meta) if meta.is_dir() => {
+                                let _ = writer.shutdown().await;
+                                return Err(CoreError::Validation(
+                                    "Destination file was deleted or corrupted during transfer".to_string(),
+                                ));
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                let _ = writer.shutdown().await;
+                                return Err(CoreError::Validation(
+                                    "Destination file was deleted or corrupted during transfer".to_string(),
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                TransferDirection::Upload => {
+                    match tokio::fs::metadata(&job.source_path).await {
+                        Ok(meta) if meta.is_dir() => {
+                            let _ = writer.shutdown().await;
+                            return Err(CoreError::Validation(
+                                "Source file was deleted or corrupted during transfer".to_string(),
+                            ));
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            let _ = writer.shutdown().await;
+                            return Err(CoreError::Validation(
+                                "Source file was deleted or corrupted during transfer".to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
 
         let window_elapsed = speed_window_start.elapsed();
         if window_elapsed >= Duration::from_millis(500) {

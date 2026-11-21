@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openNativeDialog } from "@tauri-apps/plugin-dialog";
 import type { SftpConflictPolicy } from "@/shared/types/ipc";
+import { extractRawErrorMessage } from "@/shared/utils/formatError";
 import { sftpApi } from "../api/sftpApi";
 import type {
   SftpConnectionState,
@@ -83,13 +84,17 @@ export function useSftpTransfers({
           ? await sftpApi.sftpUpload(tabId, pending.paths, pending.destDir, policyRef.current)
           : await sftpApi.sftpDownload(tabId, pending.paths, pending.destDir, policyRef.current);
       if (!mountedRef.current) return;
+      scheduleDirRefresh(pending.direction === "upload" ? "UPLOAD" : "DOWNLOAD");
       setJobs((prev) => {
+        const prevMap = new Map(prev.map((j) => [j.job_id, j]));
+        // Keep updated status from prev if the job already started or completed in background
+        const mergedAdded = added.map((newJob) => prevMap.get(newJob.job_id) || newJob);
         const seen = new Set(added.map((j) => j.job_id));
-        return [...added, ...prev.filter((j) => !seen.has(j.job_id))];
+        return [...mergedAdded, ...prev.filter((j) => !seen.has(j.job_id))];
       });
       setQueueOpen(true);
     },
-    [tabId]
+    [tabId, scheduleDirRefresh]
   );
 
   const requestUpload = useCallback((localPaths: string[]) => {
@@ -186,30 +191,71 @@ export function useSftpTransfers({
   );
 
   const pauseTransfer = useCallback(
-    (jobId: string) => void sftpApi.sftpPauseTransfer(tabId, jobId).catch(onErrorRef.current),
+    (jobId: string) => {
+      void sftpApi.sftpPauseTransfer(tabId, jobId).catch((err) => {
+        const msg = extractRawErrorMessage(err);
+        if (/not found/i.test(msg)) {
+          setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+        } else {
+          onErrorRef.current(err);
+        }
+      });
+    },
     [tabId]
   );
   const resumeTransfer = useCallback(
-    (jobId: string) => void sftpApi.sftpResumeTransfer(tabId, jobId).catch(onErrorRef.current),
+    (jobId: string) => {
+      void sftpApi.sftpResumeTransfer(tabId, jobId).catch((err) => {
+        const msg = extractRawErrorMessage(err);
+        if (/not found/i.test(msg)) {
+          setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+        } else {
+          onErrorRef.current(err);
+        }
+      });
+    },
     [tabId]
   );
   const cancelTransfer = useCallback(
-    (jobId: string) => void sftpApi.sftpCancelTransfer(tabId, jobId).catch(onErrorRef.current),
+    (jobId: string) => {
+      void sftpApi.sftpCancelTransfer(tabId, jobId).catch((err) => {
+        const msg = extractRawErrorMessage(err);
+        if (/not found/i.test(msg)) {
+          setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+        } else {
+          onErrorRef.current(err);
+        }
+      });
+    },
     [tabId]
   );
   const clearFinished = useCallback(() => {
     void sftpApi
       .sftpClearFinishedTransfers(tabId)
-      .then(() => {
+      .then(() => sftpApi.sftpListTransfers(tabId))
+      .then((backendJobs) => {
+        if (!mountedRef.current) return;
         setJobs((prev) => {
-          const active = prev.filter(
-            (j) => j.status === "QUEUED" || j.status === "RUNNING" || j.status === "PAUSED"
-          );
-          const activeIds = new Set(active.map((j) => j.job_id));
+          const backendSet = new Map(backendJobs.map((j) => [j.job_id, j]));
+          const reconciled = prev
+            .filter((j) => {
+              if (
+                j.status === "COMPLETED" ||
+                j.status === "FAILED" ||
+                j.status === "SKIPPED" ||
+                j.status === "CANCELLED"
+              ) {
+                return false;
+              }
+              return backendSet.has(j.job_id);
+            })
+            .map((j) => backendSet.get(j.job_id) || j);
+
+          const activeIds = new Set(reconciled.map((j) => j.job_id));
           for (const id of alertedJobsRef.current) {
             if (!activeIds.has(id)) alertedJobsRef.current.delete(id);
           }
-          return active;
+          return reconciled;
         });
       })
       .catch(onErrorRef.current);

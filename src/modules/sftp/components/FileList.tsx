@@ -179,8 +179,17 @@ export const FileList: React.FC<FileListProps> = ({
                   onPointerDown={(e) => {
                     onStartRowDrag?.(item, isSelected ? selected : [item.path], e);
                   }}
+                  onMouseDown={(e) => {
+                    if (e.detail > 1) {
+                      e.preventDefault();
+                    }
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (e.detail >= 2 && item.isDir) {
+                      onNavigate(item.path);
+                      return;
+                    }
                     if (!shouldSuppressRowClick?.()) handleRowClick(item, idx, e);
                   }}
                   onDoubleClick={(e) => {

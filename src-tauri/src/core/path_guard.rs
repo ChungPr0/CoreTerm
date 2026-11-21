@@ -85,12 +85,12 @@ pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
 }
 
 pub fn join_remote_path(base: &str, name: &str) -> CoreResult<String> {
-    let valid = validate_single_entry_name(name)?;
+    validate_single_entry_name(name)?;
     let normalized = normalize_remote_path(base);
     if normalized.ends_with('/') {
-        Ok(format!("{normalized}{valid}"))
+        Ok(format!("{normalized}{name}"))
     } else {
-        Ok(format!("{normalized}/{valid}"))
+        Ok(format!("{normalized}/{name}"))
     }
 }
 
@@ -160,6 +160,14 @@ mod tests {
         assert_eq!(normalize_remote_path("/C:"), "/C:/");
         assert_eq!(normalize_remote_path("/C:/../.."), "/C:/");
         assert_eq!(join_remote_path("/C:/", "Users").unwrap(), "/C:/Users");
+        assert_eq!(
+            join_remote_path("/home/user", "trailing_space ").unwrap(),
+            "/home/user/trailing_space "
+        );
+        assert_eq!(
+            join_remote_path("/home/user", "trailing_dot.").unwrap(),
+            "/home/user/trailing_dot."
+        );
         assert_eq!(parent_remote_path("/C:/Users"), "/C:/");
         assert_eq!(parent_remote_path("/C:/"), "/C:/");
     }

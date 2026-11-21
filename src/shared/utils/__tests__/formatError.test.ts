@@ -61,6 +61,61 @@ describe("formatError utils", () => {
       ["Cannot delete Default group", "nhóm Default", "Default"],
       ["PTY error: UAC_CANCELLED", "Administrator", "Administrator"],
       ["Validation error: Password is required", "Mật khẩu", "Password"],
+      [
+        "Validation error: Destination file was deleted or corrupted while paused",
+        "Tệp tin đích đã bị xóa hoặc hỏng trong lúc tạm dừng",
+        "Destination file was deleted or corrupted while paused",
+      ],
+      [
+        "Validation error: Destination file was deleted or corrupted during transfer",
+        "Tệp tin đích đã bị xóa hoặc hỏng trong lúc đang truyền tải",
+        "Destination file was deleted or corrupted during transfer",
+      ],
+      [
+        "Validation error: Remote destination file was deleted or corrupted while paused",
+        "Tệp tin đích từ xa đã bị xóa hoặc hỏng trong lúc tạm dừng",
+        "Remote destination file was deleted or corrupted while paused",
+      ],
+      [
+        "Validation error: Source file was truncated while paused",
+        "Tệp tin nguồn đã bị cắt ngắn trong lúc tạm dừng",
+        "Source file was truncated while paused",
+      ],
+      [
+        "Validation error: Source file was deleted or corrupted during transfer",
+        "Tệp tin nguồn đã bị xóa hoặc hỏng trong lúc đang truyền tải",
+        "Source file was deleted or corrupted during transfer",
+      ],
+      [
+        "SFTP error: Permission denied: Permission denied",
+        "Không có quyền truy cập",
+        "Permission denied",
+      ],
+      [
+        "Read '/home/chung/locked_dir': Permission denied",
+        "Không có quyền truy cập",
+        "Permission denied",
+      ],
+      [
+        "Validation error: Entry name cannot be empty",
+        "Tên tệp hoặc thư mục không được để trống",
+        "Entry name cannot be empty",
+      ],
+      [
+        "Resource not found: Transfer job not found: job-42",
+        "Không tìm thấy tác vụ truyền tải",
+        "Transfer job not found",
+      ],
+      [
+        "SFTP error: Failed to create remote directory: File already exists",
+        "Tệp tin hoặc thư mục đích đã tồn tại",
+        "File or directory already exists",
+      ],
+      [
+        "SFTP error: SSH connection timed out",
+        "Kết nối SFTP đã hết thời gian chờ",
+        "SFTP connection timed out",
+      ],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {
@@ -80,11 +135,8 @@ describe("formatError utils", () => {
         "SFTP error: SSH connect failed: No connection could be made because the target machine actively refused it. (os error 10061)",
         "No connection could be made because the target machine actively refused it. (os error 10061)",
       ],
-      ["SFTP error: Permission denied: Permission denied", "Permission denied"],
       ["PTY error: Failed to open Windows ConPTY: access denied", "Failed to open Windows ConPTY: access denied"],
       ["SFTP error: SSH connect failed: Connection refused", "Connection refused"],
-      ["Validation error: Entry name cannot be empty", "Entry name cannot be empty"],
-      ["Resource not found: Transfer job not found: job-42", "Transfer job not found: job-42"],
     ] as const;
 
     for (const [raw, expected] of systemErrors) {

@@ -142,6 +142,171 @@ const KNOWN_ERROR_MATCHERS: ErrorMatcher[] = [
   { pattern: /^Group name contains invalid control characters$/i, key: "errors.group_name_invalid_chars" },
   { pattern: /^Group name "(.+?)" already exists$/i, key: "errors.group_name_duplicate", params: (m) => ({ name: m[1] }) },
   { pattern: /^Cannot delete Default group$/i, key: "errors.group_delete_default" },
+  {
+    pattern: /^Destination file was deleted or corrupted while paused(?:\s*\(.+\))?$/i,
+    key: "errors.sftp_dest_corrupted_paused",
+  },
+  {
+    pattern: /^Destination file was deleted or corrupted during transfer$/i,
+    key: "errors.sftp_dest_corrupted_transfer",
+  },
+  {
+    pattern: /^Remote destination file was deleted or corrupted while paused(?:\s*\(.+\))?$/i,
+    key: "errors.sftp_remote_dest_corrupted_paused",
+  },
+  {
+    pattern: /^Source file was truncated while paused(?:\s*\(.+\))?$/i,
+    key: "errors.sftp_source_truncated_paused",
+  },
+  {
+    pattern: /^Source file was deleted or corrupted during transfer$/i,
+    key: "errors.sftp_source_corrupted_transfer",
+  },
+  {
+    pattern: /^(?:(?:Failed to \w+.*?|Stat '.*?'|Read '.*?'|Open '.*?'):\s*)?Permission denied$/i,
+    key: "errors.sftp_permission_denied",
+  },
+  {
+    pattern: /^(?:(?:Failed to \w+.*?|Stat '.*?'|Read '.*?'|Open '.*?'):\s*)?No such file(?: or directory)?$/i,
+    key: "errors.sftp_not_found",
+  },
+  {
+    pattern: /^(?:Failed to \w+.*?:\s*)?File already exists$/i,
+    key: "errors.sftp_already_exists",
+  },
+  {
+    pattern: /^Destination '(.+?)' already exists as a directory$/i,
+    key: "errors.sftp_dest_exists_dir",
+    params: (m) => ({ path: m[1] }),
+  },
+  {
+    pattern: /^(?:SSH )?connection timed out$/i,
+    key: "errors.sftp_timeout",
+  },
+  {
+    pattern: /^Connection cancelled$/i,
+    key: "errors.sftp_conn_cancelled",
+  },
+  {
+    pattern: /^Authentication cancelled$/i,
+    key: "errors.sftp_auth_cancelled",
+  },
+  {
+    pattern: /^Failed to initialize SFTP protocol:\s*(.+)$/i,
+    key: "errors.sftp_init_failed",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^(?:SFTP session not found for|No connecting SFTP session for)\s*(.+)$/i,
+    key: "errors.sftp_session_not_found",
+  },
+  {
+    pattern: /^(?:Connection lost|Connection closed|Broken pipe)$/i,
+    key: "errors.sftp_connection_lost",
+  },
+  {
+    pattern: /^Transfer job not found:\s*(.+)$/i,
+    key: "errors.sftp_job_not_found",
+    params: (m) => ({ id: m[1] }),
+  },
+  {
+    pattern: /^Conflict prompt not found:\s*(.+)$/i,
+    key: "errors.sftp_conflict_prompt_not_found",
+    params: (m) => ({ id: m[1] }),
+  },
+  {
+    pattern: /^Cannot rename root(?: path)?(?::\s*.*|\s*'\/')?$/i,
+    key: "errors.sftp_cannot_rename_root",
+  },
+  {
+    pattern: /^Refusing to delete '\/'$/i,
+    key: "errors.sftp_refuse_delete_root",
+  },
+  {
+    pattern: /^Cannot upload root directory$/i,
+    key: "errors.sftp_cannot_upload_root",
+  },
+  {
+    pattern: /^Cannot download root '\/'$/i,
+    key: "errors.sftp_cannot_download_root",
+  },
+  {
+    pattern: /^Cannot rename file at filesystem root$/i,
+    key: "errors.sftp_cannot_rename_fs_root",
+  },
+  {
+    pattern: /^Cannot download symlink pointing to a directory directly as a file$/i,
+    key: "errors.sftp_symlink_dir_file",
+  },
+  {
+    pattern: /^(?:Entry|Target) name cannot be empty$/i,
+    key: "errors.sftp_entry_name_empty",
+  },
+  {
+    pattern: /^Invalid entry name:\s*'(.+?)'$/i,
+    key: "errors.sftp_entry_name_invalid",
+    params: (m) => ({ name: m[1] }),
+  },
+  {
+    pattern: /^Entry name cannot contain path separators or null bytes:\s*'(.+?)'$/i,
+    key: "errors.sftp_entry_name_separators",
+    params: (m) => ({ name: m[1] }),
+  },
+  {
+    pattern: /^Windows filename cannot end with a space or dot:\s*'(.+?)'$/i,
+    key: "errors.sftp_win_name_trailing",
+    params: (m) => ({ name: m[1] }),
+  },
+  {
+    pattern: /^Filename contains characters disallowed on Windows:\s*'(.+?)'$/i,
+    key: "errors.sftp_win_disallowed_chars",
+    params: (m) => ({ name: m[1] }),
+  },
+  {
+    pattern: /^Filename uses a reserved Windows device name:\s*'(.+?)'$/i,
+    key: "errors.sftp_win_reserved",
+    params: (m) => ({ name: m[1] }),
+  },
+  {
+    pattern: /^Seek failed:\s*(.+)$/i,
+    key: "errors.sftp_seek_failed",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Broken symlink '(.+?)':\s*(.+)$/i,
+    key: "errors.sftp_broken_symlink",
+    params: (m) => ({ path: m[1], detail: m[2] }),
+  },
+  {
+    pattern: /^Failed to list remote directory:\s*(.+)$/i,
+    key: "errors.sftp_failed_list",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Failed to create remote directory:\s*(.+)$/i,
+    key: "errors.sftp_failed_mkdir",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Failed to rename remote entry:\s*(.+)$/i,
+    key: "errors.sftp_failed_rename",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Failed to update permissions:\s*(.+)$/i,
+    key: "errors.sftp_failed_chmod",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Failed to remove remote (?:file|directory|child):\s*(.+)$/i,
+    key: "errors.sftp_failed_delete",
+    params: (m) => ({ detail: m[1] }),
+  },
+  {
+    pattern: /^Failed to (?:stat remote path|inspect remote target):\s*(.+)$/i,
+    key: "errors.sftp_failed_stat",
+    params: (m) => ({ detail: m[1] }),
+  },
 ];
 
 export function stripErrorPrefixes(raw: string): string {

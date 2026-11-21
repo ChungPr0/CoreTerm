@@ -38,7 +38,7 @@ pub fn validate_host_target(config: &HostFullConfigDto) -> CoreResult<(&str, &st
 
 pub fn strict_host_key_value(mode: &str) -> &'static str {
     match mode {
-        "YES" => "yes",
+        "YES" => "ask",
         "NO" => "no",
         _ => "accept-new",
     }
