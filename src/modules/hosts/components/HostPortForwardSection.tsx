@@ -92,22 +92,22 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
 
   return (
     <div className="p-3.5 rounded-lg bg-slate-950/70 border border-slate-800/80 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
-          <Network className="w-4 h-4 text-emerald-400" />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm whitespace-nowrap">
+          <Network className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{t("forward.title")}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {forwards.length > 0 && (
             <button
               type="button"
               onClick={handleProbeAll}
               disabled={isProbingAll}
-              className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 transition-colors px-2 py-1 rounded hover:bg-slate-800/60 disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 transition-colors px-2 py-1 rounded hover:bg-slate-800/60 disabled:opacity-50 whitespace-nowrap shrink-0"
               title={t("forward.check_all")}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isProbingAll ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isProbingAll ? "animate-spin" : ""}`} />
               <span>{t("forward.check_all")}</span>
             </button>
           )}

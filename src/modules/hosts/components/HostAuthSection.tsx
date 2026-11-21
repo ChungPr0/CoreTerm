@@ -95,44 +95,46 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
             <option value="PROMPT_EVERY_TIME">{t("host.password_prompt")}</option>
           </Select>
 
-          <div>
-            <label className="block text-slate-400 mb-1">
-              {t("host.password_input")}
-            </label>
-            <Input
-              ref={passwordInputRef}
-              type={showPassword ? "text" : "password"}
-              value={password}
-              disabled={passwordMode !== "SAVED"}
-              onChange={(e) => onPasswordChange(e.target.value)}
-              placeholder={
-                passwordMode === "SAVED"
-                  ? (hasSavedPassword ? t("host.password_kept") : "")
-                  : t("host.password_prompt")
-              }
-              rightIcon={
-                <IconButton
-                  size="xs"
-                  tabIndex={-1}
-                  disabled={passwordMode !== "SAVED"}
-                  onClick={() => setShowPassword((v) => !v)}
-                  icon={showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                />
-              }
-            />
-          </div>
+          <Input
+            ref={passwordInputRef}
+            type={showPassword ? "text" : "password"}
+            label={
+              passwordMode === "SAVED" && !hasSavedPassword
+                ? `${t("host.password_input")} *`
+                : t("host.password_input")
+            }
+            value={password}
+            disabled={passwordMode !== "SAVED"}
+            onChange={(e) => onPasswordChange(e.target.value)}
+            placeholder={
+              passwordMode === "SAVED"
+                ? (hasSavedPassword ? t("host.password_kept") : "")
+                : t("host.password_prompt")
+            }
+            rightIcon={
+              <IconButton
+                size="xs"
+                tabIndex={-1}
+                disabled={passwordMode !== "SAVED"}
+                onClick={() => setShowPassword((v) => !v)}
+                icon={showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              />
+            }
+          />
 
           {passwordMode === "SAVED" && onAutoReconnectChange && (
-            <div className="col-span-2 pt-2 border-t border-slate-800/80 h-8 flex items-center justify-between">
-              <Switch
-                checked={autoReconnect}
-                onChange={onAutoReconnectChange}
-                label={t("session.auto_reconnect")}
-              />
+            <div className="col-span-2 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-3">
+              <div className="flex items-center h-7 shrink-0 whitespace-nowrap">
+                <Switch
+                  checked={autoReconnect}
+                  onChange={onAutoReconnectChange}
+                  label={t("session.auto_reconnect")}
+                />
+              </div>
 
               {autoReconnect && onReconnectIntervalSecChange && (
-                <div className="flex items-center gap-1.5 h-7">
-                  <span className="text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 h-7 shrink-0">
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap shrink-0">
                     {t("session.reconnect_interval")}:
                   </span>
                   <Input
@@ -142,7 +144,8 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
                     value={reconnectIntervalSec}
                     onChange={(e) => onReconnectIntervalSecChange(Number(e.target.value))}
                     inputSize="sm"
-                    className="w-16 font-mono text-right"
+                    containerClassName="w-20 shrink-0"
+                    className="font-mono text-right"
                   />
                 </div>
               )}
@@ -200,16 +203,18 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
           />
 
           {onAutoReconnectChange && (
-            <div className="pt-2 border-t border-slate-800/80 h-8 flex items-center justify-between">
-              <Switch
-                checked={autoReconnect}
-                onChange={onAutoReconnectChange}
-                label={t("session.auto_reconnect")}
-              />
+            <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-3">
+              <div className="flex items-center h-7 shrink-0 whitespace-nowrap">
+                <Switch
+                  checked={autoReconnect}
+                  onChange={onAutoReconnectChange}
+                  label={t("session.auto_reconnect")}
+                />
+              </div>
 
               {autoReconnect && onReconnectIntervalSecChange && (
-                <div className="flex items-center gap-1.5 h-7">
-                  <span className="text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 h-7 shrink-0">
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap shrink-0">
                     {t("session.reconnect_interval")}:
                   </span>
                   <Input
@@ -219,7 +224,8 @@ export const HostAuthSection: React.FC<HostAuthSectionProps> = ({
                     value={reconnectIntervalSec}
                     onChange={(e) => onReconnectIntervalSecChange(Number(e.target.value))}
                     inputSize="sm"
-                    className="w-16 font-mono text-right"
+                    containerClassName="w-20 shrink-0"
+                    className="font-mono text-right"
                   />
                 </div>
               )}

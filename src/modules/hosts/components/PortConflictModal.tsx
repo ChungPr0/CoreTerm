@@ -32,23 +32,27 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
       onConfirm={onSkipAndConnect}
     >
       <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
-        {conflicts.map((c) => (
-          <div
-            key={c.rule_id}
-            className="p-3 rounded border border-[#21262d] bg-[#161b22] flex items-center justify-between font-mono text-xs"
-          >
-            <div>
-              <span className="text-[#8b949e]">{t("conflict.port")}: </span>
-              <span className="text-amber-300 font-semibold">
-                {c.bind_address}:{c.bind_port}
-              </span>
+        {conflicts.map((c) => {
+          const processLabel = `${c.conflicting_process_name ?? t("conflict.process")}${
+            c.conflicting_pid ? ` (PID ${c.conflicting_pid})` : ""
+          }`;
+          return (
+            <div
+              key={c.rule_id}
+              className="p-3 rounded border border-[#21262d] bg-[#161b22] flex items-center justify-between gap-3 font-mono text-xs"
+            >
+              <div className="whitespace-nowrap shrink-0">
+                <span className="text-[#8b949e]">{t("conflict.port")}: </span>
+                <span className="text-amber-300 font-semibold">
+                  {c.bind_address}:{c.bind_port}
+                </span>
+              </div>
+              <div className="text-[#c9d1d9] truncate min-w-0" title={processLabel}>
+                {processLabel}
+              </div>
             </div>
-            <div className="text-[#c9d1d9]">
-              {c.conflicting_process_name ?? t("conflict.process")}
-              {c.conflicting_pid ? ` (PID ${c.conflicting_pid})` : ""}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </ActionModal>
   );

@@ -39,20 +39,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const variantClasses = active
-      ? "border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-sky-500/50"
+      ? "border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/25 active:bg-sky-500/30 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-sky-500/50"
       : {
           primary:
             "border-transparent bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-sky-500/50",
           secondary:
-            "border-slate-700/60 bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-200 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
+            "border-slate-700/60 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
           success:
             "border-transparent bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500/50",
           danger:
             "border-transparent bg-rose-500 hover:bg-rose-400 active:bg-rose-600 text-white font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-rose-500/50",
           outline:
-            "border-slate-700/80 hover:border-slate-600 bg-slate-950/60 hover:bg-slate-800 text-slate-200 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
+            "border-slate-700/80 hover:border-slate-600 bg-slate-950/60 hover:bg-slate-800 active:bg-slate-900 active:border-slate-500 text-slate-200 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
           ghost:
-            "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
+            "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 active:bg-slate-800 font-medium focus-visible:ring-2 focus-visible:ring-slate-500/50",
         }[variant];
 
     const sizeClasses = {
@@ -70,7 +70,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={isDisabled}
-        className={`inline-flex items-center justify-center select-none whitespace-nowrap transition-colors duration-150 focus:outline-none cursor-pointer border box-border disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${variantClasses} ${sizeClasses} ${className}`}
+        className={`inline-flex items-center justify-center select-none whitespace-nowrap transition-all duration-150 active:scale-[0.97] focus:outline-none cursor-pointer border box-border disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${variantClasses} ${sizeClasses} ${className}`}
         {...rest}
       >
         {loading ? (

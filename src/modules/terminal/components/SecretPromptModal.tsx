@@ -138,7 +138,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
           ref={inputRef}
           type={showSecret ? "text" : "password"}
           autoFocus
-          label={t("auth.secret")}
+          label={`${t("auth.secret")} *`}
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           rightIcon={
@@ -151,7 +151,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
           }
         />
 
-        <div className="flex items-center gap-4 h-6 pt-1">
+        <div className="flex items-center justify-between gap-3 min-h-6 pt-1 whitespace-nowrap">
           <Checkbox
             checked={saveVault}
             onCheckedChange={(checked) => {
@@ -162,7 +162,7 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
           />
 
           <div
-            className={`flex items-center transition-opacity duration-150 ${
+            className={`flex items-center shrink-0 transition-opacity duration-150 ${
               saveVault ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >

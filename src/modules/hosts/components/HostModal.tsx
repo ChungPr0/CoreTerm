@@ -113,7 +113,7 @@ export const HostModal: React.FC<HostModalProps> = ({
                 type="number"
                 min={1}
                 max={65535}
-                label={t("host.port")}
+                label={`${t("host.port")} *`}
                 value={form.port}
                 onChange={(e) => form.setPort(Number(e.target.value))}
                 className="font-mono"

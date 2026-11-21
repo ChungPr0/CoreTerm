@@ -97,7 +97,7 @@ export const NameModal: React.FC<NameModalProps> = ({
     >
       <div className="rounded border border-[#21262d] bg-[#161b22] px-3.5 py-3">
         <label className="block text-[11px] font-medium text-[#8b949e] mb-1.5">
-          {label}
+          {`${label} *`}
         </label>
         <Input
           ref={inputRef}

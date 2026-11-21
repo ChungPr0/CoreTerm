@@ -168,6 +168,7 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
         id: "gen-settings",
         label: t("ctx.settings"),
         icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
+        shortcut: "Ctrl+,",
         onSelect: onOpenSettings,
       },
     ];

@@ -118,7 +118,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
           }}
           aria-label={
             defaultShellProfile
-              ? `${t("app.new_tab_tooltip", { name: defaultShellProfile.name })} — ${adminHint}`
+              ? `${t("app.new_tab_tooltip", { name: defaultShellProfile.name })} (Ctrl+Shift+T) — ${adminHint}`
               : t("app.no_shell_hint")
           }
           className="inline-flex h-7 w-7 items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors"
@@ -139,8 +139,13 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
         <div className="pointer-events-none absolute left-0 top-full mt-1.5 z-40 whitespace-nowrap rounded-lg border border-slate-700/85 bg-slate-900/95 px-2.5 py-1.5 text-[11px] shadow-[0_10px_28px_rgba(0,0,0,0.65)] backdrop-blur-md">
           {defaultShellProfile ? (
             <>
-              <div className="font-medium text-slate-100">
-                {t("app.new_tab_tooltip", { name: defaultShellProfile.name })}
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-slate-100">
+                  {t("app.new_tab_tooltip", { name: defaultShellProfile.name })}
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  Ctrl+Shift+T
+                </span>
               </div>
               <div className="text-[10px] italic text-slate-400">{adminHint}</div>
             </>
@@ -215,8 +220,13 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                     <span className="truncate font-medium">{shell.name}</span>
                   </span>
                   {isDefault && (
-                    <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-[9px] font-medium leading-none text-sky-300 shrink-0">
-                      {t("app.default_badge")}
+                    <span className="flex items-center gap-1.5 shrink-0">
+                      <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-[9px] font-medium leading-none text-sky-300">
+                        {t("app.default_badge")}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        Ctrl+Shift+T
+                      </span>
                     </span>
                   )}
                 </button>

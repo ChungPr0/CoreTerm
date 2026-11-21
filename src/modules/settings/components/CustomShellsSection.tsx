@@ -146,6 +146,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
             variant="outline"
             size="xs"
             onClick={openAdd}
+            className="shrink-0"
             leftIcon={<Plus className="w-3 h-3 text-sky-400" />}
           >
             {t("settings.shell_add")}
@@ -219,7 +220,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
 
           <Input
             type="text"
-            label={<span className="text-[11px] text-slate-400">{t("settings.shell_name")}</span>}
+            label={<span className="text-[11px] text-slate-400">{`${t("settings.shell_name")} *`}</span>}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t("settings.shell_name_hint")}
@@ -227,7 +228,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
 
           <div className="space-y-1">
             <label className="block text-[11px] text-slate-400">
-              {t("settings.shell_path")}
+              {`${t("settings.shell_path")} *`}
             </label>
             <div className="flex items-center gap-1.5">
               <Input
@@ -242,6 +243,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                 variant="secondary"
                 size="md"
                 onClick={() => void pickExe()}
+                className="shrink-0"
                 leftIcon={<FolderOpen className="w-3.5 h-3.5 text-sky-400" />}
               >
                 {t("settings.shell_browse")}

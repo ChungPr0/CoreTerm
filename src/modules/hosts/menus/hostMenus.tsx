@@ -134,6 +134,7 @@ export function useHostMenus(opts: UseHostMenusOpts) {
             id: "sidebar-settings",
             label: t("ctx.settings"),
             icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
+            shortcut: "Ctrl+,",
             onSelect: onOpenSettings,
           },
         ],

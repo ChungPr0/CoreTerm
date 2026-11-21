@@ -5,6 +5,7 @@ import {
   FolderSync,
   RotateCw,
   Search,
+  Server,
   X,
   XCircle,
 } from "lucide-react";
@@ -44,6 +45,7 @@ interface BuildTabContextItemsOpts {
   onReconnectTab: (tabId: string) => void;
   onToggleSftp: (tabId: string) => void;
   onOpenSftp: (host: HostProfileSummaryDto) => void;
+  onConnectHost: (host: HostProfileSummaryDto) => void;
   onDuplicateTab: (tab: TerminalTabItem) => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
@@ -63,6 +65,7 @@ export function buildTabContextItems({
   onReconnectTab,
   onToggleSftp,
   onOpenSftp,
+  onConnectHost,
   onDuplicateTab,
   onCloseTab,
   onCloseOtherTabs,
@@ -118,6 +121,16 @@ export function buildTabContextItems({
         },
       }
     );
+  } else if (tab.hostId !== "local" && tab.tabKind === "sftp") {
+    const profile = allProfiles.find((p) => p.id === tab.hostId);
+    if (profile) {
+      items.push({
+        id: "tab-ssh-open",
+        label: t("ctx.ssh_open_tab"),
+        icon: <Server className="h-3.5 w-3.5 text-emerald-400" />,
+        onSelect: () => onConnectHost(profile),
+      });
+    }
   }
 
   const launchItems = buildLaunchItems({
@@ -168,6 +181,7 @@ interface UseTabMenusOpts {
   onReconnectTab: (tabId: string) => void;
   onToggleSftp: (tabId: string) => void;
   onOpenSftp: (host: HostProfileSummaryDto) => void;
+  onConnectHost: (host: HostProfileSummaryDto) => void;
   onDuplicateTab: (tab: TerminalTabItem) => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
@@ -188,6 +202,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
     onReconnectTab,
     onToggleSftp,
     onOpenSftp,
+    onConnectHost,
     onDuplicateTab,
     onCloseTab,
     onCloseOtherTabs,
@@ -212,6 +227,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
           onReconnectTab,
           onToggleSftp,
           onOpenSftp,
+          onConnectHost,
           onDuplicateTab,
           onCloseTab,
           onCloseOtherTabs,
@@ -224,6 +240,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
       isAppElevated,
       onCloseOtherTabs,
       onCloseTab,
+      onConnectHost,
       onDuplicateTab,
       onFindInTab,
       onNewLocalTab,

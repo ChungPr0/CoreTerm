@@ -103,13 +103,13 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-1.5 border-b border-[#21262d] bg-[#11161d] px-2.5 py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <span
-            className={`inline-flex h-6 items-center rounded border px-2 text-[11px] font-medium ${badgeCls}`}
+            className={`inline-flex h-6 items-center rounded border px-2 text-[11px] font-medium whitespace-nowrap shrink-0 ${badgeCls}`}
           >
             {title}
           </span>
 
           {drives && drives.length > 0 && (
-            <div className="relative">
+            <div className="relative shrink-0">
               <button
                 ref={driveBtnRef}
                 type="button"
@@ -117,7 +117,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
                   onRefreshDrives?.();
                   setDriveMenuOpen((v) => !v);
                 }}
-                className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd]"
+                className="inline-flex h-6 items-center gap-1 rounded border border-[#30363d] bg-[#0d1117] px-2 text-[11px] text-[#c9d1d9] hover:border-[#388bfd] whitespace-nowrap"
               >
                 <HardDrive className="h-3 w-3 text-[#8b949e]" />
                 <span>{activeDrive?.name ?? cwdWinDrive ?? drives[0].name}</span>

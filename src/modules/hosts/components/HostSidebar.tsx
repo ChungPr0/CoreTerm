@@ -204,7 +204,7 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
             />
             <IconButton
               onClick={onOpenSettings}
-              title={t("settings.title")}
+              title={`${t("settings.title")} (Ctrl+,)`}
               tone="default"
               size="sm"
               bordered

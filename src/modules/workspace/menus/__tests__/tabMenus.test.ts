@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { HostProfileSummaryDto } from "@/modules/hosts";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import {
   buildLaunchItems,
@@ -112,13 +113,35 @@ describe("buildTabContextItems", () => {
     ...overrides,
   });
 
+  const HOST_PROFILE: HostProfileSummaryDto = {
+    id: "h1",
+    alias: "Prod Server",
+    group_name: "Default",
+    tags: [],
+    host: "10.0.0.1",
+    port: 22,
+    username: "root",
+    auth_method: "SSH_KEY",
+    ssh_key_id: null,
+    ssh_key_name: null,
+    private_key_path: null,
+    password_mode: "NONE",
+    has_saved_password: false,
+    auto_reconnect: false,
+    reconnect_interval_sec: 5,
+    active_port_forwards_count: 0,
+    last_connected_at: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
   it("includes Rename and Find for local shell tabs, omits Rename for SSH, omits both for SFTP", () => {
     const onRenameTab = vi.fn();
     const onFindInTab = vi.fn();
     const common = {
       t,
       tabsCount: 2,
-      allProfiles: [],
+      allProfiles: [HOST_PROFILE],
       isAppElevated: false,
       shellProfiles: [PS, CMD],
       defaultShellProfile: PS,
@@ -128,6 +151,7 @@ describe("buildTabContextItems", () => {
       onReconnectTab: vi.fn(),
       onToggleSftp: vi.fn(),
       onOpenSftp: vi.fn(),
+      onConnectHost: vi.fn(),
       onDuplicateTab: vi.fn(),
       onCloseTab: vi.fn(),
       onCloseOtherTabs: vi.fn(),
@@ -138,12 +162,15 @@ describe("buildTabContextItems", () => {
     );
     expect(localIds).toContain("tab-rename");
     expect(localIds).toContain("tab-find");
+    expect(localIds).not.toContain("tab-ssh-open");
 
-    const sshIds = buildTabContextItems({ ...common, tab: baseTab({ hostId: "h1" }) }).map(
-      (i) => i.id
-    );
+    const sshItems = buildTabContextItems({ ...common, tab: baseTab({ hostId: "h1" }) });
+    const sshIds = sshItems.map((i) => i.id);
     expect(sshIds).not.toContain("tab-rename");
     expect(sshIds).toContain("tab-find");
+    expect(sshIds).toContain("tab-sftp-split");
+    expect(sshIds).toContain("tab-sftp-separate");
+    expect(sshIds).not.toContain("tab-ssh-open");
 
     const sftpIds = buildTabContextItems({
       ...common,
@@ -151,6 +178,51 @@ describe("buildTabContextItems", () => {
     }).map((i) => i.id);
     expect(sftpIds).not.toContain("tab-rename");
     expect(sftpIds).not.toContain("tab-find");
+    expect(sftpIds).not.toContain("tab-sftp-split");
+    expect(sftpIds).not.toContain("tab-sftp-separate");
+    expect(sftpIds).toContain("tab-ssh-open");
+  });
+
+  it("wires Open SSH Tab on SFTP tabs when a matching host profile exists and omits it otherwise", () => {
+    const onConnectHost = vi.fn();
+    const baseOpts = {
+      t,
+      tabsCount: 1,
+      isAppElevated: false,
+      shellProfiles: [PS],
+      defaultShellProfile: PS,
+      onNewLocalTab: vi.fn(),
+      onRenameTab: vi.fn(),
+      onFindInTab: vi.fn(),
+      onReconnectTab: vi.fn(),
+      onToggleSftp: vi.fn(),
+      onOpenSftp: vi.fn(),
+      onConnectHost,
+      onDuplicateTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    };
+
+    const withProfile = buildTabContextItems({
+      ...baseOpts,
+      allProfiles: [HOST_PROFILE],
+      tab: baseTab({ hostId: "h1", tabKind: "sftp" }),
+    });
+    const openSshItem = withProfile.find((i) => i.id === "tab-ssh-open");
+    expect(openSshItem).toBeDefined();
+    if (openSshItem && openSshItem.type !== "separator") {
+      expect(openSshItem.label).toBe("ctx.ssh_open_tab");
+      openSshItem.onSelect?.();
+    }
+    expect(onConnectHost).toHaveBeenCalledTimes(1);
+    expect(onConnectHost).toHaveBeenCalledWith(HOST_PROFILE);
+
+    const withoutProfile = buildTabContextItems({
+      ...baseOpts,
+      allProfiles: [],
+      tab: baseTab({ hostId: "h1", tabKind: "sftp" }),
+    });
+    expect(withoutProfile.map((i) => i.id)).not.toContain("tab-ssh-open");
   });
 });
 

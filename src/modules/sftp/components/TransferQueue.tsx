@@ -139,7 +139,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                         <span className="truncate font-medium text-[#e6edf3]" title={`${job.source_path} -> ${job.dest_path}`}>
                           {job.file_name}
                         </span>
-                        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[#8b949e]">
+                        <div className="flex shrink-0 items-center gap-2 text-[11px] text-[#8b949e] whitespace-nowrap">
                           <span>
                             {fmtSize(job.transferred_bytes)} / {fmtSize(job.total_bytes)}
                           </span>
@@ -161,7 +161,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     </div>
 
                     <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}
+                      className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}
                       title={errHint}
                     >
                       {t(meta.key)}

@@ -53,6 +53,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onFindInTab: opts.onFindInTab,
     onReconnectTab: opts.onReconnectTab,
     onToggleSftp: opts.onToggleSftp,
+    onOpenSettings: opts.onOpenSettings,
   });
 
   const tabMenus = useTabMenus({
@@ -69,6 +70,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onReconnectTab: opts.onReconnectTab,
     onToggleSftp: opts.onToggleSftp,
     onOpenSftp: opts.onOpenSftp,
+    onConnectHost: opts.onConnectHost,
     onDuplicateTab: opts.onDuplicateTab,
     onCloseTab: opts.onCloseTab,
     onCloseOtherTabs: opts.onCloseOtherTabs,

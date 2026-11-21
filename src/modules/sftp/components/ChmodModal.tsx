@@ -22,7 +22,7 @@ interface ChmodModalProps {
 const BIT_ROWS = [
   { labelKey: "sftp.chmod_owner", shift: 6 },
   { labelKey: "sftp.chmod_group", shift: 3 },
-  { labelKey: "sftp.chmod_others", shift: 0 },
+  { labelKey: "sftp.chmod_other", shift: 0 },
 ] as const;
 
 export const ChmodModal: React.FC<ChmodModalProps> = ({
@@ -98,15 +98,15 @@ export const ChmodModal: React.FC<ChmodModalProps> = ({
           <thead>
             <tr className="border-b border-[#21262d] text-[11px] text-[#8b949e]">
               <th className="py-2 px-3 font-medium" />
-              <th className="py-2 px-2 text-center font-medium">{t("sftp.chmod_read")}</th>
-              <th className="py-2 px-2 text-center font-medium">{t("sftp.chmod_write")}</th>
-              <th className="py-2 px-2 text-center font-medium">{t("sftp.chmod_exec")}</th>
+              <th className="py-2 px-2 text-center font-medium whitespace-nowrap">{t("sftp.chmod_read")}</th>
+              <th className="py-2 px-2 text-center font-medium whitespace-nowrap">{t("sftp.chmod_write")}</th>
+              <th className="py-2 px-2 text-center font-medium whitespace-nowrap">{t("sftp.chmod_exec")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#21262d]">
             {BIT_ROWS.map((row) => (
               <tr key={row.labelKey}>
-                <td className="py-2 px-3 text-[#e6edf3] font-medium">{t(row.labelKey)}</td>
+                <td className="py-2 px-3 text-[#e6edf3] font-medium whitespace-nowrap">{t(row.labelKey)}</td>
                 {[4, 2, 1].map((perm) => {
                   const bit = perm << row.shift;
                   return (

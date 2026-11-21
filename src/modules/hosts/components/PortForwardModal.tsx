@@ -292,7 +292,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
       return (
         <span
-          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans"
+          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
           title={tooltipText}
         >
           <AlertCircle className="w-3 h-3 shrink-0" />
@@ -304,7 +304,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
     if (portProbe?.status === "SHARED_WITH_ACTIVE_TAB") {
       return (
         <span
-          className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans"
+          className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
           title={t("forward.port_active_tab", { port: portLocal })}
         >
           <Info className="w-3 h-3 shrink-0" />
@@ -316,7 +316,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
     if (isPrivilegedLocal) {
       return (
         <span
-          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans"
+          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
           title={t("forward.port_privileged")}
         >
           <AlertCircle className="w-3 h-3 shrink-0" />
@@ -327,8 +327,8 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
     if (isCheckingPort) {
       return (
-        <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 font-sans">
-          <RefreshCw className="w-3 h-3 animate-spin" />
+        <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 font-sans whitespace-nowrap shrink-0">
+          <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
           <span>{t("forward.checking")}</span>
         </span>
       );
@@ -336,8 +336,8 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
     if (portProbe?.status === "AVAILABLE") {
       return (
-        <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 font-sans">
-          <CheckCircle2 className="w-3 h-3" />
+        <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0">
+          <CheckCircle2 className="w-3 h-3 shrink-0" />
           <span>{t("forward.port_ready")}</span>
         </span>
       );
@@ -406,9 +406,9 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
         {forwardType === "DYNAMIC" ? (
           <div className="space-y-3">
             <div className="p-3.5 rounded-lg border border-slate-800 bg-slate-950/60 space-y-3">
-              <div className="flex items-center justify-between pb-0.5">
-                <div className="text-[11px] font-semibold tracking-wider text-emerald-400 uppercase flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <div className="flex items-center justify-between gap-2 pb-0.5">
+                <div className="text-[11px] font-semibold tracking-wider text-emerald-400 uppercase flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                   <span>LOCAL (SOCKS5)</span>
                 </div>
                 {renderLocalStatusBadge()}
@@ -434,7 +434,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                   max={65535}
                   label={
                     <span className="text-[11px] font-medium text-slate-300">
-                      {t("forward.port_local")}
+                      {`${t("forward.port_local")} *`}
                     </span>
                   }
                   placeholder="1080"
@@ -454,9 +454,9 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
           <div className="rounded-lg border border-slate-800 bg-slate-950/60 overflow-hidden">
             <div className="grid grid-cols-12 divide-y sm:divide-y-0 sm:divide-x divide-slate-800">
               <div className="col-span-12 sm:col-span-6 p-3.5 space-y-3">
-                <div className="flex items-center justify-between pb-0.5">
-                  <div className="text-[11px] font-semibold tracking-wider text-emerald-400 uppercase flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <div className="flex items-center justify-between gap-2 pb-0.5">
+                  <div className="text-[11px] font-semibold tracking-wider text-emerald-400 uppercase flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                     <span>LOCAL</span>
                   </div>
                   {renderLocalStatusBadge()}
@@ -482,7 +482,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                   max={65535}
                   label={
                     <span className="text-[11px] font-medium text-slate-300">
-                      {t("forward.port_local")}
+                      {`${t("forward.port_local")} *`}
                     </span>
                   }
                   placeholder="8080"
@@ -493,14 +493,14 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
               </div>
 
               <div className="col-span-12 sm:col-span-6 p-3.5 space-y-3">
-                <div className="flex items-center justify-between pb-0.5">
-                  <div className="text-[11px] font-semibold tracking-wider text-purple-400 uppercase flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                <div className="flex items-center justify-between gap-2 pb-0.5">
+                  <div className="text-[11px] font-semibold tracking-wider text-purple-400 uppercase flex items-center gap-1.5 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
                     <span>REMOTE</span>
                   </div>
                   {forwardType === "REMOTE" && isPrivilegedRemote && (
                     <span
-                      className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans"
+                      className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
                       title={t("forward.port_privileged")}
                     >
                       <AlertCircle className="w-3 h-3 shrink-0" />
@@ -530,7 +530,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                   max={65535}
                   label={
                     <span className="text-[11px] font-medium text-slate-300">
-                      {t("forward.port_remote")}
+                      {`${t("forward.port_remote")} *`}
                     </span>
                   }
                   placeholder="80"

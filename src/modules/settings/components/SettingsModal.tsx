@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Check,
   FolderSync,
   Globe,
   Monitor,
@@ -65,8 +66,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     settings.defaultShellId || DEFAULT_SHELL_ID
   );
   const [isScanning, setIsScanning] = useState(false);
+  const [launchSizeResetDone, setLaunchSizeResetDone] = useState(false);
+  const resetFeedbackTimerRef = useRef<number | null>(null);
   const [contextMenuOriginal, setContextMenuOriginal] = useState(false);
   const [contextMenuDraft, setContextMenuDraft] = useState(false);
+
+  const isDefaultLaunchSize =
+    cols === LAUNCH_COLS_DEFAULT && rows === LAUNCH_ROWS_DEFAULT;
+
+  const clearResetFeedback = () => {
+    if (resetFeedbackTimerRef.current !== null) {
+      window.clearTimeout(resetFeedbackTimerRef.current);
+      resetFeedbackTimerRef.current = null;
+    }
+    setLaunchSizeResetDone(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resetFeedbackTimerRef.current !== null) {
+        window.clearTimeout(resetFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -100,13 +122,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      clearResetFeedback();
+      return;
+    }
+    clearResetFeedback();
     setCols(settings.launchCols);
     setRows(settings.launchRows);
     setSftpConflictPolicy(settings.sftpConflictPolicy ?? DEFAULT_CONFLICT_POLICY);
     setCustomShells(settings.customShells ?? []);
     setDefaultShellId(settings.defaultShellId || DEFAULT_SHELL_ID);
   }, [isOpen, settings]);
+
+  const handleResetLaunchSize = () => {
+    if (isDefaultLaunchSize) return;
+    setCols(LAUNCH_COLS_DEFAULT);
+    setRows(LAUNCH_ROWS_DEFAULT);
+    setLaunchSizeResetDone(true);
+    if (resetFeedbackTimerRef.current !== null) {
+      window.clearTimeout(resetFeedbackTimerRef.current);
+    }
+    resetFeedbackTimerRef.current = window.setTimeout(() => {
+      setLaunchSizeResetDone(false);
+      resetFeedbackTimerRef.current = null;
+    }, 1400);
+  };
 
   const handleRescan = async () => {
     setIsScanning(true);
@@ -185,22 +225,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Launch size (columns x rows) */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
-                <Monitor className="w-3.5 h-3.5 text-sky-400" />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-slate-200 font-semibold whitespace-nowrap">
+                <Monitor className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 <span>{t("settings.launch_size")}</span>
               </div>
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => {
-                  setCols(LAUNCH_COLS_DEFAULT);
-                  setRows(LAUNCH_ROWS_DEFAULT);
-                }}
-                leftIcon={<RotateCcw className="w-3 h-3" />}
+              <span
+                title={
+                  isDefaultLaunchSize
+                    ? t("settings.reset_win_already_default", {
+                        cols: LAUNCH_COLS_DEFAULT,
+                        rows: LAUNCH_ROWS_DEFAULT,
+                      })
+                    : t("settings.reset_win_tooltip", {
+                        cols: LAUNCH_COLS_DEFAULT,
+                        rows: LAUNCH_ROWS_DEFAULT,
+                      })
+                }
+                className="inline-flex shrink-0"
               >
-                {t("settings.reset_win")}
-              </Button>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  disabled={isDefaultLaunchSize && !launchSizeResetDone}
+                  onClick={handleResetLaunchSize}
+                  leftIcon={
+                    launchSizeResetDone ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <RotateCcw className="w-3 h-3" />
+                    )
+                  }
+                  className={
+                    launchSizeResetDone
+                      ? "!border-emerald-500/40 !bg-emerald-500/15 !text-emerald-300 hover:!bg-emerald-500/15 hover:!border-emerald-500/40 active:!bg-emerald-500/15 active:!border-emerald-500/40 active:!scale-100 !cursor-default"
+                      : undefined
+                  }
+                >
+                  {launchSizeResetDone ? t("settings.reset_win_done") : t("settings.reset_win")}
+                </Button>
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -210,8 +274,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 min={LAUNCH_COLS_MIN}
                 max={LAUNCH_COLS_MAX}
                 value={cols}
-                onChange={(e) => setCols(Number(e.target.value))}
-                className="font-mono"
+                onChange={(e) => {
+                  clearResetFeedback();
+                  setCols(Number(e.target.value));
+                }}
+                className={`font-mono ${
+                  launchSizeResetDone
+                    ? "!border-emerald-500/45 hover:!border-emerald-500/60 focus:!border-sky-500"
+                    : ""
+                }`}
               />
               <Input
                 type="number"
@@ -219,8 +290,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 min={LAUNCH_ROWS_MIN}
                 max={LAUNCH_ROWS_MAX}
                 value={rows}
-                onChange={(e) => setRows(Number(e.target.value))}
-                className="font-mono"
+                onChange={(e) => {
+                  clearResetFeedback();
+                  setRows(Number(e.target.value));
+                }}
+                className={`font-mono ${
+                  launchSizeResetDone
+                    ? "!border-emerald-500/45 hover:!border-emerald-500/60 focus:!border-sky-500"
+                    : ""
+                }`}
               />
             </div>
           </div>
@@ -228,11 +306,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Default local shell */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-slate-300 font-medium">
+              <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
                 <TerminalIcon className="w-4 h-4 text-sky-400 shrink-0" />
-                <span>{t("settings.default_shell")}</span>
+                <span className="truncate" title={t("settings.default_shell")}>
+                  {t("settings.default_shell")}
+                </span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {availableShells.length > 0 && (
                   <Select
                     value={effectiveDefaultShell?.id ?? ""}
@@ -277,9 +357,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* SFTP file conflict default policy */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-slate-300 font-medium">
+            <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
               <FolderSync className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>{t("settings.sftp_conflict_policy")}</span>
+              <span className="truncate" title={t("settings.sftp_conflict_policy")}>
+                {t("settings.sftp_conflict_policy")}
+              </span>
             </div>
             <Select
               value={sftpConflictPolicy}
@@ -300,9 +382,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Windows Context Menu ("Open in CoreTerm") */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-slate-300 font-medium">
+            <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
               <MousePointerClick className="w-4 h-4 text-sky-400 shrink-0" />
-              <span>{t("settings.context_menu_title")}</span>
+              <span className="truncate" title={t("settings.context_menu_title")}>
+                {t("settings.context_menu_title")}
+              </span>
             </div>
             <Switch
               checked={contextMenuDraft}

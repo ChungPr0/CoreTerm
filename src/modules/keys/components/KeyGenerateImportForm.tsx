@@ -83,7 +83,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
           <Input
             ref={nameInputRef}
             type="text"
-            label={t("vault.name")}
+            label={`${t("vault.name")} *`}
             labelExtra={
               <span className="text-[10px] text-slate-500 font-mono">
                 {name.trim().length}/{MAX_KEY_NAME_LEN}
@@ -107,7 +107,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
             <Input
               ref={sourcePathInputRef}
               type="text"
-              label={t("vault.source_path")}
+              label={`${t("vault.source_path")} *`}
               value={sourcePath}
               onChange={(e) => onSourcePathChange(e.target.value)}
               className="font-mono"
@@ -132,7 +132,7 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
               className="font-mono"
             />
           ) : (
-            <div className="flex items-center pt-5 h-[52px]">
+            <div className="flex items-center pt-5 h-[52px] whitespace-nowrap">
               <Checkbox
                 checked={copyManaged}
                 onCheckedChange={onCopyManagedChange}
@@ -142,12 +142,14 @@ export const KeyGenerateImportForm: React.FC<KeyGenerateImportFormProps> = ({
           )}
         </div>
 
-        <div className="flex items-center justify-between pt-1">
-          <Checkbox
-            checked={setDefault}
-            onCheckedChange={onSetDefaultChange}
-            label={t("vault.set_default")}
-          />
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="whitespace-nowrap">
+            <Checkbox
+              checked={setDefault}
+              onCheckedChange={onSetDefaultChange}
+              label={t("vault.set_default")}
+            />
+          </div>
 
           <Button
             variant="success"

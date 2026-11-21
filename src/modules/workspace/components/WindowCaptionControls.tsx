@@ -33,7 +33,7 @@ export const WindowCaptionControls: React.FC = () => {
       <button
         type="button"
         onClick={() => windowApi.windowClose().catch(() => {})}
-        title={t("window.close")}
+        title={`${t("window.close")} (Alt+F4)`}
         className="h-full w-11 flex items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
       >
         <X className="w-4 h-4" />

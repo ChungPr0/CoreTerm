@@ -137,6 +137,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <IconButton
             size="xs"
             onClick={onClose}
+            title={`${t("common.close")} (Esc)`}
             icon={<X className="w-3.5 h-3.5" />}
           />
         </div>
