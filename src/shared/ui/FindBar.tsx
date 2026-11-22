@@ -69,15 +69,13 @@ export const FindBar: React.FC<FindBarProps> = ({
   const { t } = useI18n();
   if (!isOpen) return null;
 
-  const statusText = invalidRegex
-    ? t("terminal.find_invalid_regex")
-    : !query
-      ? ""
-      : matches.count > 0
-        ? `${matches.index || 1}/${matches.count}`
-        : t("terminal.find_no_results");
+  const statusText = !query
+    ? ""
+    : matches.count > 0
+      ? `${matches.index || 1}/${matches.count}`
+      : "0/0";
 
-  const canAct = Boolean(query && !invalidRegex);
+  const canAct = Boolean(query && !invalidRegex && matches.count > 0);
 
   return (
     <div
@@ -111,7 +109,15 @@ export const FindBar: React.FC<FindBarProps> = ({
               e.preventDefault();
               e.stopPropagation();
               onClose();
-            } else if (e.key === "Enter") {
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              e.stopPropagation();
+              onFindNext();
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              e.stopPropagation();
+              onFindPrev();
+            } else if (e.key === "Enter" || e.keyCode === 13) {
               e.preventDefault();
               e.stopPropagation();
               if (e.shiftKey) onFindPrev();
@@ -119,16 +125,12 @@ export const FindBar: React.FC<FindBarProps> = ({
             }
           }}
           placeholder={t("terminal.find_placeholder")}
-          className={`flex-1 min-w-0 bg-transparent px-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none select-text ${
-            invalidRegex ? "text-rose-300" : ""
-          }`}
+          className="flex-1 min-w-0 bg-transparent px-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none select-text"
         />
 
         <span
           title={statusText || undefined}
-          className={`w-[72px] shrink-0 text-right font-mono text-[11px] tabular-nums truncate ${
-            invalidRegex || (query && matches.count === 0) ? "text-rose-400" : "text-slate-400"
-          }`}
+          className="w-[72px] shrink-0 text-right font-mono text-[11px] tabular-nums truncate text-slate-400"
         >
           {statusText}
         </span>
@@ -168,7 +170,7 @@ export const FindBar: React.FC<FindBarProps> = ({
           size="sm"
           disabled={!canAct}
           onClick={onFindPrev}
-          title={t("terminal.find_prev")}
+          title={`${t("terminal.find_prev")} (↑)`}
           icon={<ArrowUp className="w-3.5 h-3.5" />}
         />
 
@@ -176,7 +178,7 @@ export const FindBar: React.FC<FindBarProps> = ({
           size="sm"
           disabled={!canAct}
           onClick={onFindNext}
-          title={t("terminal.find_next")}
+          title={`${t("terminal.find_next")} (↓)`}
           icon={<ArrowDown className="w-3.5 h-3.5" />}
         />
 
@@ -201,7 +203,7 @@ export const FindBar: React.FC<FindBarProps> = ({
                 e.preventDefault();
                 e.stopPropagation();
                 onClose();
-              } else if (e.key === "Enter") {
+              } else if (e.key === "ArrowDown" || e.key === "Enter" || e.keyCode === 13) {
                 e.preventDefault();
                 e.stopPropagation();
                 onReplaceNext?.();

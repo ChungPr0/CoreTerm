@@ -30,6 +30,11 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     params: (m) => ({ path: m[1] }),
   },
   {
+    pattern:
+      /^(?:The system cannot find the file specified|The system cannot find the path specified|No such file or directory)\.?(?:\s*\(os error \d+\))?$/i,
+    key: "errors.sftp_not_found",
+  },
+  {
     pattern: /^Deleting drive or root path is strictly prohibited:\s*'(.+?)'$/i,
     key: "errors.local_delete_root",
     params: (m) => ({ path: m[1] }),

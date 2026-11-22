@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EditorView } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import {
   SearchQuery,
-  findNext,
-  findPrevious,
   replaceAll,
   replaceNext,
   setSearchQuery,
@@ -13,11 +12,13 @@ import {
   EDITOR_FIND_TIME_BUDGET_MS,
   EDITOR_SELECTION_SEED_MAX_LEN,
 } from "@/shared/defaults";
+import type { EditorCursorPos } from "../types";
 
 interface UseEditorSearchOpts {
   viewRef: React.MutableRefObject<EditorView | null>;
   readonlyRef: React.MutableRefObject<boolean>;
   docVersion: number;
+  cursorPos?: EditorCursorPos;
   onBeforeOpenFind: () => void;
 }
 
@@ -25,9 +26,12 @@ export function useEditorSearch({
   viewRef,
   readonlyRef,
   docVersion,
+  cursorPos,
   onBeforeOpenFind,
 }: UseEditorSearchOpts) {
   const findInputRef = useRef<HTMLInputElement>(null);
+  const matchesRef = useRef<Array<{ from: number; to: number }>>([]);
+  const currentMatchIdxRef = useRef<number>(-1);
   const [findOpen, setFindOpen] = useState(false);
   const [showReplace, setShowReplace] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -41,44 +45,60 @@ export function useEditorSearch({
   const resetSearchState = useCallback(() => {
     setFindOpen(false);
     setShowReplace(false);
+    matchesRef.current = [];
+    currentMatchIdxRef.current = -1;
+    setFindMatches({ index: 0, count: 0 });
   }, []);
 
-  const computeFindStats = useCallback((view: EditorView, query: SearchQuery) => {
-    if (!query.search) {
+  const updateMatchIndex = useCallback((view: EditorView) => {
+    const matches = matchesRef.current;
+    if (matches.length === 0) {
+      currentMatchIdxRef.current = -1;
       setFindMatches({ index: 0, count: 0 });
-      setInvalidRegex(false);
       return;
     }
-    if (!query.valid) {
-      setFindMatches({ index: 0, count: 0 });
-      setInvalidRegex(true);
-      return;
-    }
-    setInvalidRegex(false);
     const sel = view.state.selection.main;
-    const cursor = query.getCursor(view.state.doc);
-    let count = 0;
-    let index = 0;
-    const startMs = performance.now();
-
-    // Time-budgeted loop prevents catastrophic regex backtracking (ReDoS) from freezing the UI thread.
-    while (
-      count < EDITOR_FIND_MAX_MATCHES &&
-      performance.now() - startMs < EDITOR_FIND_TIME_BUDGET_MS
-    ) {
-      const step = cursor.next();
-      if (step.done) break;
-      count++;
-      if (index === 0 && step.value.from >= sel.from) {
-        index = count;
-      }
+    let idx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+    if (idx === -1) {
+      idx = matches.findIndex((m) => m.from >= sel.from);
+      if (idx === -1) idx = 0;
     }
-    if (count > 0 && index === 0) index = 1;
-    setFindMatches({ index, count });
+    currentMatchIdxRef.current = idx;
+    setFindMatches({ index: idx + 1, count: matches.length });
   }, []);
+
+  const jumpToMatch = useCallback(
+    (view: EditorView, matchIndex: number) => {
+      const matches = matchesRef.current;
+      if (matches.length === 0) return;
+      const clampedIndex = ((matchIndex % matches.length) + matches.length) % matches.length;
+      const target = matches[clampedIndex];
+      if (!target) return;
+
+      currentMatchIdxRef.current = clampedIndex;
+      view.dispatch({
+        selection: EditorSelection.single(target.from, target.to),
+        effects: [EditorView.scrollIntoView(target.from, { y: "center" })],
+        userEvent: "select.search",
+      });
+      setFindMatches({ index: clampedIndex + 1, count: matches.length });
+    },
+    []
+  );
 
   const syncSearchQuery = useCallback(
-    (view: EditorView) => {
+    (view: EditorView): Array<{ from: number; to: number }> => {
+      if (!findQuery) {
+        matchesRef.current = [];
+        currentMatchIdxRef.current = -1;
+        setFindMatches({ index: 0, count: 0 });
+        setInvalidRegex(false);
+        view.dispatch({
+          effects: setSearchQuery.of(new SearchQuery({ search: "" })),
+        });
+        return [];
+      }
+
       const q = new SearchQuery({
         search: findQuery,
         replace: replaceQuery,
@@ -86,11 +106,57 @@ export function useEditorSearch({
         wholeWord,
         regexp: regex,
       });
+
+      if (!q.valid) {
+        matchesRef.current = [];
+        currentMatchIdxRef.current = -1;
+        setFindMatches({ index: 0, count: 0 });
+        setInvalidRegex(true);
+        return [];
+      }
+
+      setInvalidRegex(false);
       view.dispatch({ effects: setSearchQuery.of(q) });
-      computeFindStats(view, q);
-      return q;
+
+      const cursor = q.getCursor(view.state) as {
+        next: () => { value?: { from: number; to: number }; done?: boolean };
+        value?: { from: number; to: number };
+        done?: boolean;
+      };
+      const collected: Array<{ from: number; to: number }> = [];
+      const startMs = performance.now();
+
+      while (collected.length < EDITOR_FIND_MAX_MATCHES) {
+        if (regex && performance.now() - startMs > EDITOR_FIND_TIME_BUDGET_MS) {
+          setInvalidRegex(true);
+          matchesRef.current = [];
+          currentMatchIdxRef.current = -1;
+          setFindMatches({ index: 0, count: 0 });
+          return [];
+        }
+        const step = cursor.next();
+        if (step.done || !step.value) break;
+        collected.push({ from: step.value.from, to: step.value.to });
+      }
+      matchesRef.current = collected;
+
+      if (collected.length === 0) {
+        currentMatchIdxRef.current = -1;
+        setFindMatches({ index: 0, count: 0 });
+        return collected;
+      }
+
+      const sel = view.state.selection.main;
+      let idx = collected.findIndex((m) => m.from === sel.from && m.to === sel.to);
+      if (idx === -1) {
+        idx = collected.findIndex((m) => m.from >= sel.from);
+        if (idx === -1) idx = 0;
+      }
+      currentMatchIdxRef.current = idx;
+      setFindMatches({ index: idx + 1, count: collected.length });
+      return collected;
     },
-    [caseSensitive, computeFindStats, findQuery, regex, replaceQuery, wholeWord]
+    [caseSensitive, findQuery, regex, replaceQuery, wholeWord]
   );
 
   useEffect(() => {
@@ -98,6 +164,12 @@ export function useEditorSearch({
     if (!view || !findOpen) return;
     syncSearchQuery(view);
   }, [findOpen, syncSearchQuery, docVersion, viewRef]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !findOpen) return;
+    updateMatchIndex(view);
+  }, [cursorPos, findOpen, updateMatchIndex, viewRef]);
 
   const closeFindBar = useCallback(() => {
     const view = viewRef.current;
@@ -107,6 +179,9 @@ export function useEditorSearch({
       });
       view.focus();
     }
+    matchesRef.current = [];
+    currentMatchIdxRef.current = -1;
+    setFindMatches({ index: 0, count: 0 });
     setFindOpen(false);
   }, [viewRef]);
 
@@ -136,38 +211,74 @@ export function useEditorSearch({
   const handleFindNext = useCallback(() => {
     const view = viewRef.current;
     if (!view || !findQuery) return;
-    const q = syncSearchQuery(view);
-    if (!q.valid) return;
-    findNext(view);
-    computeFindStats(view, q);
-  }, [computeFindStats, findQuery, syncSearchQuery, viewRef]);
+    let matches = matchesRef.current;
+    if (matches.length === 0) {
+      matches = syncSearchQuery(view);
+      if (matches.length === 0) return;
+    }
+
+    const sel = view.state.selection.main;
+    const curIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+    let nextIdx: number;
+    if (curIdx !== -1) {
+      nextIdx = (curIdx + 1) % matches.length;
+    } else {
+      const cur = currentMatchIdxRef.current;
+      if (cur !== -1 && cur < matches.length) {
+        nextIdx = (cur + 1) % matches.length;
+      } else {
+        const after = matches.findIndex((m) => m.from >= sel.from);
+        nextIdx = after !== -1 ? after : 0;
+      }
+    }
+    jumpToMatch(view, nextIdx);
+  }, [findQuery, jumpToMatch, syncSearchQuery, viewRef]);
 
   const handleFindPrev = useCallback(() => {
     const view = viewRef.current;
     if (!view || !findQuery) return;
-    const q = syncSearchQuery(view);
-    if (!q.valid) return;
-    findPrevious(view);
-    computeFindStats(view, q);
-  }, [computeFindStats, findQuery, syncSearchQuery, viewRef]);
+    let matches = matchesRef.current;
+    if (matches.length === 0) {
+      matches = syncSearchQuery(view);
+      if (matches.length === 0) return;
+    }
+
+    const sel = view.state.selection.main;
+    const curIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+    let prevIdx: number;
+    if (curIdx !== -1) {
+      prevIdx = (curIdx - 1 + matches.length) % matches.length;
+    } else {
+      const cur = currentMatchIdxRef.current;
+      if (cur !== -1 && cur < matches.length) {
+        prevIdx = (cur - 1 + matches.length) % matches.length;
+      } else {
+        let before = -1;
+        for (let i = matches.length - 1; i >= 0; i--) {
+          if (matches[i].to <= sel.from) {
+            before = i;
+            break;
+          }
+        }
+        prevIdx = before !== -1 ? before : matches.length - 1;
+      }
+    }
+    jumpToMatch(view, prevIdx);
+  }, [findQuery, jumpToMatch, syncSearchQuery, viewRef]);
 
   const handleReplaceNext = useCallback(() => {
     const view = viewRef.current;
     if (!view || !findQuery || readonlyRef.current) return;
-    const q = syncSearchQuery(view);
-    if (!q.valid) return;
     replaceNext(view);
-    computeFindStats(view, q);
-  }, [computeFindStats, findQuery, readonlyRef, syncSearchQuery, viewRef]);
+    syncSearchQuery(view);
+  }, [findQuery, readonlyRef, syncSearchQuery, viewRef]);
 
   const handleReplaceAll = useCallback(() => {
     const view = viewRef.current;
     if (!view || !findQuery || readonlyRef.current) return;
-    const q = syncSearchQuery(view);
-    if (!q.valid) return;
     replaceAll(view);
-    computeFindStats(view, q);
-  }, [computeFindStats, findQuery, readonlyRef, syncSearchQuery, viewRef]);
+    syncSearchQuery(view);
+  }, [findQuery, readonlyRef, syncSearchQuery, viewRef]);
 
   return {
     findInputRef,

@@ -41,7 +41,6 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   const [userReadonly, setUserReadonly] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
   const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [gotoOpen, setGotoOpen] = useState(false);
 
@@ -50,6 +49,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   const openFindRef = useRef<(withReplace: boolean) => void>(() => {});
   const openGotoRef = useRef<() => void>(() => {});
   const closeFindRef = useRef<() => void>(() => {});
+  const findNextRef = useRef<() => void>(() => {});
+  const findPrevRef = useRef<() => void>(() => {});
+  const findOpenRef = useRef<boolean>(false);
   const savedDocInitRef = useRef("");
   const savedEolInitRef = useRef<EditorLineEnding>("LF");
   const eolInitRef = useRef<EditorLineEnding>("LF");
@@ -77,6 +79,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     saveFnRef,
     openFindRef,
     openGotoRef,
+    findNextRef,
+    findPrevRef,
+    findOpenRef,
     onUpdateDirty: updateDirty,
   });
 
@@ -86,6 +91,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     viewRef: cm.viewRef,
     readonlyRef: readonlyInitRef,
     docVersion: cm.docVersion,
+    cursorPos: cm.cursorPos,
     onBeforeOpenFind: handleBeforeOpenFind,
   });
 
@@ -124,6 +130,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   openFindRef.current = search.openFindBar;
   openGotoRef.current = openGotoBar;
   closeFindRef.current = search.closeFindBar;
+  findNextRef.current = search.handleFindNext;
+  findPrevRef.current = search.handleFindPrev;
+  findOpenRef.current = search.findOpen;
 
   const hasEditorModal = gotoOpen || session.confirmDiscard !== null;
   useEffect(() => {
@@ -158,7 +167,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   }, [closeRequestToken, onForceClose, session]);
 
   const requestReload = useCallback(() => {
-    if (session.savingRef.current || session.loading || session.connecting) return;
+    if (session.savingRef.current || session.loading || session.retrying || session.connecting) return;
     if (isDirtyRef.current) {
       session.setConfirmDiscard("reload");
       return;
@@ -188,8 +197,19 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
       const view = cm.viewRef.current;
       const sel = view?.state.selection.main;
+
+      if (view && sel && sel.empty && (e.clientX !== 0 || e.clientY !== 0)) {
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos !== null) {
+          view.dispatch({ selection: { anchor: pos } });
+        }
+      }
+
+      const activeSel = view?.state.selection.main;
       const selectedText =
-        view && sel && !sel.empty ? view.state.sliceDoc(sel.from, sel.to) : "";
+        view && activeSel && !activeSel.empty
+          ? view.state.sliceDoc(activeSel.from, activeSel.to)
+          : "";
 
       onShowMenu(
         e.clientX,
@@ -298,12 +318,6 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         }
       }
       if (e.key === "Escape") {
-        if (langMenuOpen) {
-          e.preventDefault();
-          e.stopPropagation();
-          setLangMenuOpen(false);
-          return;
-        }
         if (search.findOpen) {
           e.preventDefault();
           e.stopPropagation();
@@ -318,7 +332,6 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     gotoOpen,
     hasBlockingModal,
     isActive,
-    langMenuOpen,
     search.findOpen,
     session.confirmDiscard,
   ]);
@@ -366,6 +379,15 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
       <div
         onContextMenu={handleEditorContextMenu}
+        onMouseDownCapture={(e) => {
+          if (e.button === 2) {
+            if (getEditableInput(e.target)) return;
+            const view = cm.viewRef.current;
+            if (view && !view.state.selection.main.empty) {
+              e.preventDefault();
+            }
+          }
+        }}
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ct-editor"
       >
         <FindBar
@@ -406,9 +428,10 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             loadError={session.loadError}
             loadErrDisconnected={session.loadErrDisconnected}
             connecting={session.connecting}
+            retrying={session.retrying}
             onForceClose={onForceClose}
-            onReconnectAndReload={() => void session.connectSftp(true)}
-            onRetryLoad={() => void session.loadFile()}
+            onReconnectAndReload={() => void session.connectSftp(true, true)}
+            onRetryLoad={() => void session.loadFile(true)}
           />
         )}
 
@@ -434,14 +457,10 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         cursorPos={cm.cursorPos}
         totalChars={cm.totalChars}
         langId={cm.langId}
-        langMenuOpen={langMenuOpen}
         editorReady={editorReady}
         effectiveReadonly={session.effectiveReadonly}
         zoomPercent={zoomPercent}
         eol={session.eol}
-        onToggleLangMenu={() => setLangMenuOpen((v) => !v)}
-        onCloseLangMenu={() => setLangMenuOpen(false)}
-        onSelectLanguage={cm.applyLanguage}
         onToggleEol={session.toggleEol}
       />
 

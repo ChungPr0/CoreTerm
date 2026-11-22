@@ -10,6 +10,17 @@
     --ct-bg-surface: #161b22;
     --ct-border: #21262d;
     --ct-accent: #58a6ff;
+    --ct-selection-bg: rgba(56, 189, 248, 0.40);
+  }
+
+  ::selection {
+    background-color: rgba(56, 189, 248, 0.40) !important;
+    color: inherit;
+  }
+
+  ::-moz-selection {
+    background-color: rgba(56, 189, 248, 0.40) !important;
+    color: inherit;
   }
 
   input,

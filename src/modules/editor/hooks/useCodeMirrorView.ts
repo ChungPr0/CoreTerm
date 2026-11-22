@@ -33,6 +33,9 @@ interface UseCodeMirrorViewOpts {
   saveFnRef: React.MutableRefObject<() => Promise<boolean>>;
   openFindRef: React.MutableRefObject<(withReplace: boolean) => void>;
   openGotoRef: React.MutableRefObject<() => void>;
+  findNextRef?: React.MutableRefObject<() => void>;
+  findPrevRef?: React.MutableRefObject<() => void>;
+  findOpenRef?: React.MutableRefObject<boolean>;
   onUpdateDirty: (dirty: boolean) => void;
 }
 
@@ -46,6 +49,9 @@ export function useCodeMirrorView({
   saveFnRef,
   openFindRef,
   openGotoRef,
+  findNextRef,
+  findPrevRef,
+  findOpenRef,
   onUpdateDirty,
 }: UseCodeMirrorViewOpts) {
   const editorHostRef = useRef<HTMLDivElement>(null);
@@ -58,8 +64,10 @@ export function useCodeMirrorView({
 
   const wordWrapRef = useRef(wordWrap);
   const fontSizeRef = useRef(fontSize || EDITOR_FONT_SIZE_DEFAULT);
+  const effectiveReadonlyRef = useRef(effectiveReadonly);
   wordWrapRef.current = wordWrap;
   fontSizeRef.current = fontSize;
+  effectiveReadonlyRef.current = effectiveReadonly;
 
   const [langId, setLangId] = useState("plain");
   const [totalLines, setTotalLines] = useState<number>(1);
@@ -131,6 +139,19 @@ export function useCodeMirrorView({
           langCompartmentRef.current.of([]),
           wrapCompartmentRef.current.of(wordWrapRef.current ? EditorView.lineWrapping : []),
           readonlyCompartmentRef.current.of(EditorState.readOnly.of(isReadonly)),
+          EditorView.domEventHandlers({
+            mousedown: (event, view) => {
+              if (event.button === 2) {
+                const sel = view.state.selection.main;
+                if (!sel.empty) {
+                  // Prevent browser contenteditable from collapsing active selection on right-click
+                  event.preventDefault();
+                  return true;
+                }
+              }
+              return false;
+            },
+          }),
           keymap.of([
             {
               key: "Mod-s",
@@ -162,6 +183,42 @@ export function useCodeMirrorView({
               run: () => {
                 openGotoRef.current();
                 return true;
+              },
+            },
+            {
+              key: "F3",
+              preventDefault: true,
+              run: () => {
+                findNextRef?.current?.();
+                return true;
+              },
+            },
+            {
+              key: "Shift-F3",
+              preventDefault: true,
+              run: () => {
+                findPrevRef?.current?.();
+                return true;
+              },
+            },
+            {
+              key: "Enter",
+              run: () => {
+                if (findOpenRef?.current && effectiveReadonlyRef.current) {
+                  findNextRef?.current?.();
+                  return true;
+                }
+                return false;
+              },
+            },
+            {
+              key: "Shift-Enter",
+              run: () => {
+                if (findOpenRef?.current && effectiveReadonlyRef.current) {
+                  findPrevRef?.current?.();
+                  return true;
+                }
+                return false;
               },
             },
             {

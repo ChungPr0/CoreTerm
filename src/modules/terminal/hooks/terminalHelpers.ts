@@ -1,7 +1,11 @@
 import { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { Channel } from "@/shared/api/tauriClient";
-import { clampLaunchCols, clampLaunchRows } from "@/shared/defaults";
+import {
+  clampLaunchCols,
+  clampLaunchRows,
+  THEME_SELECTION_BG,
+} from "@/shared/defaults";
 import { copyText, readText } from "@/shared/utils/clipboard";
 
 export const XTERM_THEME = {
@@ -9,7 +13,7 @@ export const XTERM_THEME = {
   foreground: "#e2e8f0",
   cursor: "#38bdf8",
   cursorAccent: "#090d16",
-  selectionBackground: "rgba(56, 189, 248, 0.28)",
+  selectionBackground: THEME_SELECTION_BG,
   black: "#1e293b",
   red: "#f43f5e",
   green: "#10b981",

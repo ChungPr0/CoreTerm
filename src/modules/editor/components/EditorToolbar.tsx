@@ -97,20 +97,38 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           title={t("editor.word_wrap")}
           icon={<WrapText className="h-3.5 w-3.5" />}
         />
-        <IconButton
-          size="sm"
-          active={effectiveReadonly}
-          disabled={!editorReady || fileReadonly}
-          onClick={onToggleReadonly}
-          title={effectiveReadonly ? t("editor.unlock_edit") : t("editor.lock_readonly")}
-          icon={
-            effectiveReadonly ? (
-              <Lock className="h-3.5 w-3.5" />
-            ) : (
-              <LockOpen className="h-3.5 w-3.5" />
-            )
+        <div
+          title={
+            fileReadonly
+              ? t("editor.lock_readonly_file")
+              : effectiveReadonly
+                ? t("editor.unlock_edit")
+                : t("editor.lock_readonly")
           }
-        />
+          className="inline-flex items-center"
+        >
+          <IconButton
+            size="sm"
+            tone={effectiveReadonly ? "rose" : "default"}
+            active={effectiveReadonly}
+            disabled={!editorReady || fileReadonly}
+            onClick={onToggleReadonly}
+            className={
+              fileReadonly
+                ? "border-rose-500/50 bg-rose-500/15 text-rose-400 opacity-100 cursor-not-allowed hover:bg-rose-500/15 hover:text-rose-400"
+                : effectiveReadonly
+                  ? "border-rose-500/50 bg-rose-500/15 text-rose-400"
+                  : ""
+            }
+            icon={
+              effectiveReadonly ? (
+                <Lock className="h-3.5 w-3.5 text-rose-400" />
+              ) : (
+                <LockOpen className="h-3.5 w-3.5" />
+              )
+            }
+          />
+        </div>
         <IconButton
           size="sm"
           disabled={loading || saving || connecting}
@@ -125,22 +143,24 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         <div className="mx-1 h-4 w-px bg-slate-800" />
 
-        <Button
-          variant="secondary"
-          size="xs"
-          loading={saving}
+        <IconButton
+          size="sm"
           disabled={!editorReady || effectiveReadonly || !isDirty || saving || isRemoteOffline}
           onClick={onSave}
           title={`${t("editor.save")} (Ctrl+S)`}
-          leftIcon={<Save className="h-3 w-3" />}
           className={
             isDirty && !effectiveReadonly && !isRemoteOffline
-              ? "border-slate-500 bg-slate-700 text-slate-100 hover:bg-slate-600"
+              ? "text-slate-100 hover:text-white"
               : ""
           }
-        >
-          {saving ? t("editor.saving") : t("editor.save")}
-        </Button>
+          icon={
+            saving ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )
+          }
+        />
       </div>
     </div>
   );

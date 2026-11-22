@@ -2,6 +2,13 @@ import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import {
+  THEME_SEARCH_ACTIVE_BG,
+  THEME_SEARCH_ACTIVE_BORDER,
+  THEME_SEARCH_MATCH_BG,
+  THEME_SEARCH_MATCH_BORDER,
+  THEME_SELECTION_BG,
+} from "@/shared/defaults";
 
 export function createCoreTermEditorTheme(fontSizePx: number): Extension {
   return EditorView.theme(
@@ -32,7 +39,7 @@ export function createCoreTermEditorTheme(fontSizePx: number): Extension {
       },
       "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
         {
-          backgroundColor: "rgba(148, 163, 184, 0.24)",
+          backgroundColor: `${THEME_SELECTION_BG} !important`,
         },
       ".cm-activeLine": {
         backgroundColor: "rgba(255, 255, 255, 0.03)",
@@ -64,15 +71,19 @@ export function createCoreTermEditorTheme(fontSizePx: number): Extension {
         padding: "0 4px",
       },
       ".cm-searchMatch": {
-        backgroundColor: "rgba(226, 232, 240, 0.16)",
-        outline: "1px solid rgba(226, 232, 240, 0.35)",
+        backgroundColor: THEME_SEARCH_MATCH_BG,
+        outline: `1px solid ${THEME_SEARCH_MATCH_BORDER}`,
+        borderRadius: "2px",
       },
       ".cm-searchMatch.cm-searchMatch-selected": {
-        backgroundColor: "rgba(226, 232, 240, 0.32)",
-        outline: "1px solid #e2e8f0",
+        backgroundColor: `${THEME_SEARCH_ACTIVE_BG} !important`,
+        outline: `1.5px solid ${THEME_SEARCH_ACTIVE_BORDER} !important`,
+        borderRadius: "2px",
       },
       ".cm-selectionMatch": {
-        backgroundColor: "rgba(148, 163, 184, 0.14)",
+        backgroundColor: "rgba(148, 163, 184, 0.25)",
+        outline: "1px solid rgba(148, 163, 184, 0.45)",
+        borderRadius: "2px",
       },
       ".cm-matchingBracket": {
         backgroundColor: "rgba(148, 163, 184, 0.2)",

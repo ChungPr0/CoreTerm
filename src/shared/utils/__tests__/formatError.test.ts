@@ -191,6 +191,16 @@ describe("formatError utils", () => {
         "đường dẫn hệ thống được bảo vệ",
         "protected system path",
       ],
+      [
+        "Resource not found: Local path not found: D:\\Workspace\\missing.txt",
+        "Không tìm thấy đường dẫn cục bộ",
+        "Local path not found",
+      ],
+      [
+        "The system cannot find the file specified. (os error 2)",
+        "Tệp tin hoặc thư mục không tồn tại",
+        "File or directory not found",
+      ],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {

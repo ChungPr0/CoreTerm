@@ -201,7 +201,16 @@ pub fn read_text_file(raw_path: &str) -> CoreResult<FileContentDto> {
     if let Some(leaf) = path.file_name().and_then(|s| s.to_str()) {
         validate_windows_file_name(leaf)?;
     }
-    let pre_meta = fs::metadata(path)?;
+    let pre_meta = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(CoreError::NotFound(format!(
+                "Local path not found: {}",
+                clean_display_path(path)
+            )));
+        }
+        Err(err) => return Err(CoreError::Io(err)),
+    };
     if pre_meta.is_dir() {
         return Err(CoreError::Validation("Cannot edit a directory".to_string()));
     }
@@ -212,7 +221,16 @@ pub fn read_text_file(raw_path: &str) -> CoreResult<FileContentDto> {
     }
     validate_editable_size(pre_meta.len())?;
 
-    let file = fs::File::open(path)?;
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(CoreError::NotFound(format!(
+                "Local path not found: {}",
+                clean_display_path(path)
+            )));
+        }
+        Err(err) => return Err(CoreError::Io(err)),
+    };
     let meta = file.metadata()?;
     if meta.is_dir() {
         return Err(CoreError::Validation("Cannot edit a directory".to_string()));

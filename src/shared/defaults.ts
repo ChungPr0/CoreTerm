@@ -18,7 +18,7 @@ export const EDITOR_FONT_SIZE_DEFAULT = 13;
 export const EDITOR_FONT_SIZE_MIN = 10;
 export const EDITOR_FONT_SIZE_MAX = 22;
 export const EDITOR_FIND_MAX_MATCHES = 5000;
-export const EDITOR_FIND_TIME_BUDGET_MS = 25;
+export const EDITOR_FIND_TIME_BUDGET_MS = 200;
 export const EDITOR_SELECTION_SEED_MAX_LEN = 200;
 
 export const SFTP_SPLIT_RATIO_DEFAULT = 0.45;
@@ -26,6 +26,12 @@ export const SFTP_PANE_SPLIT_DEFAULT = 0.5;
 export const PRIVILEGED_PORT_THRESHOLD = 1024;
 export const MAX_ENTITY_NAME_LEN = 64;
 export const TOAST_COPY_MS = 2000;
+
+export const THEME_SELECTION_BG = "rgba(56, 189, 248, 0.40)";
+export const THEME_SEARCH_MATCH_BG = "rgba(234, 179, 8, 0.28)";
+export const THEME_SEARCH_MATCH_BORDER = "rgba(234, 179, 8, 0.60)";
+export const THEME_SEARCH_ACTIVE_BG = "rgba(245, 158, 11, 0.60)";
+export const THEME_SEARCH_ACTIVE_BORDER = "#f59e0b";
 
 export const SFTP_DISCONNECT_RE =
   /sender dropped|channel closed|disconnected|session not found|still connecting|connection lost/i;

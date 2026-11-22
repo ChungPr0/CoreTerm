@@ -50,6 +50,7 @@ export function useEditorFileSession({
   const alert = useAlert();
 
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -124,81 +125,92 @@ export function useEditorFileSession({
     };
   }, [isRemote, tab.tabId]);
 
-  const loadFile = useCallback(async () => {
-    const seq = ++loadSeqRef.current;
-    setLoading(true);
-    setLoadError(null);
-    setLoadErrDisconnected(false);
-    setConfirmDiscard(null);
-    onResetOverlays();
-    onDestroyEditor();
-
-    const detectedLang = detectEditorLanguage(file.name);
-    onSetLangId(detectedLang.id);
-
-    try {
-      const dto = isRemote
-        ? await sftpApi.sftpReadFile(tab.tabId, file.path)
-        : await localFsApi.localReadFile(file.path);
-      if (!mountedRef.current || seq !== loadSeqRef.current) return;
-
-      const detectedEol = detectLineEnding(dto.content);
-      const lfDoc = normalizeToLf(dto.content);
-      savedDocRef.current = lfDoc;
-      savedEolRef.current = detectedEol;
-      eolRef.current = detectedEol;
-
-      setEol(detectedEol);
-      setSavedEol(detectedEol);
-      setFileReadonly(dto.readonly);
-      setHasLoadedDoc(true);
-      onUpdateDirty(false);
-      onSetCursorPos({ line: 1, col: 1, selLen: 0 });
-      onSetTotalChars(lfDoc.length);
-      setLoading(false);
-
-      window.requestAnimationFrame(() => {
-        if (!mountedRef.current || seq !== loadSeqRef.current) return;
-        onMountEditor(lfDoc, dto.readonly || userReadonlyRef.current);
-        onApplyLanguage(detectedLang.id);
-      });
-    } catch (err) {
-      if (!mountedRef.current || seq !== loadSeqRef.current) return;
-      const raw = extractRawErrorMessage(err);
-      const disconnectedErr = isRemote && SFTP_DISCONNECT_RE.test(raw);
-      if (disconnectedErr) {
-        useTabsStore.getState().setSftpState(tab.tabId, "DISCONNECTED");
+  const loadFile = useCallback(
+    async (isRetry = false) => {
+      const seq = ++loadSeqRef.current;
+      if (isRetry) {
+        setRetrying(true);
+      } else {
+        setLoading(true);
+        setLoadError(null);
+        setLoadErrDisconnected(false);
       }
-      setLoading(false);
-      setHasLoadedDoc(false);
-      setLoadErrDisconnected(disconnectedErr);
-      setLoadError(formatLocalizedError(err, t));
-    }
-  }, [
-    file.name,
-    file.path,
-    isRemote,
-    onApplyLanguage,
-    onDestroyEditor,
-    onMountEditor,
-    onResetOverlays,
-    onSetCursorPos,
-    onSetLangId,
-    onSetTotalChars,
-    onUpdateDirty,
-    t,
-    tab.tabId,
-  ]);
+      setConfirmDiscard(null);
+      onResetOverlays();
+      onDestroyEditor();
+
+      const detectedLang = detectEditorLanguage(file.name);
+      onSetLangId(detectedLang.id);
+
+      try {
+        const dto = isRemote
+          ? await sftpApi.sftpReadFile(tab.tabId, file.path)
+          : await localFsApi.localReadFile(file.path);
+        if (!mountedRef.current || seq !== loadSeqRef.current) return;
+
+        const detectedEol = detectLineEnding(dto.content);
+        const lfDoc = normalizeToLf(dto.content);
+        savedDocRef.current = lfDoc;
+        savedEolRef.current = detectedEol;
+        eolRef.current = detectedEol;
+
+        setEol(detectedEol);
+        setSavedEol(detectedEol);
+        setFileReadonly(dto.readonly);
+        setHasLoadedDoc(true);
+        setLoadError(null);
+        setLoadErrDisconnected(false);
+        onUpdateDirty(false);
+        onSetCursorPos({ line: 1, col: 1, selLen: 0 });
+        onSetTotalChars(lfDoc.length);
+        setLoading(false);
+        setRetrying(false);
+
+        window.requestAnimationFrame(() => {
+          if (!mountedRef.current || seq !== loadSeqRef.current) return;
+          onMountEditor(lfDoc, dto.readonly || userReadonlyRef.current);
+          onApplyLanguage(detectedLang.id);
+        });
+      } catch (err) {
+        if (!mountedRef.current || seq !== loadSeqRef.current) return;
+        const raw = extractRawErrorMessage(err);
+        const disconnectedErr = isRemote && SFTP_DISCONNECT_RE.test(raw);
+        if (disconnectedErr) {
+          useTabsStore.getState().setSftpState(tab.tabId, "DISCONNECTED");
+        }
+        setLoading(false);
+        setRetrying(false);
+        setHasLoadedDoc(false);
+        setLoadErrDisconnected(disconnectedErr);
+        setLoadError(formatLocalizedError(err, t));
+      }
+    },
+    [
+      file.name,
+      file.path,
+      isRemote,
+      onApplyLanguage,
+      onDestroyEditor,
+      onMountEditor,
+      onResetOverlays,
+      onSetCursorPos,
+      onSetLangId,
+      onSetTotalChars,
+      onUpdateDirty,
+      t,
+      tab.tabId,
+    ]
+  );
 
   const connectSftp = useCallback(
-    async (reloadAfter: boolean): Promise<boolean> => {
+    async (reloadAfter: boolean, isRetry = false): Promise<boolean> => {
       if (!isRemote || tab.hostId === LOCAL_HOST_ID) return false;
       const seq = ++connectSeqRef.current;
       connectingSeqRef.current = seq;
       const isStale = () => !mountedRef.current || connectSeqRef.current !== seq;
 
       setConnecting(true);
-      if (!hasLoadedRef.current) {
+      if (!hasLoadedRef.current && !isRetry) {
         setLoading(true);
         setLoadError(null);
       }
@@ -211,13 +223,14 @@ export function useEditorFileSession({
         setConnecting(false);
         useTabsStore.getState().setSftpState(tab.tabId, "CONNECTED");
         if (reloadAfter || !hasLoadedRef.current) {
-          await loadFile();
+          await loadFile(isRetry);
         }
         return true;
       } catch (err) {
         if (isStale()) return false;
         setConnecting(false);
         setLoading(false);
+        setRetrying(false);
         useTabsStore.getState().setSftpState(tab.tabId, "ERROR");
         const localized = formatLocalizedError(err, t);
         if (!hasLoadedRef.current) {
@@ -300,6 +313,7 @@ export function useEditorFileSession({
 
   return {
     loading,
+    retrying,
     connecting,
     saving,
     loadError,
