@@ -2,6 +2,8 @@ import {
   Copy,
   Download,
   Edit3,
+  FileCode2,
+  FilePlus,
   FolderOpen,
   FolderPlus,
   Pause,
@@ -26,9 +28,11 @@ interface BuildPaneMenuOpts {
   showLocal: boolean;
   t: (key: string, params?: Record<string, string | number>) => string;
   onOpenDir: (path: string) => void;
+  onEditFile?: (item: FileItem) => void;
   onTransfer: (paths: string[]) => void;
   onUploadFiles?: () => void;
   onUploadFolder?: () => void;
+  onNewFile?: () => void;
   onNewFolder: () => void;
   onRename: (item: FileItem) => void;
   onChmod?: (item: FileItem) => void;
@@ -61,9 +65,11 @@ export function buildPaneMenu(opts: BuildPaneMenuOpts): ContextMenuEntry[] {
     showLocal,
     t,
     onOpenDir,
+    onEditFile,
     onTransfer,
     onUploadFiles,
     onUploadFolder,
+    onNewFile,
     onNewFolder,
     onRename,
     onChmod,
@@ -95,6 +101,15 @@ export function buildPaneMenu(opts: BuildPaneMenuOpts): ContextMenuEntry[] {
         },
         { type: "separator", id: "remote-empty-sep" }
       );
+    }
+    if (onNewFile) {
+      entries.push({
+        id: `${kind}-new-file`,
+        label: t("ctx.sftp_new_file"),
+        icon: <FilePlus className="h-3.5 w-3.5" />,
+        disabled: remoteLocked,
+        onSelect: onNewFile,
+      });
     }
     entries.push(
       {
@@ -158,6 +173,15 @@ export function buildPaneMenu(opts: BuildPaneMenuOpts): ContextMenuEntry[] {
       icon: <FolderOpen className="h-3.5 w-3.5" />,
       disabled: remoteLocked,
       onSelect: () => onOpenDir(item.path),
+    });
+  } else if (onEditFile) {
+    entries.push({
+      id: `${kind}-edit`,
+      label: t("ctx.sftp_edit"),
+      icon: <FileCode2 className="h-3.5 w-3.5 text-[#58a6ff]" />,
+      shortcut: "Enter",
+      disabled: remoteLocked,
+      onSelect: () => onEditFile(item),
     });
   }
 

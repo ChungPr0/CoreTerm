@@ -1,7 +1,5 @@
 import React from "react";
-import { ArrowDown, ArrowUp, CaseSensitive, Regex, Search, X } from "lucide-react";
-import { useI18n } from "@/shared/i18n";
-import { IconButton } from "@/shared/ui";
+import { FindBar } from "@/shared/ui";
 
 interface TerminalFindBarProps {
   isOpen: boolean;
@@ -19,112 +17,6 @@ interface TerminalFindBarProps {
   onClose: () => void;
 }
 
-export const TerminalFindBar: React.FC<TerminalFindBarProps> = ({
-  isOpen,
-  inputRef,
-  query,
-  onChangeQuery,
-  caseSensitive,
-  onToggleCaseSensitive,
-  regex,
-  onToggleRegex,
-  invalidRegex,
-  matches,
-  onFindPrev,
-  onFindNext,
-  onClose,
-}) => {
-  const { t } = useI18n();
-  if (!isOpen) return null;
-
-  const statusText = invalidRegex
-    ? t("terminal.find_invalid_regex")
-    : !query
-      ? ""
-      : matches.count > 0
-        ? `${matches.index || 1}/${matches.count}`
-        : t("terminal.find_no_results");
-
-  return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="absolute top-2.5 right-3 z-30 flex w-[364px] max-w-[calc(100%-24px)] items-center gap-1 rounded-xl border border-slate-700/80 bg-slate-900/95 px-2.5 py-1.5 text-xs shadow-[0_12px_32px_rgba(0,0,0,0.7)] backdrop-blur-md select-none"
-    >
-      <Search className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        onChange={(e) => onChangeQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            e.stopPropagation();
-            onClose();
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.shiftKey) onFindPrev();
-            else onFindNext();
-          }
-        }}
-        placeholder={t("terminal.find_placeholder")}
-        className={`flex-1 min-w-0 bg-transparent px-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none select-text ${
-          invalidRegex ? "text-rose-300" : ""
-        }`}
-      />
-
-      <span
-        title={statusText || undefined}
-        className={`w-[82px] shrink-0 text-right font-mono text-[11px] tabular-nums truncate ${
-          invalidRegex || (query && matches.count === 0) ? "text-rose-400" : "text-slate-400"
-        }`}
-      >
-        {statusText}
-      </span>
-
-      <IconButton
-        size="sm"
-        tone="sky"
-        active={caseSensitive}
-        onClick={onToggleCaseSensitive}
-        title={t("terminal.find_case")}
-        icon={<CaseSensitive className="w-3.5 h-3.5" />}
-      />
-
-      <IconButton
-        size="sm"
-        tone="sky"
-        active={regex}
-        onClick={onToggleRegex}
-        title={t("terminal.find_regex")}
-        icon={<Regex className="w-3.5 h-3.5" />}
-      />
-
-      <div className="mx-0.5 h-4 w-px bg-slate-800" />
-
-      <IconButton
-        size="sm"
-        disabled={!query || invalidRegex}
-        onClick={onFindPrev}
-        title={t("terminal.find_prev")}
-        icon={<ArrowUp className="w-3.5 h-3.5" />}
-      />
-
-      <IconButton
-        size="sm"
-        disabled={!query || invalidRegex}
-        onClick={onFindNext}
-        title={t("terminal.find_next")}
-        icon={<ArrowDown className="w-3.5 h-3.5" />}
-      />
-
-      <IconButton
-        size="sm"
-        onClick={onClose}
-        title={t("common.close")}
-        icon={<X className="w-3.5 h-3.5" />}
-      />
-    </div>
-  );
-};
+export const TerminalFindBar: React.FC<TerminalFindBarProps> = (props) => (
+  <FindBar {...props} allowReplace={false} />
+);

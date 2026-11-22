@@ -236,6 +236,31 @@ describe("buildTabContextItems", () => {
       tab: baseTab({ hostId: "h1", tabKind: "sftp" }),
     });
     expect(withoutProfile.map((i) => i.id)).not.toContain("tab-ssh-open");
+
+    const editorIds = buildTabContextItems({
+      ...baseOpts,
+      tabsCount: 2,
+      allProfiles: [HOST_PROFILE],
+      tab: baseTab({
+        hostId: "h1",
+        tabKind: "editor",
+        title: "nginx.conf",
+        editorFile: {
+          kind: "remote",
+          path: "/etc/nginx/nginx.conf",
+          name: "nginx.conf",
+          hostLabel: "prod-1",
+        },
+      }),
+    }).map((i) => i.id);
+    expect(editorIds).toEqual([
+      "tab-find",
+      "tab-copy-path",
+      "tab-reconnect",
+      "sep-editor-close",
+      "tab-close",
+      "tab-close-others",
+    ]);
   });
 });
 

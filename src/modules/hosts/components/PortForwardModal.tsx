@@ -1,20 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle2,
-  Info,
-  Network,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { AlertCircle, Info, Network, X } from "lucide-react";
 import type { ForwardType } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { Button, Input, ModalShell, Select, useAlert } from "@/shared/ui";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import { hostsApi } from "../api/hostsApi";
 import type { PortProbeResultDto } from "../types";
+import {
+  findDuplicateForwardRule,
+  isInvalidForwardHostOrAddr,
+  isPrivilegedPort,
+  isValidPortNumber,
+} from "../utils/portForwardValidation";
 import type { DraftPortForward } from "./hostFormTypes";
+import { PortForwardFlowPreview } from "./PortForwardFlowPreview";
+import { PortForwardStatusBadge } from "./PortForwardStatusBadge";
 
 interface PortForwardModalProps {
   isOpen: boolean;
@@ -24,11 +24,6 @@ interface PortForwardModalProps {
   onClose: () => void;
   onSave: (rule: DraftPortForward) => void;
 }
-
-const normalizeAddr = (addr: string) => {
-  const t = addr.trim().toLowerCase();
-  return !t || t === "localhost" ? "127.0.0.1" : t;
-};
 
 export const PortForwardModal: React.FC<PortForwardModalProps> = ({
   isOpen,
@@ -52,15 +47,8 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
   const [portProbe, setPortProbe] = useState<PortProbeResultDto | null>(null);
   const [isCheckingPort, setIsCheckingPort] = useState(false);
 
-  const isPrivilegedLocal = useMemo(() => {
-    const p = Number(portLocal);
-    return Number.isInteger(p) && p > 0 && p < 1024;
-  }, [portLocal]);
-
-  const isPrivilegedRemote = useMemo(() => {
-    const p = Number(portRemote);
-    return Number.isInteger(p) && p > 0 && p < 1024;
-  }, [portRemote]);
+  const isPrivilegedLocal = useMemo(() => isPrivilegedPort(portLocal), [portLocal]);
+  const isPrivilegedRemote = useMemo(() => isPrivilegedPort(portRemote), [portRemote]);
 
   const portLocalInputRef = useRef<HTMLInputElement>(null);
   const ipRemoteInputRef = useRef<HTMLInputElement>(null);
@@ -101,18 +89,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
       return;
     }
     const portNum = Number(portLocal);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
-      setPortProbe(null);
-      setIsCheckingPort(false);
-      return;
-    }
-
-    const cleanIp = ipLocal.trim();
-    if (
-      cleanIp.startsWith("-") ||
-      /\s/.test(cleanIp) ||
-      /[;`&$|]/.test(cleanIp)
-    ) {
+    if (!isValidPortNumber(portNum) || isInvalidForwardHostOrAddr(ipLocal)) {
       setPortProbe(null);
       setIsCheckingPort(false);
       return;
@@ -142,42 +119,19 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
     };
   }, [isOpen, portLocal, ipLocal, forwardType]);
 
-  const duplicateInfo = useMemo(() => {
-    const listenPortNum = forwardType === "REMOTE" ? Number(portRemote) : Number(portLocal);
-    const listenAddr = forwardType === "REMOTE" ? ipRemote : ipLocal;
-
-    if (!Number.isInteger(listenPortNum) || listenPortNum < 1 || listenPortNum > 65535) {
-      return { isDuplicate: false };
-    }
-
-    const curNormAddr = normalizeAddr(listenAddr);
-    const curIsLocal = forwardType === "LOCAL" || forwardType === "DYNAMIC";
-
-    for (let i = 0; i < existingRules.length; i++) {
-      if (i === editingIndex) continue;
-      const other = existingRules[i];
-      if (!other.is_enabled) continue;
-
-      const otherIsLocal = other.forward_type === "LOCAL" || other.forward_type === "DYNAMIC";
-
-      if (curIsLocal && otherIsLocal && other.bind_port === listenPortNum) {
-        const otherNorm = normalizeAddr(other.bind_address);
-        if (curNormAddr === otherNorm || curNormAddr === "0.0.0.0" || otherNorm === "0.0.0.0") {
-          return { isDuplicate: true, conflictingName: other.label };
-        }
-      } else if (
-        forwardType === "REMOTE" &&
-        other.forward_type === "REMOTE" &&
-        other.bind_port === listenPortNum
-      ) {
-        const otherNorm = normalizeAddr(other.bind_address);
-        if (curNormAddr === otherNorm || curNormAddr === "0.0.0.0" || otherNorm === "0.0.0.0") {
-          return { isDuplicate: true, conflictingName: other.label };
-        }
-      }
-    }
-    return { isDuplicate: false };
-  }, [forwardType, portLocal, ipLocal, portRemote, ipRemote, existingRules, editingIndex]);
+  const duplicateInfo = useMemo(
+    () =>
+      findDuplicateForwardRule({
+        forwardType,
+        portLocal,
+        ipLocal,
+        portRemote,
+        ipRemote,
+        existingRules,
+        editingIndex,
+      }),
+    [forwardType, portLocal, ipLocal, portRemote, ipRemote, existingRules, editingIndex]
+  );
 
   const handleSaveRule = (e?: React.MouseEvent) => {
     if (e) {
@@ -186,14 +140,14 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
     }
 
     const portLocalNum = Number(portLocal);
-    if (!Number.isInteger(portLocalNum) || portLocalNum < 1 || portLocalNum > 65535) {
+    if (!isValidPortNumber(portLocalNum)) {
       scrollAndFocusInput(portLocalInputRef.current);
       alert.error(t("errors.forward_port_range"));
       return;
     }
 
     const cleanIpLocal = ipLocal.trim() || "127.0.0.1";
-    if (cleanIpLocal.startsWith("-") || /\s/.test(cleanIpLocal) || /[;`&$|]/.test(cleanIpLocal)) {
+    if (isInvalidForwardHostOrAddr(cleanIpLocal)) {
       alert.error(t("errors.forward_bind_address_invalid"));
       return;
     }
@@ -207,16 +161,12 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
         alert.error(t("errors.forward_target_required"));
         return;
       }
-      if (
-        cleanIpRemote.startsWith("-") ||
-        /\s/.test(cleanIpRemote) ||
-        /[;`&$|]/.test(cleanIpRemote)
-      ) {
+      if (isInvalidForwardHostOrAddr(cleanIpRemote)) {
         scrollAndFocusInput(ipRemoteInputRef.current);
         alert.error(t("errors.forward_target_host_invalid"));
         return;
       }
-      if (!Number.isInteger(portRemoteNum) || portRemoteNum < 1 || portRemoteNum > 65535) {
+      if (!isValidPortNumber(portRemoteNum)) {
         scrollAndFocusInput(portRemoteInputRef.current);
         alert.error(t("errors.forward_port_range"));
         return;
@@ -225,7 +175,9 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
     const listenPort = forwardType === "REMOTE" ? portRemoteNum : portLocalNum;
     if (duplicateInfo.isDuplicate) {
-      scrollAndFocusInput(forwardType === "REMOTE" ? portRemoteInputRef.current : portLocalInputRef.current);
+      scrollAndFocusInput(
+        forwardType === "REMOTE" ? portRemoteInputRef.current : portLocalInputRef.current
+      );
       alert.error(
         t("forward.duplicate_port_warning", {
           port: listenPort,
@@ -278,72 +230,6 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
 
     onSave(ruleData);
     onClose();
-  };
-
-  const renderLocalStatusBadge = () => {
-    if (forwardType === "REMOTE") return null;
-
-    if (portProbe?.status === "CONFLICT_EXTERNAL") {
-      const tooltipText = portProbe.conflicting_process_name
-        ? `${portProbe.conflicting_process_name}${
-            portProbe.conflicting_pid != null ? ` (PID: ${portProbe.conflicting_pid})` : ""
-          }`
-        : t("forward.port_occupied_unknown", { port: portLocal });
-
-      return (
-        <span
-          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-          title={tooltipText}
-        >
-          <AlertCircle className="w-3 h-3 shrink-0" />
-          <span>{t("forward.port_busy")}</span>
-        </span>
-      );
-    }
-
-    if (portProbe?.status === "SHARED_WITH_ACTIVE_TAB") {
-      return (
-        <span
-          className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-          title={t("forward.port_active_tab", { port: portLocal })}
-        >
-          <Info className="w-3 h-3 shrink-0" />
-          <span>{t("forward.port_in_use_tab")}</span>
-        </span>
-      );
-    }
-
-    if (isPrivilegedLocal) {
-      return (
-        <span
-          className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-          title={t("forward.port_privileged")}
-        >
-          <AlertCircle className="w-3 h-3 shrink-0" />
-          <span>{t("forward.port_warning")}</span>
-        </span>
-      );
-    }
-
-    if (isCheckingPort) {
-      return (
-        <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 font-sans whitespace-nowrap shrink-0">
-          <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
-          <span>{t("forward.checking")}</span>
-        </span>
-      );
-    }
-
-    if (portProbe?.status === "AVAILABLE") {
-      return (
-        <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0">
-          <CheckCircle2 className="w-3 h-3 shrink-0" />
-          <span>{t("forward.port_ready")}</span>
-        </span>
-      );
-    }
-
-    return null;
   };
 
   if (!isOpen) return null;
@@ -411,7 +297,13 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                   <span>LOCAL (SOCKS5)</span>
                 </div>
-                {renderLocalStatusBadge()}
+                <PortForwardStatusBadge
+                  forwardType={forwardType}
+                  portLocal={portLocal}
+                  portProbe={portProbe}
+                  isPrivilegedLocal={isPrivilegedLocal}
+                  isCheckingPort={isCheckingPort}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -459,7 +351,13 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                     <span>LOCAL</span>
                   </div>
-                  {renderLocalStatusBadge()}
+                  <PortForwardStatusBadge
+                    forwardType={forwardType}
+                    portLocal={portLocal}
+                    portProbe={portProbe}
+                    isPrivilegedLocal={isPrivilegedLocal}
+                    isCheckingPort={isCheckingPort}
+                  />
                 </div>
 
                 <Input
@@ -543,43 +441,19 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
           </div>
         )}
 
-        <div className="px-3 py-2 rounded bg-slate-950/80 border border-slate-800 text-[11px] font-mono flex items-center justify-between text-slate-300 overflow-x-auto">
-          <div className="flex items-center gap-2 whitespace-nowrap">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-sans font-medium">
-              {t("forward.flow_preview")}:
-            </span>
-            {forwardType === "LOCAL" && (
-              <span className="flex items-center gap-1.5 text-emerald-400">
-                <span>Local {ipLocal.trim() || "127.0.0.1"}:{portLocal || "?"}</span>
-                <ArrowRight className="w-3 h-3 text-slate-500" />
-                <span>Remote {ipRemote.trim() || "localhost"}:{portRemote || "?"}</span>
-              </span>
-            )}
-            {forwardType === "REMOTE" && (
-              <span className="flex items-center gap-1.5 text-purple-400">
-                <span>Remote {ipRemote.trim() || "127.0.0.1"}:{portRemote || "?"}</span>
-                <ArrowRight className="w-3 h-3 text-slate-500" />
-                <span>Local {ipLocal.trim() || "localhost"}:{portLocal || "?"}</span>
-              </span>
-            )}
-            {forwardType === "DYNAMIC" && (
-              <span className="flex items-center gap-1.5 text-amber-400">
-                <span>Local {ipLocal.trim() || "127.0.0.1"}:{portLocal || "?"} (SOCKS5)</span>
-              </span>
-            )}
-          </div>
-        </div>
+        <PortForwardFlowPreview
+          forwardType={forwardType}
+          ipLocal={ipLocal}
+          portLocal={portLocal}
+          ipRemote={ipRemote}
+          portRemote={portRemote}
+        />
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
           <Button variant="secondary" size="md" type="button" onClick={onClose}>
             {t("forward.cancel_edit")}
           </Button>
-          <Button
-            variant="primary"
-            size="md"
-            type="button"
-            onClick={handleSaveRule}
-          >
+          <Button variant="primary" size="md" type="button" onClick={handleSaveRule}>
             {initialRule ? t("forward.update") : t("forward.add")}
           </Button>
         </div>

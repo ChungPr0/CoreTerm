@@ -11,9 +11,8 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{join_remote_path, next_numbered_name, parent_remote_path, remote_leaf_name};
 use crate::infra::local_fs::clean_display_path;
 use crate::ipc::dto::SftpTransferConflictEventDto;
+pub use crate::ipc::events::EVENT_SFTP_TRANSFER_CONFLICT;
 use crate::sftp::session::RemoteSftpClient;
-
-pub const EVENT_SFTP_TRANSFER_CONFLICT: &str = "sftp:transfer_conflict";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConflictPolicy {

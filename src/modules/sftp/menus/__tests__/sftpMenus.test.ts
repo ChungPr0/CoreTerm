@@ -40,4 +40,57 @@ describe("sftpMenus", () => {
     expect(ids).not.toContain("sftp-reconnect");
     expect(ids).not.toContain("sftp-reconnect-tab");
   });
+
+  it("includes New File on empty area and Edit on single file item", () => {
+    const onNewFile = vi.fn();
+    const emptyItems = buildPaneMenu({
+      kind: "remote",
+      cwd: "/home/user",
+      item: null,
+      selected: [],
+      connected: true,
+      showLocal: true,
+      t,
+      onOpenDir: vi.fn(),
+      onTransfer: vi.fn(),
+      onNewFile,
+      onNewFolder: vi.fn(),
+      onRename: vi.fn(),
+      onCopyPath: vi.fn(),
+      onDelete: vi.fn(),
+      onRefresh: vi.fn(),
+    });
+    expect(emptyItems.map((i) => i.id)).toContain("remote-new-file");
+
+    const onEditFile = vi.fn();
+    const fileItem = {
+      name: "nginx.conf",
+      path: "/etc/nginx/nginx.conf",
+      isDir: false,
+      isSymlink: false,
+      size: 512,
+    };
+    const fileMenu = buildPaneMenu({
+      kind: "remote",
+      cwd: "/etc/nginx",
+      item: fileItem,
+      selected: [fileItem.path],
+      connected: true,
+      showLocal: true,
+      t,
+      onOpenDir: vi.fn(),
+      onEditFile,
+      onTransfer: vi.fn(),
+      onNewFolder: vi.fn(),
+      onRename: vi.fn(),
+      onCopyPath: vi.fn(),
+      onDelete: vi.fn(),
+      onRefresh: vi.fn(),
+    });
+    expect(fileMenu[0].id).toBe("remote-edit");
+    if (fileMenu[0].type !== "separator") {
+      fileMenu[0].onSelect?.();
+    }
+    expect(onEditFile).toHaveBeenCalledWith(fileItem);
+  });
 });

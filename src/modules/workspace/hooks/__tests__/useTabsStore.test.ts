@@ -331,4 +331,90 @@ describe("useTabsStore", () => {
     useTabsStore.getState().setSftpModalOpen("t1", false);
     expect(useTabsStore.getState().sftpModalByTab["t1"]).toBeUndefined();
   });
+
+  it("opens independent parallel editor tabs, deduplicates same file, tracks dirty & SFTP state", () => {
+    const id1 = useTabsStore.getState().openEditorTab(
+      {
+        kind: "remote",
+        path: "/etc/nginx/nginx.conf",
+        name: "nginx.conf",
+        hostLabel: "prod-1",
+      },
+      "h1"
+    );
+    const id2 = useTabsStore.getState().openEditorTab(
+      {
+        kind: "remote",
+        path: "/etc/hosts",
+        name: "hosts",
+        hostLabel: "prod-1",
+      },
+      "h1"
+    );
+    expect(id1).not.toBe(id2);
+    expect(useTabsStore.getState().activeTabId).toBe(id2);
+    expect(useTabsStore.getState().openedSftpTabs[id1]).toBe(true);
+
+    const dupId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "remote",
+        path: "/etc/nginx/nginx.conf",
+        name: "nginx.conf",
+        hostLabel: "prod-1",
+      },
+      "h1"
+    );
+    expect(dupId).toBe(id1);
+    expect(useTabsStore.getState().activeTabId).toBe(id1);
+
+    useTabsStore.getState().setEditorDirty(id1, true);
+    expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.editorFile?.dirty).toBe(true);
+
+    useTabsStore.getState().startRenamingTab(id1);
+    expect(useTabsStore.getState().renamingTabId).toBeNull();
+    useTabsStore.getState().toggleSftpSplit(id1);
+    expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.sftpOpen).toBeUndefined();
+
+    useTabsStore.getState().setSftpState(id1, "CONNECTED");
+    expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.state).toBe("ONLINE");
+
+    useTabsStore.getState().closeTab("t1");
+    expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.state).toBe("ONLINE");
+
+    useTabsStore.getState().setSftpState(id1, "DISCONNECTED");
+    expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.state).toBe("DISCONNECTED");
+  });
+
+  it("normalizes Windows local editor paths and guards dirty editor tabs on closeOtherTabs", () => {
+    const localId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "local",
+        path: "C:\\Users\\Dev\\Config.json",
+        name: "Config.json",
+        hostLabel: "Local",
+      },
+      "local"
+    );
+    const sameLocalId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "local",
+        path: "c:/users/dev/config.json",
+        name: "config.json",
+        hostLabel: "Local",
+      },
+      "local"
+    );
+    expect(sameLocalId).toBe(localId);
+
+    // Mark the local editor dirty and run closeOtherTabs keeping t1
+    useTabsStore.getState().setEditorDirty(localId, true);
+    const disposed: string[] = [];
+    useTabsStore.getState().closeOtherTabs("t1", (tab) => disposed.push(tab.tabId));
+
+    // t2 is closed, but dirty editor tab is preserved and prompted to close
+    expect(disposed).toEqual(["t2"]);
+    expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual(["t1", localId]);
+    expect(useTabsStore.getState().activeTabId).toBe(localId);
+    expect(useTabsStore.getState().editorCloseSeqByTab[localId]).toBe(1);
+  });
 });

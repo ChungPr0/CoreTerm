@@ -6,9 +6,13 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
 use tracing::warn;
 
+use crate::core::defaults::LOCAL_HOST_ID;
 use crate::ipc::dto::{
     PortForwardStatusDto, SessionAuthPromptEventDto, SessionHostKeyPromptEventDto,
     SessionStatusEventDto,
+};
+use crate::ipc::events::{
+    EVENT_SESSION_AUTH_PROMPT, EVENT_SESSION_HOST_KEY_PROMPT, EVENT_SESSION_STATUS,
 };
 use crate::ssh::ActiveTunnelRegistry;
 
@@ -46,7 +50,7 @@ pub(super) fn emit_status(
         active_local_forwards,
         error_message,
     };
-    if let Err(e) = app.emit("session:status", payload) {
+    if let Err(e) = app.emit(EVENT_SESSION_STATUS, payload) {
         warn!("Failed to emit session:status event for tab {tab_id}: {e}");
     }
 }
@@ -66,11 +70,11 @@ pub(super) fn emit_auth_prompt(
         prompt_text,
         attempt,
     };
-    let _ = app.emit("session:auth_prompt", payload);
+    let _ = app.emit(EVENT_SESSION_AUTH_PROMPT, payload);
 }
 
 pub(super) fn emit_host_key_prompt(app: &AppHandle, payload: SessionHostKeyPromptEventDto) {
-    let _ = app.emit("session:host_key_prompt", payload);
+    let _ = app.emit(EVENT_SESSION_HOST_KEY_PROMPT, payload);
 }
 
 pub(super) const PTY_BATCHER_CHANNEL_CAPACITY: usize = 256;
@@ -90,8 +94,7 @@ pub(super) fn spawn_output_batcher(
             };
             batch_buf.extend_from_slice(&first_chunk);
 
-            let deadline =
-                tokio::time::Instant::now() + Duration::from_millis(BATCH_WINDOW_MS);
+            let deadline = tokio::time::Instant::now() + Duration::from_millis(BATCH_WINDOW_MS);
             while batch_buf.len() < MAX_BATCH_SIZE {
                 match tokio::time::timeout_at(deadline, rx.recv()).await {
                     Ok(Some(more)) => batch_buf.extend_from_slice(&more),
@@ -121,9 +124,7 @@ fn resolve_exit_status(
         ("AUTH_FAILED", Some(reason))
     } else if let Some(reason) = connect_failed_reason {
         ("ERROR", Some(reason))
-    } else if host_id == "local" {
-        // Local shells (e.g. cmd.exe, bash) inherit the last command's non-zero exit code
-        // when the user runs `exit`; treat post-spawn exit as normal disconnect, not a shell launch error.
+    } else if host_id == LOCAL_HOST_ID {
         ("DISCONNECTED", None)
     } else {
         match exit_code {

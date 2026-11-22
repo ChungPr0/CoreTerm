@@ -11,6 +11,7 @@ import { useI18n } from "@/shared/i18n";
 import { Button, IconButton, Switch } from "@/shared/ui";
 import { hostsApi } from "../api/hostsApi";
 import type { PortProbeResultDto } from "../types";
+import { buildForwardConflictMap } from "../utils/portForwardValidation";
 import type { DraftPortForward } from "./hostFormTypes";
 
 interface HostPortForwardSectionProps {
@@ -20,11 +21,6 @@ interface HostPortForwardSectionProps {
   onOpenAddRule: () => void;
   onOpenEditRule: (idx: number) => void;
 }
-
-const normalizeAddr = (addr: string) => {
-  const t = addr.trim().toLowerCase();
-  return !t || t === "localhost" ? "127.0.0.1" : t;
-};
 
 export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
   forwards,
@@ -38,39 +34,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
   const [probedStatuses, setProbedStatuses] = useState<Record<number, PortProbeResultDto>>({});
   const [isProbingAll, setIsProbingAll] = useState(false);
 
-  const listConflictMap = useMemo(() => {
-    const map = new Map<number, string>();
-    for (let i = 0; i < forwards.length; i++) {
-      const a = forwards[i];
-      if (!a.is_enabled) continue;
-      const aIsLocal = a.forward_type === "LOCAL" || a.forward_type === "DYNAMIC";
-      const aNorm = normalizeAddr(a.bind_address);
-
-      for (let j = i + 1; j < forwards.length; j++) {
-        const b = forwards[j];
-        if (!b.is_enabled) continue;
-        const bIsLocal = b.forward_type === "LOCAL" || b.forward_type === "DYNAMIC";
-        const bNorm = normalizeAddr(b.bind_address);
-
-        if (aIsLocal && bIsLocal && a.bind_port === b.bind_port) {
-          if (aNorm === bNorm || aNorm === "0.0.0.0" || bNorm === "0.0.0.0") {
-            map.set(i, b.label);
-            map.set(j, a.label);
-          }
-        } else if (
-          a.forward_type === "REMOTE" &&
-          b.forward_type === "REMOTE" &&
-          a.bind_port === b.bind_port
-        ) {
-          if (aNorm === bNorm || aNorm === "0.0.0.0" || bNorm === "0.0.0.0") {
-            map.set(i, b.label);
-            map.set(j, a.label);
-          }
-        }
-      }
-    }
-    return map;
-  }, [forwards]);
+  const listConflictMap = useMemo(() => buildForwardConflictMap(forwards), [forwards]);
 
   const handleProbeAll = useCallback(async () => {
     setIsProbingAll(true);

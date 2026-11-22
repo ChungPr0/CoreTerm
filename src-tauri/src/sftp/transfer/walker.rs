@@ -2,24 +2,31 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 
+use tokio_util::sync::CancellationToken;
+
 use super::job::{TransferDirection, TransferJobSpec};
+use crate::core::defaults::{SFTP_MAX_WALK_DEPTH, SFTP_MAX_WALK_ENTRIES};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{
-    is_win_drive_root, join_remote_path, normalize_remote_path, remote_leaf_name,
-    safe_join_windows_relative,
+    clean_display_path, is_win_drive_root, join_remote_path, normalize_remote_path,
+    remote_leaf_name, safe_join_windows_relative,
 };
-use crate::infra::local_fs::clean_display_path;
 use crate::sftp::session::{fmt_sftp_err, RemoteSftpClient};
 
 pub async fn collect_upload_plan(
     client: &RemoteSftpClient,
     local_paths: Vec<String>,
     remote_dir: &str,
+    cancel_token: &CancellationToken,
 ) -> CoreResult<Vec<TransferJobSpec>> {
     let target_root = normalize_remote_path(remote_dir);
     let mut specs = Vec::new();
+    let mut visited_count = 0usize;
 
     for raw_local in local_paths {
+        if cancel_token.is_cancelled() {
+            return Err(CoreError::Sftp("Connection cancelled".to_string()));
+        }
         let root_path = PathBuf::from(raw_local.trim());
         if !root_path.exists() {
             return Err(CoreError::NotFound(format!(
@@ -49,12 +56,21 @@ pub async fn collect_upload_plan(
         if root_path.is_dir() {
             let dest_base = join_remote_path(&target_root, &root_name)?;
             client.ensure_remote_dir_all(&dest_base).await?;
-            let mut queue: VecDeque<(PathBuf, String)> = VecDeque::new();
-            queue.push_back((root_path, dest_base));
+            let mut queue: VecDeque<(PathBuf, String, usize)> = VecDeque::new();
+            queue.push_back((root_path, dest_base, 0));
 
-            while let Some((cur_local, cur_remote)) = queue.pop_front() {
+            while let Some((cur_local, cur_remote, depth)) = queue.pop_front() {
+                if cancel_token.is_cancelled() {
+                    return Err(CoreError::Sftp("Connection cancelled".to_string()));
+                }
+                if depth > SFTP_MAX_WALK_DEPTH || visited_count > SFTP_MAX_WALK_ENTRIES {
+                    return Err(CoreError::Validation(
+                        "Directory tree exceeds maximum transfer depth or entry limit".to_string(),
+                    ));
+                }
                 for item in fs::read_dir(&cur_local)? {
                     let Ok(entry) = item else { continue };
+                    visited_count += 1;
                     let child_name = entry.file_name().to_string_lossy().into_owned();
                     let child_local = entry.path();
                     let Ok(child_meta) = fs::symlink_metadata(&child_local) else {
@@ -68,7 +84,7 @@ pub async fn collect_upload_plan(
                     };
                     if child_meta.is_dir() {
                         client.ensure_remote_dir_all(&child_remote).await?;
-                        queue.push_back((child_local, child_remote));
+                        queue.push_back((child_local, child_remote, depth + 1));
                     } else if child_meta.is_file() {
                         specs.push(TransferJobSpec {
                             direction: TransferDirection::Upload,
@@ -90,6 +106,7 @@ pub async fn collect_download_plan(
     client: &RemoteSftpClient,
     remote_paths: Vec<String>,
     local_dir: &str,
+    cancel_token: &CancellationToken,
 ) -> CoreResult<Vec<TransferJobSpec>> {
     let local_root = PathBuf::from(local_dir.trim());
     if !local_root.is_dir() {
@@ -99,8 +116,12 @@ pub async fn collect_download_plan(
         )));
     }
     let mut specs = Vec::new();
+    let mut visited_count = 0usize;
 
     for raw_remote in remote_paths {
+        if cancel_token.is_cancelled() {
+            return Err(CoreError::Sftp("Connection cancelled".to_string()));
+        }
         let norm_remote = normalize_remote_path(&raw_remote);
         let attrs = client
             .sftp
@@ -110,7 +131,9 @@ pub async fn collect_download_plan(
 
         let leaf = remote_leaf_name(&norm_remote).to_string();
         if leaf.is_empty() || is_win_drive_root(&norm_remote) {
-            return Err(CoreError::Validation("Cannot download root '/'".to_string()));
+            return Err(CoreError::Validation(
+                "Cannot download root '/'".to_string(),
+            ));
         }
 
         if attrs.file_type().is_dir() {
@@ -121,15 +144,34 @@ pub async fn collect_download_plan(
             queue.push_back((norm_remote, root_segments));
 
             while let Some((cur_remote, rel_segments)) = queue.pop_front() {
+                if cancel_token.is_cancelled() {
+                    return Err(CoreError::Sftp("Connection cancelled".to_string()));
+                }
+                if rel_segments.len() > SFTP_MAX_WALK_DEPTH
+                    || visited_count > SFTP_MAX_WALK_ENTRIES
+                {
+                    return Err(CoreError::Validation(
+                        "Directory tree exceeds maximum transfer depth or entry limit".to_string(),
+                    ));
+                }
                 let children = client
                     .sftp
                     .read_dir(&cur_remote)
                     .await
-                    .map_err(|e| CoreError::Sftp(format!("Read '{cur_remote}': {}", fmt_sftp_err(&e))))?;
+                    .map_err(|e| {
+                        CoreError::Sftp(format!("Read '{cur_remote}': {}", fmt_sftp_err(&e)))
+                    })?;
                 for child in children {
                     let cname = child.file_name();
                     if cname == "." || cname == ".." {
                         continue;
+                    }
+                    visited_count += 1;
+                    if visited_count > SFTP_MAX_WALK_ENTRIES {
+                        return Err(CoreError::Validation(
+                            "Directory tree exceeds maximum transfer depth or entry limit"
+                                .to_string(),
+                        ));
                     }
                     let ctype = child.file_type();
                     if ctype.is_symlink() {
@@ -157,19 +199,24 @@ pub async fn collect_download_plan(
                 }
             }
         } else {
-            // Allow downloading regular files and symlinks that resolve to regular files.
             let eff_attrs = if attrs.file_type().is_symlink() {
                 client
                     .sftp
                     .metadata(&norm_remote)
                     .await
-                    .map_err(|e| CoreError::Sftp(format!("Broken symlink '{norm_remote}': {}", fmt_sftp_err(&e))))?
+                    .map_err(|e| {
+                        CoreError::Sftp(format!(
+                            "Broken symlink '{norm_remote}': {}",
+                            fmt_sftp_err(&e)
+                        ))
+                    })?
             } else {
                 attrs
             };
             if eff_attrs.file_type().is_dir() {
                 return Err(CoreError::Validation(
-                    "Cannot download symlink pointing to a directory directly as a file".to_string(),
+                    "Cannot download symlink pointing to a directory directly as a file"
+                        .to_string(),
                 ));
             }
             let dest_local = safe_join_windows_relative(&local_root, std::slice::from_ref(&leaf))?;

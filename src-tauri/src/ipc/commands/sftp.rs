@@ -2,7 +2,8 @@ use tauri::{AppHandle, State};
 
 use crate::ipc::commands::AppState;
 use crate::ipc::dto::{
-    SftpConnectAckDto, SftpListDirResultDto, SftpTransferJobDto,
+    FileContentDto, FileWriteResultDto, SftpConnectAckDto, SftpListDirResultDto,
+    SftpTransferJobDto,
 };
 use crate::ipc::error::AppResult;
 
@@ -73,6 +74,41 @@ pub async fn sftp_create_dir(
     state
         .sftp_manager
         .remote_create_dir(&tab_id, &parent_dir, &name)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn sftp_create_file(
+    state: State<'_, AppState>,
+    tab_id: String,
+    parent_dir: String,
+    name: String,
+) -> AppResult<String> {
+    state
+        .sftp_manager
+        .remote_create_file(&tab_id, &parent_dir, &name)
+        .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn sftp_read_file(
+    state: State<'_, AppState>,
+    tab_id: String,
+    path: String,
+) -> AppResult<FileContentDto> {
+    state.sftp_manager.remote_read_file(&tab_id, &path).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn sftp_write_file(
+    state: State<'_, AppState>,
+    tab_id: String,
+    path: String,
+    content: String,
+) -> AppResult<FileWriteResultDto> {
+    state
+        .sftp_manager
+        .remote_write_file(&tab_id, &path, &content)
         .await
 }
 

@@ -64,6 +64,12 @@ export function useSessionController({
   }, []);
 
   const disposeTab = useCallback((tab: TerminalTabItem, hadSftp: boolean) => {
+    if (tab.tabKind === "editor") {
+      if (tab.editorFile?.kind === "remote") {
+        sftpApi.sftpDisconnect(tab.tabId).catch(() => {});
+      }
+      return;
+    }
     if (tab.tabKind !== "sftp") sessionApi.sessionDisconnect(tab.tabId).catch(() => {});
     if (tab.tabKind === "sftp" || hadSftp) sftpApi.sftpDisconnect(tab.tabId).catch(() => {});
   }, []);
@@ -138,11 +144,23 @@ export function useSessionController({
     [onDismissSidebar]
   );
 
-  const closeTabById = useCallback(
+  const forceCloseTabById = useCallback(
     (tabId: string) => {
       useTabsStore.getState().closeTab(tabId, disposeTab, handleEmptyTabs);
     },
     [disposeTab, handleEmptyTabs]
+  );
+
+  const closeTabById = useCallback(
+    (tabId: string) => {
+      const target = useTabsStore.getState().tabs.find((item) => item.tabId === tabId);
+      if (target?.tabKind === "editor" && target.editorFile?.dirty) {
+        useTabsStore.getState().requestEditorClose(tabId);
+        return;
+      }
+      forceCloseTabById(tabId);
+    },
+    [forceCloseTabById]
   );
 
   const abortAuthPromptTab = useCallback(
@@ -150,6 +168,11 @@ export function useSessionController({
       const state = useTabsStore.getState();
       const target = state.tabs.find((tab) => tab.tabId === tabId);
       if (!target) return;
+      if (source === "sftp" && target.tabKind === "editor") {
+        sftpApi.sftpDisconnect(tabId).catch(() => {});
+        state.setSftpState(tabId, "DISCONNECTED");
+        return;
+      }
       if (source === "sftp" && target.tabKind !== "sftp") {
         sftpApi.sftpDisconnect(tabId).catch(() => {});
         if (target.sftpOpen) state.toggleSftpSplit(tabId);
@@ -253,6 +276,7 @@ export function useSessionController({
 
   const duplicateTab = useCallback(
     (tab: TerminalTabItem, connectHostFn: (host: HostProfileSummaryDto) => Promise<void>) => {
+      if (tab.tabKind === "editor") return;
       if (tab.hostId === "local") {
         newLocalTab({ profile: tab.shellProfile, asAdmin: !!tab.isAdmin });
         return;
@@ -271,6 +295,7 @@ export function useSessionController({
     spawnHostTab,
     openSftpTab,
     closeTabById,
+    forceCloseTabById,
     handleCloseTab,
     closeOtherTabs,
     abortAuthPromptTab,

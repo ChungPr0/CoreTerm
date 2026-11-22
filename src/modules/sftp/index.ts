@@ -23,6 +23,8 @@ export {
   buildToolbarMenu,
 } from "./menus/sftpMenus";
 export type {
+  FileContentDto,
+  FileWriteResultDto,
   LocalDriveDto,
   LocalFsEntryDto,
   LocalListDirResultDto,

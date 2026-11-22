@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use tauri::AppHandle;
 use tracing::{error, info};
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::path_guard::clean_display_path_str;
 use crate::hosts::HostService;
 use crate::ipc::dto::{
     PortForwardStatusDto, SessionConnectAckDto, SessionConnectRequestDto, ShellProfile,
@@ -35,6 +37,7 @@ struct DirectReaderSpec {
     tab_id: String,
     host_id: String,
     is_local: bool,
+    auth_method: String,
     target_host: String,
     target_port: u16,
     host_pw_mode: String,
@@ -44,6 +47,24 @@ struct DirectReaderSpec {
 struct PtyServiceDeps<'a> {
     hosts: &'a HostService,
     keys: &'a KeyService,
+}
+
+fn resolve_ssh_binary() -> String {
+    #[cfg(windows)]
+    if let Some(windir) = std::env::var_os("WINDIR") {
+        let sys_ssh = Path::new(&windir)
+            .join("System32")
+            .join("OpenSSH")
+            .join("ssh.exe");
+        if sys_ssh.is_file() {
+            return sys_ssh.to_string_lossy().into_owned();
+        }
+    }
+    if cfg!(windows) {
+        "ssh.exe".to_string()
+    } else {
+        "ssh".to_string()
+    }
 }
 
 impl PtySessionManager {
@@ -63,6 +84,10 @@ impl PtySessionManager {
             .as_ref()
             .map(|p| p.active_forwards.clone())
             .unwrap_or_default();
+        let auth_method = ssh_plan
+            .as_ref()
+            .map(|p| p.auth_method.clone())
+            .unwrap_or_default();
         let ssh_key_id = ssh_plan.as_ref().and_then(|p| p.ssh_key_id.clone());
         let target_host = ssh_plan
             .as_ref()
@@ -80,11 +105,7 @@ impl PtySessionManager {
                     id: "ssh".to_string(),
                     kind: "ssh".to_string(),
                     name: plan.cli_preview.clone(),
-                    executable: if cfg!(windows) {
-                        "ssh.exe".to_string()
-                    } else {
-                        "ssh".to_string()
-                    },
+                    executable: resolve_ssh_binary(),
                     args: plan
                         .args
                         .iter()
@@ -112,16 +133,8 @@ impl PtySessionManager {
         let cwd = if spec.is_local {
             spec.req
                 .initial_cwd
-                .as_ref()
-                .map(|s| {
-                    if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
-                        format!(r"\\{}", stripped)
-                    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
-                        stripped.to_string()
-                    } else {
-                        s.clone()
-                    }
-                })
+                .as_deref()
+                .map(clean_display_path_str)
                 .or_else(|| std::env::var("USERPROFILE").ok())
         } else {
             None
@@ -178,6 +191,7 @@ impl PtySessionManager {
             tab_id: tab_id.clone(),
             host_id: host_id.clone(),
             is_local: spec.is_local,
+            auth_method,
             target_host,
             target_port,
             host_pw_mode,
@@ -236,6 +250,7 @@ impl PtySessionManager {
                     session: &session_ref,
                     tab_id: &reader_tab_id,
                     host_id: &spec.host_id,
+                    auth_method: &spec.auth_method,
                     target_host: &spec.target_host,
                     target_port: spec.target_port,
                     host_pw_mode: &spec.host_pw_mode,

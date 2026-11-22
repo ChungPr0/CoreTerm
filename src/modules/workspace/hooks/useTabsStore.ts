@@ -1,14 +1,24 @@
 import { create } from "zustand";
+import { LOCAL_HOST_ID } from "@/shared/defaults";
 import type {
+  EditorTabMeta,
   PortForwardStatusDto,
   SessionState,
   SftpConnectionState,
   ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
-import { isAutoReconnectAllowed, type HostFullConfigDto } from "@/modules/hosts";
+import type { HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
 import { DEFAULT_LOCAL_SHELL, createLocalTab, sftpToTabState } from "../utils/tabHelpers";
+import {
+  applySetTabShell,
+  applySyncHostConfig,
+  applyToggleSftpSplit,
+  applyUpdateSessionAck,
+  buildNewEditorTab,
+  findExistingEditorTab,
+} from "./tabsStoreHelpers";
 
 export type TabDisposeCallback = (tab: TerminalTabItem, hadSftp: boolean) => void;
 
@@ -18,11 +28,17 @@ interface TabsStoreState {
   renamingTabId: string | null;
   openedSftpTabs: Record<string, boolean>;
   sftpModalByTab: Record<string, boolean>;
+  editorCloseSeqByTab: Record<string, number>;
+  sftpRefreshSeqByHost: Record<string, number>;
   setActiveTabId: (tabId: string | null) => void;
   startRenamingTab: (tabId: string) => void;
   cancelRenamingTab: () => void;
   renameTab: (tabId: string, title: string) => void;
   addTab: (tab: TerminalTabItem) => void;
+  openEditorTab: (meta: EditorTabMeta, hostId: string) => string;
+  setEditorDirty: (tabId: string, dirty: boolean) => void;
+  requestEditorClose: (tabId: string) => void;
+  bumpSftpRefresh: (hostId: string) => void;
   closeTab: (
     tabId: string,
     onDispose?: TabDisposeCallback,
@@ -64,13 +80,15 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
   renamingTabId: null,
   openedSftpTabs: {},
   sftpModalByTab: {},
+  editorCloseSeqByTab: {},
+  sftpRefreshSeqByHost: {},
 
   setActiveTabId: (tabId) => set({ activeTabId: tabId }),
 
   startRenamingTab: (tabId) =>
     set((s) => {
       const target = s.tabs.find((t) => t.tabId === tabId);
-      if (!target || target.hostId !== "local") return s;
+      if (!target || target.hostId !== LOCAL_HOST_ID || target.tabKind === "editor") return s;
       return { renamingTabId: tabId, activeTabId: tabId };
     }),
 
@@ -80,7 +98,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     set((s) => {
       const nextTitle = rawTitle.trim();
       const target = s.tabs.find((t) => t.tabId === tabId);
-      if (!target || target.hostId !== "local" || !nextTitle) {
+      if (!target || target.hostId !== LOCAL_HOST_ID || target.tabKind === "editor" || !nextTitle) {
         return s.renamingTabId === tabId ? { renamingTabId: null } : s;
       }
       return {
@@ -96,6 +114,52 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       renamingTabId: null,
     })),
 
+  openEditorTab: (meta, hostId) => {
+    const resolvedHostId = meta.kind === "local" ? LOCAL_HOST_ID : hostId;
+    const existing = findExistingEditorTab(get().tabs, meta, resolvedHostId);
+    if (existing) {
+      set({ activeTabId: existing.tabId, renamingTabId: null });
+      return existing.tabId;
+    }
+
+    const tabId = crypto.randomUUID();
+    const isRemote = meta.kind === "remote";
+    const newTab = buildNewEditorTab(tabId, meta, resolvedHostId);
+    set((s) => ({
+      tabs: [...s.tabs, newTab],
+      activeTabId: tabId,
+      renamingTabId: null,
+      openedSftpTabs: isRemote ? { ...s.openedSftpTabs, [tabId]: true } : s.openedSftpTabs,
+    }));
+    return tabId;
+  },
+
+  setEditorDirty: (tabId, dirty) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.tabId === tabId && t.tabKind === "editor" && t.editorFile
+          ? { ...t, editorFile: { ...t.editorFile, dirty } }
+          : t
+      ),
+    })),
+
+  requestEditorClose: (tabId) =>
+    set((s) => ({
+      activeTabId: tabId,
+      editorCloseSeqByTab: {
+        ...s.editorCloseSeqByTab,
+        [tabId]: (s.editorCloseSeqByTab[tabId] ?? 0) + 1,
+      },
+    })),
+
+  bumpSftpRefresh: (hostId) =>
+    set((s) => ({
+      sftpRefreshSeqByHost: {
+        ...s.sftpRefreshSeqByHost,
+        [hostId]: (s.sftpRefreshSeqByHost[hostId] ?? 0) + 1,
+      },
+    })),
+
   closeTab: (tabId, onDispose, onEmpty) => {
     const state = get();
     const target = state.tabs.find((t) => t.tabId === tabId);
@@ -109,6 +173,8 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     delete nextOpened[tabId];
     const nextModals = { ...state.sftpModalByTab };
     delete nextModals[tabId];
+    const nextEditorClose = { ...state.editorCloseSeqByTab };
+    delete nextEditorClose[tabId];
 
     const nextTabs = state.tabs.filter((t) => t.tabId !== tabId);
     if (nextTabs.length === 0) {
@@ -118,6 +184,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
         renamingTabId: null,
         openedSftpTabs: nextOpened,
         sftpModalByTab: nextModals,
+        editorCloseSeqByTab: nextEditorClose,
       });
       onEmpty?.();
       return;
@@ -134,6 +201,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       renamingTabId: state.renamingTabId === tabId ? null : state.renamingTabId,
       openedSftpTabs: nextOpened,
       sftpModalByTab: nextModals,
+      editorCloseSeqByTab: nextEditorClose,
     });
   },
 
@@ -142,17 +210,42 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     if (!state.tabs.some((t) => t.tabId === keepTabId)) {
       return;
     }
+    const keptTabs: TerminalTabItem[] = [];
+    const nextOpened: Record<string, boolean> = {};
+    const nextModals: Record<string, boolean> = {};
+    const nextEditorClose: Record<string, number> = {};
+    let firstDirtyEditorId: string | null = null;
+
     for (const tab of state.tabs) {
-      if (tab.tabId !== keepTabId) {
+      const isDirtyEditor =
+        tab.tabId !== keepTabId && tab.tabKind === "editor" && Boolean(tab.editorFile?.dirty);
+      if (tab.tabId === keepTabId || isDirtyEditor) {
+        keptTabs.push(tab);
+        if (state.openedSftpTabs[tab.tabId]) nextOpened[tab.tabId] = true;
+        if (state.sftpModalByTab[tab.tabId]) nextModals[tab.tabId] = true;
+        if (state.editorCloseSeqByTab[tab.tabId]) {
+          nextEditorClose[tab.tabId] = state.editorCloseSeqByTab[tab.tabId];
+        }
+        if (isDirtyEditor && !firstDirtyEditorId) {
+          firstDirtyEditorId = tab.tabId;
+        }
+      } else {
         onDispose?.(tab, Boolean(state.openedSftpTabs[tab.tabId]));
       }
     }
+
+    if (firstDirtyEditorId) {
+      nextEditorClose[firstDirtyEditorId] = (nextEditorClose[firstDirtyEditorId] ?? 0) + 1;
+    }
+
+    const targetActiveId = firstDirtyEditorId ?? keepTabId;
     set({
-      tabs: state.tabs.filter((t) => t.tabId === keepTabId),
-      openedSftpTabs: state.openedSftpTabs[keepTabId] ? { [keepTabId]: true } : {},
-      sftpModalByTab: state.sftpModalByTab[keepTabId] ? { [keepTabId]: true } : {},
-      activeTabId: keepTabId,
-      renamingTabId: state.renamingTabId === keepTabId ? keepTabId : null,
+      tabs: keptTabs,
+      openedSftpTabs: nextOpened,
+      sftpModalByTab: nextModals,
+      editorCloseSeqByTab: nextEditorClose,
+      activeTabId: targetActiveId,
+      renamingTabId: state.renamingTabId === targetActiveId ? targetActiveId : null,
     });
   },
 
@@ -183,36 +276,17 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
               errorMessage: null,
               reconnectToken: tab.reconnectToken + 1,
               reconnectSource: source,
-              ...(tab.tabKind === "sftp" ? { sftpState: "CONNECTING" as const } : {}),
+              ...(tab.tabKind === "sftp" ||
+              (tab.tabKind === "editor" && tab.editorFile?.kind === "remote")
+                ? { sftpState: "CONNECTING" as const }
+                : {}),
             }
           : tab
       ),
     })),
 
   toggleSftpSplit: (tabId) =>
-    set((s) => {
-      const target = s.tabs.find((t) => t.tabId === tabId);
-      if (!target || target.hostId === "local" || target.tabKind === "sftp") {
-        return s;
-      }
-      const willOpen = !target.sftpOpen;
-      return {
-        openedSftpTabs:
-          willOpen && !s.openedSftpTabs[tabId]
-            ? { ...s.openedSftpTabs, [tabId]: true }
-            : s.openedSftpTabs,
-        tabs: s.tabs.map((tab) =>
-          tab.tabId === tabId
-            ? {
-                ...tab,
-                sftpOpen: willOpen,
-                sftpState: willOpen ? tab.sftpState : "DISCONNECTED",
-                sftpSplitRatio: tab.sftpSplitRatio ?? 0.45,
-              }
-            : tab
-        ),
-      };
-    }),
+    set((s) => applyToggleSftpSplit(s.tabs, s.openedSftpTabs, tabId) ?? s),
 
   resizeSftpSplit: (tabId, ratio) =>
     set((s) => ({
@@ -238,7 +312,9 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
               ...tab,
               sftpState,
               ...(sftpState === "CONNECTED" ? { reconnectSource: undefined } : {}),
-              ...(tab.tabKind === "sftp" ? { state: sftpToTabState(sftpState) } : {}),
+              ...(tab.tabKind === "sftp" || tab.tabKind === "editor"
+                ? { state: sftpToTabState(sftpState) }
+                : {}),
             }
           : tab
       ),
@@ -261,40 +337,12 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
 
   updateSessionAck: (tabId, isAdmin, shellProfile) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) => {
-        if (tab.tabId !== tabId) return tab;
-        const shouldSyncTitle =
-          shellProfile &&
-          tab.hostId === "local" &&
-          (!tab.shellProfile || tab.title === "Terminal" || tab.title === tab.shellProfile.name);
-        return {
-          ...tab,
-          isAdmin,
-          ...(shellProfile && tab.hostId === "local" ? { shellProfile } : {}),
-          ...(shouldSyncTitle && shellProfile ? { title: shellProfile.name } : {}),
-        };
-      }),
+      tabs: applyUpdateSessionAck(s.tabs, tabId, isAdmin, shellProfile),
     })),
 
   setTabShell: (tabId, shellProfile, reconnect = false) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) => {
-        if (tab.tabId !== tabId || tab.hostId !== "local") return tab;
-        const shouldSyncTitle =
-          !tab.shellProfile || tab.title === "Terminal" || tab.title === tab.shellProfile.name;
-        return {
-          ...tab,
-          shellProfile,
-          ...(shouldSyncTitle ? { title: shellProfile.name } : {}),
-          ...(reconnect
-            ? {
-                state: "CONNECTING" as const,
-                errorMessage: null,
-                reconnectToken: tab.reconnectToken + 1,
-              }
-            : {}),
-        };
-      }),
+      tabs: applySetTabShell(s.tabs, tabId, shellProfile, reconnect),
     })),
 
   removeTabIfMultiple: (tabId) =>
@@ -326,33 +374,21 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     })),
 
   syncHostConfig: (saved) =>
-    set((s) => {
-      const canAuto = isAutoReconnectAllowed(saved.auth_method, saved.password_mode);
-      return {
-        tabs: s.tabs.map((tab) =>
-          tab.hostId === saved.id
-            ? {
-                ...tab,
-                canAutoReconnect: canAuto,
-                autoReconnect: canAuto ? saved.options.auto_reconnect : false,
-                reconnectIntervalSec: saved.options.reconnect_interval_sec,
-              }
-            : tab
-        ),
-      };
-    }),
+    set((s) => ({
+      tabs: applySyncHostConfig(s.tabs, saved),
+    })),
 
   markLocalTabsAdmin: () =>
     set((s) => ({
       tabs: s.tabs.map((tab) =>
-        tab.hostId === "local" ? { ...tab, isAdmin: true } : tab
+        tab.hostId === LOCAL_HOST_ID ? { ...tab, isAdmin: true } : tab
       ),
     })),
 
   setLaunchDir: (dir: string) =>
     set((s) => ({
       tabs: s.tabs.map((tab, idx) =>
-        idx === 0 && tab.hostId === "local"
+        idx === 0 && tab.hostId === LOCAL_HOST_ID
           ? {
               ...tab,
               initialCwd: dir,
@@ -370,12 +406,12 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     lastOpenDirTime = now;
 
     const currentSettings = loadSettings();
-    const existingLocal = get().tabs.find((t) => t.hostId === "local");
+    const existingLocal = get().tabs.find((t) => t.hostId === LOCAL_HOST_ID);
     const defaultShell =
       currentSettings.defaultShellProfile ??
       existingLocal?.shellProfile ??
       DEFAULT_LOCAL_SHELL;
-    const isAdmin = get().tabs.some((t) => t.hostId === "local" && t.isAdmin);
+    const isAdmin = get().tabs.some((t) => t.hostId === LOCAL_HOST_ID && t.isAdmin);
     const newTab = createLocalTab(defaultShell, isAdmin);
     newTab.initialCwd = dir;
 

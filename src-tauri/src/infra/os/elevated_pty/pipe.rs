@@ -10,11 +10,13 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
+    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE,
+    FILE_FLAG_OVERLAPPED, OPEN_EXISTING, SECURITY_ANONYMOUS, SECURITY_SQOS_PRESENT,
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
+    PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, WaitForMultipleObjects, WaitForSingleObject,
@@ -23,6 +25,18 @@ use windows_sys::Win32::System::Threading::{
 use super::protocol::read_frame;
 
 const SDDL_REVISION_1: u32 = 1;
+const CORETERM_PIPE_PREFIX: &str = r"\\.\pipe\coreterm_";
+
+pub(super) fn is_valid_coreterm_pipe_base(pipe_base: &str) -> bool {
+    let Some(rest) = pipe_base.strip_prefix(CORETERM_PIPE_PREFIX) else {
+        return false;
+    };
+    !rest.is_empty()
+        && rest.len() <= 64
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
 
 pub(super) struct OwnedHandle(pub(super) HANDLE);
 unsafe impl Send for OwnedHandle {}
@@ -178,16 +192,23 @@ pub(super) fn create_server_pipe(name: &str, access_flags: u32) -> Result<OwnedH
             &mut sd,
             std::ptr::null_mut(),
         );
+        if sd_ok == 0 || sd.is_null() {
+            return Err(format!(
+                "Failed to construct security descriptor for {name}: {}",
+                io::Error::last_os_error()
+            ));
+        }
+
         let sa = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-            lpSecurityDescriptor: if sd_ok != 0 { sd } else { std::ptr::null_mut() },
+            lpSecurityDescriptor: sd,
             bInheritHandle: 0,
         };
 
         let handle = CreateNamedPipeW(
             wide_name.as_ptr(),
-            access_flags | FILE_FLAG_OVERLAPPED,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            access_flags | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1,
             65536,
             65536,
@@ -195,9 +216,7 @@ pub(super) fn create_server_pipe(name: &str, access_flags: u32) -> Result<OwnedH
             &sa,
         );
 
-        if !sd.is_null() {
-            let _ = LocalFree(sd as HLOCAL);
-        }
+        let _ = LocalFree(sd as HLOCAL);
 
         if handle.is_null() || handle == INVALID_HANDLE_VALUE {
             return Err(format!(
@@ -233,7 +252,10 @@ pub(super) fn begin_overlapped_connect(pipe: HANDLE) -> Result<Option<PendingCon
     unsafe {
         let event = CreateEventW(std::ptr::null(), 1, 0, std::ptr::null());
         if event.is_null() {
-            return Err(format!("CreateEventW failed: {}", io::Error::last_os_error()));
+            return Err(format!(
+                "CreateEventW failed: {}",
+                io::Error::last_os_error()
+            ));
         }
         let ev_guard = OwnedHandle(event);
 
@@ -313,7 +335,7 @@ pub(super) fn open_client_pipe(name: &str, access: u32) -> Result<File, String> 
                 0,
                 std::ptr::null(),
                 OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
+                FILE_ATTRIBUTE_NORMAL | SECURITY_SQOS_PRESENT | SECURITY_ANONYMOUS,
                 std::ptr::null_mut(),
             );
             if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
@@ -341,6 +363,14 @@ mod tests {
     use windows_sys::Win32::Storage::FileSystem::{PIPE_ACCESS_INBOUND, PIPE_ACCESS_OUTBOUND};
 
     #[test]
+    fn validates_coreterm_pipe_base_strictly() {
+        assert!(is_valid_coreterm_pipe_base(r"\\.\pipe\coreterm_a1b2c3"));
+        assert!(!is_valid_coreterm_pipe_base(r"\\evil\pipe\coreterm_a1b2c3"));
+        assert!(!is_valid_coreterm_pipe_base(r"C:\Windows\Temp\coreterm_1"));
+        assert!(!is_valid_coreterm_pipe_base(r"\\.\pipe\coreterm_../evil"));
+    }
+
+    #[test]
     fn test_overlapped_named_pipe_connect_and_roundtrip() {
         let _ = crate::infra::os::is_process_elevated();
 
@@ -357,7 +387,6 @@ mod tests {
         let client_out_name = pipe_out_name.clone();
         let client_in_name = pipe_in_name.clone();
         let client = std::thread::spawn(move || {
-            // Delay client connect to exercise ERROR_IO_PENDING completion.
             std::thread::sleep(Duration::from_millis(40));
             let mut out_file = open_client_pipe(&client_out_name, GENERIC_WRITE).unwrap();
             let mut in_file = open_client_pipe(&client_in_name, GENERIC_READ).unwrap();

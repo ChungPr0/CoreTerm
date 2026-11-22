@@ -18,9 +18,7 @@ use crate::ssh::known_hosts::{
 };
 
 use super::session::{emit_status, map_russh_error};
-
-pub const EVENT_SFTP_AUTH_PROMPT: &str = "sftp:auth_prompt";
-pub const EVENT_SFTP_HOST_KEY_PROMPT: &str = "sftp:host_key_prompt";
+pub use crate::ipc::events::{EVENT_SFTP_AUTH_PROMPT, EVENT_SFTP_HOST_KEY_PROMPT};
 
 pub struct PendingHostKeyChallenge {
     pub host: String,
@@ -399,6 +397,9 @@ async fn try_password_and_kbd(
                     KeyboardInteractiveAuthResponse::Success => return Ok(true),
                     KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
                     KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+                        if prompts.is_empty() || prompts.len() > 16 {
+                            return Ok(false);
+                        }
                         let answers = vec![password.to_string(); prompts.len()];
                         kbd = session
                             .authenticate_keyboard_interactive_respond(answers)

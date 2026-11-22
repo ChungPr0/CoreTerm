@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::core::error::{CoreError, CoreResult};
+pub use crate::core::local_path_guard::{
+    clean_display_path, clean_display_path_str, validate_delete_path, validate_local_write_path,
+};
 
 const WIN_RESERVED: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4",
@@ -44,14 +47,16 @@ pub fn normalize_remote_path(raw: &str) -> String {
 pub fn validate_single_entry_name(name: &str) -> CoreResult<&str> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(CoreError::Validation("Entry name cannot be empty".to_string()));
+        return Err(CoreError::Validation(
+            "Entry name cannot be empty".to_string(),
+        ));
     }
     if trimmed == "." || trimmed == ".." {
         return Err(CoreError::Validation(format!(
             "Invalid entry name: '{trimmed}'"
         )));
     }
-    if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains('\0') {
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
         return Err(CoreError::Validation(format!(
             "Entry name cannot contain path separators or null bytes: '{trimmed}'"
         )));
@@ -61,21 +66,22 @@ pub fn validate_single_entry_name(name: &str) -> CoreResult<&str> {
 
 pub fn validate_windows_file_name(name: &str) -> CoreResult<()> {
     let valid = validate_single_entry_name(name)?;
-    if name.ends_with(' ') || name.ends_with('.') || valid.ends_with('.') {
-        return Err(CoreError::Validation(format!(
-            "Windows filename cannot end with a space or dot: '{name}'"
-        )));
-    }
-    if valid
-        .chars()
-        .any(|c| (c as u32) < 0x20 || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+    if name.chars().any(|c| (c as u32) < 0x20 || c == '\x7f')
+        || valid
+            .chars()
+            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
     {
         return Err(CoreError::Validation(format!(
             "Filename contains characters disallowed on Windows: '{name}'"
         )));
     }
+    if name.ends_with(' ') || name.ends_with('.') || valid.ends_with('.') {
+        return Err(CoreError::Validation(format!(
+            "Windows filename cannot end with a space or dot: '{name}'"
+        )));
+    }
 
-    let stem = valid.split('.').next().unwrap_or("").to_uppercase();
+    let stem = valid.split('.').next().unwrap_or("").trim().to_uppercase();
     if WIN_RESERVED.contains(&stem.as_str()) {
         return Err(CoreError::Validation(format!(
             "Filename uses a reserved Windows device name: '{name}'"
@@ -117,11 +123,15 @@ pub fn remote_leaf_name(path: &str) -> &str {
 }
 
 /// Joins untrusted remote relative segments onto a Windows base directory safely.
-pub fn safe_join_windows_relative(base_dir: &Path, relative_segments: &[String]) -> CoreResult<PathBuf> {
+pub fn safe_join_windows_relative(
+    base_dir: &Path,
+    relative_segments: &[String],
+) -> CoreResult<PathBuf> {
     let mut target = base_dir.to_path_buf();
     for seg in relative_segments {
+        let valid = validate_single_entry_name(seg)?;
         validate_windows_file_name(seg)?;
-        target.push(seg);
+        target.push(valid);
     }
     Ok(target)
 }
@@ -153,7 +163,10 @@ mod tests {
     fn test_normalize_remote_path() {
         assert_eq!(normalize_remote_path(""), "/");
         assert_eq!(normalize_remote_path("///"), "/");
-        assert_eq!(normalize_remote_path("/var/log/../www/./html/"), "/var/www/html");
+        assert_eq!(
+            normalize_remote_path("/var/log/../www/./html/"),
+            "/var/www/html"
+        );
         assert_eq!(normalize_remote_path("/../../etc"), "/etc");
         assert_eq!(normalize_remote_path("/C:/Users/demo"), "/C:/Users/demo");
         assert_eq!(normalize_remote_path("/C:/"), "/C:/");
@@ -179,6 +192,8 @@ mod tests {
         assert!(safe_join_windows_relative(base, &["sub/dir".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["CON.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &[" CON.txt".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["CON .txt".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["NUL   .dat".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["nul".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["clock$.txt".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["conin$.dat".into()]).is_err());
@@ -188,6 +203,7 @@ mod tests {
         assert!(safe_join_windows_relative(base, &["lpt²".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["bad:name".into()]).is_err());
         assert!(safe_join_windows_relative(base, &["trailing.".into()]).is_err());
+        assert!(safe_join_windows_relative(base, &["evil.txt\n".into()]).is_err());
 
         let ok = safe_join_windows_relative(base, &["app".into(), "config.json".into()]).unwrap();
         assert_eq!(ok, base.join("app").join("config.json"));
@@ -202,18 +218,26 @@ mod tests {
         assert!(validate_single_entry_name("foo/bar").is_err());
         assert!(validate_single_entry_name("foo\\bar").is_err());
         assert!(validate_single_entry_name("foo\0bar").is_err());
-        assert_eq!(validate_single_entry_name("  valid_name.txt  ").unwrap(), "valid_name.txt");
-        assert_eq!(validate_single_entry_name("tệp_tiếng_việt.doc").unwrap(), "tệp_tiếng_việt.doc");
+        assert_eq!(
+            validate_single_entry_name("  valid_name.txt  ").unwrap(),
+            "valid_name.txt"
+        );
+        assert_eq!(
+            validate_single_entry_name("tệp_tiếng_việt.doc").unwrap(),
+            "tệp_tiếng_việt.doc"
+        );
     }
 
     #[test]
     fn test_validate_windows_file_name_disallowed_chars_and_reserved() {
         assert!(validate_windows_file_name("CON").is_err());
         assert!(validate_windows_file_name("con").is_err());
+        assert!(validate_windows_file_name("CON .txt").is_err());
         assert!(validate_windows_file_name("Prn.txt").is_err());
         assert!(validate_windows_file_name("AUX.tar.gz").is_err());
         assert!(validate_windows_file_name("NUL").is_err());
         assert!(validate_windows_file_name("com1.log").is_err());
+        assert!(validate_windows_file_name("com1 .log").is_err());
         assert!(validate_windows_file_name("lpt9").is_err());
         assert!(validate_windows_file_name("trailing_space ").is_err());
         assert!(validate_windows_file_name("trailing_dot.").is_err());
@@ -227,6 +251,8 @@ mod tests {
         assert!(validate_windows_file_name("control\x05char").is_err());
         assert!(validate_windows_file_name("tab\tchar").is_err());
         assert!(validate_windows_file_name("newline\nchar").is_err());
+        assert!(validate_windows_file_name("trailing_newline.txt\n").is_err());
+        assert!(validate_windows_file_name("\tleading_tab.txt").is_err());
 
         assert!(validate_windows_file_name("regular_file.txt").is_ok());
         assert!(validate_windows_file_name(".gitignore").is_ok());
@@ -240,7 +266,10 @@ mod tests {
         assert_eq!(parent_remote_path("/var/log/nginx"), "/var/log");
         assert_eq!(parent_remote_path("/C:/"), "/C:/");
         assert_eq!(parent_remote_path("/C:/Users"), "/C:/");
-        assert_eq!(parent_remote_path("/C:/Users/demo/AppData"), "/C:/Users/demo");
+        assert_eq!(
+            parent_remote_path("/C:/Users/demo/AppData"),
+            "/C:/Users/demo"
+        );
 
         assert_eq!(remote_leaf_name("/"), "");
         assert_eq!(remote_leaf_name("/var/log"), "log");
@@ -251,7 +280,10 @@ mod tests {
     #[test]
     fn test_next_numbered_name() {
         assert_eq!(next_numbered_name("archive.zip", 1), "archive (1).zip");
-        assert_eq!(next_numbered_name("archive.tar.gz", 2), "archive.tar (2).gz");
+        assert_eq!(
+            next_numbered_name("archive.tar.gz", 2),
+            "archive.tar (2).gz"
+        );
         assert_eq!(next_numbered_name(".env", 2), ".env (2)");
         assert_eq!(next_numbered_name("README", 3), "README (3)");
         assert_eq!(next_numbered_name(".gitignore", 1), ".gitignore (1)");

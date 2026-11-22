@@ -1,16 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  Check,
   FolderSync,
   Globe,
-  Monitor,
   MousePointerClick,
-  RefreshCw,
-  RotateCcw,
   Save,
   Settings,
-  Terminal as TerminalIcon,
   X,
 } from "lucide-react";
 import {
@@ -19,11 +14,7 @@ import {
   DEFAULT_CONFLICT_POLICY,
   DEFAULT_SHELL_ID,
   LAUNCH_COLS_DEFAULT,
-  LAUNCH_COLS_MAX,
-  LAUNCH_COLS_MIN,
   LAUNCH_ROWS_DEFAULT,
-  LAUNCH_ROWS_MAX,
-  LAUNCH_ROWS_MIN,
 } from "@/shared/defaults";
 import { type Locale, useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, ShellProfile } from "@/shared/types/ipc";
@@ -31,7 +22,6 @@ import {
   ActionModal,
   Button,
   ConfirmDeleteModal,
-  Input,
   ModalShell,
   SegmentedControl,
   Select,
@@ -47,6 +37,8 @@ import {
 import { hasSettingsChanges } from "../settingsDiff";
 import type { AppSettingsValues } from "../types";
 import { CustomShellsSection } from "./CustomShellsSection";
+import { DefaultShellSection } from "./DefaultShellSection";
+import { LaunchSizeSection } from "./LaunchSizeSection";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -70,7 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [cols, setCols] = useState<number>(settings.launchCols);
   const [rows, setRows] = useState<number>(settings.launchRows);
   const [sftpConflictPolicy, setSftpConflictPolicy] =
-    useState<SftpConflictPolicy>(settings.sftpConflictPolicy ?? "ASK");
+    useState<SftpConflictPolicy>(settings.sftpConflictPolicy ?? DEFAULT_CONFLICT_POLICY);
   const [customShells, setCustomShells] = useState<ShellProfile[]>(
     settings.customShells ?? []
   );
@@ -115,10 +107,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       })
       .catch(() => {});
   }, [isOpen]);
-
-  const handleToggleContextMenu = () => {
-    setContextMenuDraft((prev) => !prev);
-  };
 
   const systemShells = useMemo(() => {
     if (detectedFromStore.length > 0) return detectedFromStore;
@@ -182,17 +170,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   useEffect(() => {
-    if (!isOpen) {
-      clearResetFeedback();
-      setDeletingShell(null);
-      setShowDiscardConfirm(false);
-      setHasDirtyShellEditor(false);
-      return;
-    }
     clearResetFeedback();
     setDeletingShell(null);
     setShowDiscardConfirm(false);
     setHasDirtyShellEditor(false);
+    if (!isOpen) return;
     setCols(settings.launchCols);
     setRows(settings.launchRows);
     setSftpConflictPolicy(settings.sftpConflictPolicy ?? DEFAULT_CONFLICT_POLICY);
@@ -243,39 +225,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
-  const handleLangChange = (next: Locale) => {
-    setLocale(next);
-  };
-
   return (
     <>
-    <ModalShell
-      isOpen={isOpen}
-      onClose={handleRequestClose}
-      closeDisabled={hasChildConfirmModal}
-      panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-full overflow-hidden flex flex-col text-xs select-none"
-    >
+      <ModalShell
+        isOpen={isOpen}
+        onClose={handleRequestClose}
+        closeDisabled={hasChildConfirmModal}
+        panelClassName="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg max-h-full overflow-hidden flex flex-col text-xs select-none"
+      >
         <div
           data-tauri-drag-region="deep"
           className="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0"
         >
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-sky-400" />
-            <h2 className="text-sm font-bold text-slate-100">
-              {t("settings.title")}
-            </h2>
+            <h2 className="text-sm font-bold text-slate-100">{t("settings.title")}</h2>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRequestClose}
-          >
+          <Button variant="ghost" size="icon" onClick={handleRequestClose}>
             <X className="w-4 h-4" />
           </Button>
         </div>
 
         <form noValidate onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto">
-          {/* Language selection */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-slate-300 font-semibold">
               <Globe className="w-3.5 h-3.5 text-sky-400" />
@@ -283,7 +254,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </label>
             <SegmentedControl<Locale>
               value={locale}
-              onChange={handleLangChange}
+              onChange={setLocale}
               options={[
                 { value: "vi", label: t("settings.lang_vi") },
                 { value: "en", label: t("settings.lang_en") },
@@ -291,129 +262,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </div>
 
-          {/* Launch size (columns x rows) */}
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-slate-200 font-semibold whitespace-nowrap">
-                <Monitor className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span>{t("settings.launch_size")}</span>
-              </div>
-              <span
-                title={
-                  isDefaultLaunchSize
-                    ? t("settings.reset_win_already_default", {
-                        cols: LAUNCH_COLS_DEFAULT,
-                        rows: LAUNCH_ROWS_DEFAULT,
-                      })
-                    : t("settings.reset_win_tooltip", {
-                        cols: LAUNCH_COLS_DEFAULT,
-                        rows: LAUNCH_ROWS_DEFAULT,
-                      })
-                }
-                className="inline-flex shrink-0"
-              >
-                <Button
-                  variant="outline"
-                  size="xs"
-                  disabled={isDefaultLaunchSize && !launchSizeResetDone}
-                  onClick={handleResetLaunchSize}
-                  leftIcon={
-                    launchSizeResetDone ? (
-                      <Check className="w-3 h-3 text-emerald-400" />
-                    ) : (
-                      <RotateCcw className="w-3 h-3" />
-                    )
-                  }
-                  className={
-                    launchSizeResetDone
-                      ? "!border-emerald-500/40 !bg-emerald-500/15 !text-emerald-300 hover:!bg-emerald-500/15 hover:!border-emerald-500/40 active:!bg-emerald-500/15 active:!border-emerald-500/40 active:!scale-100 !cursor-default"
-                      : undefined
-                  }
-                >
-                  {launchSizeResetDone ? t("settings.reset_win_done") : t("settings.reset_win")}
-                </Button>
-              </span>
-            </div>
+          <LaunchSizeSection
+            cols={cols}
+            rows={rows}
+            isDefaultLaunchSize={isDefaultLaunchSize}
+            launchSizeResetDone={launchSizeResetDone}
+            onChangeCols={(next) => {
+              clearResetFeedback();
+              setCols(next);
+            }}
+            onChangeRows={(next) => {
+              clearResetFeedback();
+              setRows(next);
+            }}
+            onResetLaunchSize={handleResetLaunchSize}
+          />
 
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                type="number"
-                label={t("settings.cols")}
-                min={LAUNCH_COLS_MIN}
-                max={LAUNCH_COLS_MAX}
-                value={cols}
-                onChange={(e) => {
-                  clearResetFeedback();
-                  setCols(Number(e.target.value));
-                }}
-                className={`font-mono ${
-                  launchSizeResetDone
-                    ? "!border-emerald-500/45 hover:!border-emerald-500/60 focus:!border-sky-500"
-                    : ""
-                }`}
-              />
-              <Input
-                type="number"
-                label={t("settings.rows")}
-                min={LAUNCH_ROWS_MIN}
-                max={LAUNCH_ROWS_MAX}
-                value={rows}
-                onChange={(e) => {
-                  clearResetFeedback();
-                  setRows(Number(e.target.value));
-                }}
-                className={`font-mono ${
-                  launchSizeResetDone
-                    ? "!border-emerald-500/45 hover:!border-emerald-500/60 focus:!border-sky-500"
-                    : ""
-                }`}
-              />
-            </div>
-          </div>
-
-          {/* Default local shell */}
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
-                <TerminalIcon className="w-4 h-4 text-sky-400 shrink-0" />
-                <span className="truncate" title={t("settings.default_shell")}>
-                  {t("settings.default_shell")}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {availableShells.length > 0 && (
-                  <Select
-                    value={effectiveDefaultShell?.id ?? ""}
-                    onChange={(e) => setDefaultShellId(e.target.value)}
-                    containerClassName="w-48 shrink-0"
-                  >
-                    {availableShells.map((shell) => (
-                      <option key={shell.id} value={shell.id}>
-                        {shell.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isScanning}
-                  onClick={() => void handleRescan()}
-                  title={t("app.rescan")}
-                  leftIcon={
-                    <RefreshCw className={`w-3 h-3 ${isScanning ? "animate-spin" : ""}`} />
-                  }
-                >
-                  {availableShells.length === 0 ? t("app.rescan") : undefined}
-                </Button>
-              </div>
-            </div>
-            {availableShells.length === 0 && (
-              <p className="text-[11px] text-amber-300/90">
-                {t("settings.no_shells")}
-              </p>
-            )}
-          </div>
+          <DefaultShellSection
+            availableShells={availableShells}
+            effectiveDefaultShellId={effectiveDefaultShell?.id ?? ""}
+            isScanning={isScanning}
+            onChangeDefaultShellId={setDefaultShellId}
+            onRescan={() => void handleRescan()}
+          />
 
           <CustomShellsSection
             customShells={customShells}
@@ -425,7 +296,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onEditorDirtyChange={setHasDirtyShellEditor}
           />
 
-          {/* SFTP file conflict default policy */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
               <FolderSync className="w-4 h-4 text-sky-400 shrink-0" />
@@ -435,22 +305,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <Select
               value={sftpConflictPolicy}
-              onChange={(e) =>
-                setSftpConflictPolicy(e.target.value as SftpConflictPolicy)
-              }
+              onChange={(e) => setSftpConflictPolicy(e.target.value as SftpConflictPolicy)}
               containerClassName="w-48 shrink-0"
             >
               <option value="ASK">{t("settings.sftp_conflict_ask")}</option>
-              <option value="OVERWRITE">
-                {t("settings.sftp_conflict_overwrite")}
-              </option>
+              <option value="OVERWRITE">{t("settings.sftp_conflict_overwrite")}</option>
               <option value="SKIP">{t("settings.sftp_conflict_skip")}</option>
               <option value="RENAME">{t("settings.sftp_conflict_rename")}</option>
               <option value="RESUME">{t("settings.sftp_conflict_resume")}</option>
             </Select>
           </div>
 
-          {/* Windows Context Menu ("Open in CoreTerm") */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
               <MousePointerClick className="w-4 h-4 text-sky-400 shrink-0" />
@@ -460,7 +325,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <Switch
               checked={contextMenuDraft}
-              onChange={handleToggleContextMenu}
+              onChange={() => setContextMenuDraft((prev) => !prev)}
               aria-label={t("settings.context_menu_title")}
             />
           </div>
@@ -478,48 +343,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </Button>
           </div>
         </form>
-    </ModalShell>
+      </ModalShell>
 
-    <ConfirmDeleteModal
-      isOpen={deletingShell !== null}
-      title={t("settings.shell_delete_title")}
-      itemName={deletingShell?.name ?? ""}
-      itemDetail={
-        deletingShell
-          ? formatShellArgs(deletingShell.args)
-            ? `${deletingShell.executable} ${formatShellArgs(deletingShell.args)}`
-            : deletingShell.executable
-          : undefined
-      }
-      onCancel={() => setDeletingShell(null)}
-      onConfirm={() => {
-        if (!deletingShell) return;
-        setCustomShells((prev) => prev.filter((c) => c.id !== deletingShell.id));
-        setDeletingShell(null);
-      }}
-    />
+      <ConfirmDeleteModal
+        isOpen={deletingShell !== null}
+        title={t("settings.shell_delete_title")}
+        itemName={deletingShell?.name ?? ""}
+        itemDetail={
+          deletingShell
+            ? formatShellArgs(deletingShell.args)
+              ? `${deletingShell.executable} ${formatShellArgs(deletingShell.args)}`
+              : deletingShell.executable
+            : undefined
+        }
+        onCancel={() => setDeletingShell(null)}
+        onConfirm={() => {
+          if (!deletingShell) return;
+          setCustomShells((prev) => prev.filter((c) => c.id !== deletingShell.id));
+          setDeletingShell(null);
+        }}
+      />
 
-    <ActionModal
-      isOpen={showDiscardConfirm}
-      onClose={() => setShowDiscardConfirm(false)}
-      title={t("settings.discard_title")}
-      icon={<AlertTriangle className="h-4 w-4" />}
-      iconTone="warning"
-      size="sm"
-      confirmLabel={t("settings.discard_confirm")}
-      confirmVariant="danger"
-      confirmIcon={<X className="h-3.5 w-3.5" />}
-      cancelLabel={t("settings.discard_keep")}
-      confirmAutoFocus
-      onConfirm={() => {
-        setShowDiscardConfirm(false);
-        onClose();
-      }}
-    >
-      <p className="text-xs text-slate-300 leading-relaxed">
-        {t("settings.discard_desc")}
-      </p>
-    </ActionModal>
+      <ActionModal
+        isOpen={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        title={t("settings.discard_title")}
+        icon={<AlertTriangle className="h-4 w-4" />}
+        iconTone="warning"
+        size="sm"
+        confirmLabel={t("settings.discard_confirm")}
+        confirmVariant="danger"
+        confirmIcon={<X className="h-3.5 w-3.5" />}
+        cancelLabel={t("settings.discard_keep")}
+        confirmAutoFocus
+        onConfirm={() => {
+          setShowDiscardConfirm(false);
+          onClose();
+        }}
+      >
+        <p className="text-xs text-slate-300 leading-relaxed">{t("settings.discard_desc")}</p>
+      </ActionModal>
     </>
   );
 };

@@ -91,3 +91,19 @@ pub struct SftpTransferConflictEventDto {
     pub dest_mtime_ms: Option<u64>,
     pub can_resume: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileContentDto {
+    pub path: String,
+    pub content: String,
+    pub size: u64,
+    pub mtime_ms: Option<u64>,
+    pub readonly: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileWriteResultDto {
+    pub path: String,
+    pub size: u64,
+    pub mtime_ms: Option<u64>,
+}

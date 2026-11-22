@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { useI18n } from "@/shared/i18n";
 import { IconButton } from "./IconButton";
 
 export type AlertKind = "error" | "warn" | "info" | "success";
@@ -63,6 +64,7 @@ const AlertCard: React.FC<{
   item: AlertItem;
   onDismiss: (id: string) => void;
 }> = ({ item, onDismiss }) => {
+  const { t } = useI18n();
   const [paused, setPaused] = useState(false);
   const remainingRef = useRef(item.duration);
   const startedAtRef = useRef(Date.now());
@@ -103,7 +105,7 @@ const AlertCard: React.FC<{
       <IconButton
         size="xs"
         onClick={() => onDismiss(item.id)}
-        title="Dismiss"
+        title={t("common.close")}
         icon={<X className="w-3.5 h-3.5" />}
       />
       <div

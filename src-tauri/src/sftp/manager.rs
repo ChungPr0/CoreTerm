@@ -7,9 +7,10 @@ use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
+use crate::core::defaults::LOCAL_HOST_ID;
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::hosts::HostService;
-use crate::ipc::dto::{SftpConnectAckDto, SftpEntryDto, SftpTransferJobDto};
+use crate::ipc::dto::SftpConnectAckDto;
 use crate::keys::KeyService;
 use crate::sftp::auth::{
     apply_host_key_decision, deliver_secret_decision, PendingPromptSlots,
@@ -101,7 +102,7 @@ impl SftpSessionManager {
                 "tab_id and host_id must be non-empty".to_string(),
             ));
         }
-        if trimmed_host == "local" {
+        if trimmed_host == LOCAL_HOST_ID {
             return Err(CoreError::Validation(
                 "SFTP cannot connect to the local shell pseudo-host".to_string(),
             ));
@@ -150,7 +151,6 @@ impl SftpSessionManager {
                     cancel_token.clone(),
                 );
 
-                // Upgrade only if this attempt still owns the tab slot.
                 let installed = if cancel_token.is_cancelled() {
                     false
                 } else if let Entry::Occupied(mut occ) =
@@ -252,13 +252,16 @@ impl SftpSessionManager {
         let entry = self
             .sessions
             .get(tab_id.trim())
-            .ok_or_else(|| CoreError::NotFound(format!("No connecting SFTP session for {tab_id}")))?
+            .ok_or_else(|| {
+                CoreError::NotFound(format!("No connecting SFTP session for {tab_id}"))
+            })?
             .entry
             .clone();
         match entry.as_ref() {
-            TabSessionEntry::Connecting { prompts, .. } => {
-                deliver_secret_decision(prompts, Some((Zeroizing::new(secret), save_to_vault, auto_reconnect)))
-            }
+            TabSessionEntry::Connecting { prompts, .. } => deliver_secret_decision(
+                prompts,
+                Some((Zeroizing::new(secret), save_to_vault, auto_reconnect)),
+            ),
             TabSessionEntry::Connected { .. } => Err(CoreError::Validation(
                 "SFTP session is already authenticated".to_string(),
             )),
@@ -269,7 +272,9 @@ impl SftpSessionManager {
         let entry = self
             .sessions
             .get(tab_id.trim())
-            .ok_or_else(|| CoreError::NotFound(format!("No connecting SFTP session for {tab_id}")))?
+            .ok_or_else(|| {
+                CoreError::NotFound(format!("No connecting SFTP session for {tab_id}"))
+            })?
             .entry
             .clone();
         match entry.as_ref() {
@@ -282,7 +287,7 @@ impl SftpSessionManager {
         }
     }
 
-    fn connected_parts(
+    pub(super) fn connected_parts(
         &self,
         tab_id: &str,
     ) -> CoreResult<(Arc<RemoteSftpClient>, Arc<TransferEngine>)> {
@@ -300,108 +305,6 @@ impl SftpSessionManager {
                 "SFTP session is still connecting".to_string(),
             )),
         }
-    }
-
-    pub async fn remote_list_dir(
-        &self,
-        tab_id: &str,
-        path: &str,
-    ) -> CoreResult<(String, Vec<SftpEntryDto>)> {
-        let (client, _) = self.connected_parts(tab_id)?;
-        client.list_dir(path).await
-    }
-
-    pub async fn remote_create_dir(
-        &self,
-        tab_id: &str,
-        parent_dir: &str,
-        name: &str,
-    ) -> CoreResult<String> {
-        let (client, _) = self.connected_parts(tab_id)?;
-        client.create_dir(parent_dir, name).await
-    }
-
-    pub async fn remote_rename(
-        &self,
-        tab_id: &str,
-        old_path: &str,
-        new_name: &str,
-    ) -> CoreResult<String> {
-        let (client, _) = self.connected_parts(tab_id)?;
-        client.rename_entry(old_path, new_name).await
-    }
-
-    pub async fn remote_delete(&self, tab_id: &str, paths: Vec<String>) -> CoreResult<()> {
-        let (client, _) = self.connected_parts(tab_id)?;
-        client.delete_entries(&paths).await
-    }
-
-    pub async fn remote_chmod(&self, tab_id: &str, path: &str, mode: u32) -> CoreResult<()> {
-        let (client, _) = self.connected_parts(tab_id)?;
-        client.chmod(path, mode).await
-    }
-
-    pub async fn enqueue_uploads(
-        &self,
-        tab_id: &str,
-        local_paths: Vec<String>,
-        remote_dir: String,
-        conflict_policy: String,
-    ) -> CoreResult<Vec<SftpTransferJobDto>> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers
-            .enqueue_uploads(local_paths, remote_dir, conflict_policy)
-            .await
-    }
-
-    pub async fn enqueue_downloads(
-        &self,
-        tab_id: &str,
-        remote_paths: Vec<String>,
-        local_dir: String,
-        conflict_policy: String,
-    ) -> CoreResult<Vec<SftpTransferJobDto>> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers
-            .enqueue_downloads(remote_paths, local_dir, conflict_policy)
-            .await
-    }
-
-    pub fn pause_transfer(&self, tab_id: &str, job_id: &str) -> CoreResult<()> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers.pause_job(job_id)
-    }
-
-    pub fn resume_transfer(&self, tab_id: &str, job_id: &str) -> CoreResult<()> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers.resume_job(job_id)
-    }
-
-    pub fn cancel_transfer(&self, tab_id: &str, job_id: &str) -> CoreResult<()> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers.cancel_job(job_id)
-    }
-
-    pub fn resolve_conflict(
-        &self,
-        tab_id: &str,
-        conflict_id: &str,
-        action: &str,
-        apply_to_all: bool,
-    ) -> CoreResult<()> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers.resolve_conflict(conflict_id, action, apply_to_all)
-    }
-
-    pub fn list_transfers(&self, tab_id: &str) -> CoreResult<Vec<SftpTransferJobDto>> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        Ok(transfers.list_jobs())
-    }
-
-    pub fn clear_finished_transfers(&self, tab_id: &str) -> CoreResult<()> {
-        let (_, transfers) = self.connected_parts(tab_id)?;
-        transfers.clear_finished();
-        Ok(())
     }
 }
 
@@ -439,7 +342,10 @@ mod tests {
             },
         );
 
-        assert!(mgr.sessions.remove_if(tab, |_, slot| slot.gen_id == g1).is_none());
+        assert!(mgr
+            .sessions
+            .remove_if(tab, |_, slot| slot.gen_id == g1)
+            .is_none());
         assert_eq!(mgr.sessions.get(tab).map(|s| s.gen_id), Some(g2));
     }
 }

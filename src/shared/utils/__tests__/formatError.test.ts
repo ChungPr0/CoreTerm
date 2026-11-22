@@ -151,6 +151,46 @@ describe("formatError utils", () => {
         "terminal cục bộ",
         "local terminal",
       ],
+      [
+        "Validation error: File exceeds maximum editable size (2 MB)",
+        "tối đa 2 MB",
+        "2 MB",
+      ],
+      [
+        "Validation error: Binary or non-UTF-8 file cannot be edited",
+        "tệp nhị phân",
+        "Binary",
+      ],
+      [
+        "Validation error: Cannot edit a directory",
+        "thư mục",
+        "directory",
+      ],
+      [
+        "SFTP error: Failed to write remote file: Disk full",
+        "Không thể lưu tệp từ xa: Disk full",
+        "Failed to write remote file: Disk full",
+      ],
+      [
+        "SFTP error: Destination '/var/www/index.html' already exists",
+        "đã tồn tại",
+        "already exists",
+      ],
+      [
+        "Validation error: Directory tree exceeds maximum transfer depth or entry limit",
+        "giới hạn độ sâu",
+        "maximum transfer depth",
+      ],
+      [
+        "SFTP error: SSH server rejected the private key",
+        "từ chối khóa",
+        "rejected the private key",
+      ],
+      [
+        "Validation error: Modifying protected system path is prohibited: 'C:\\Windows\\win.ini'",
+        "đường dẫn hệ thống được bảo vệ",
+        "protected system path",
+      ],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {
@@ -172,6 +212,7 @@ describe("formatError utils", () => {
       ],
       ["PTY error: Failed to open Windows ConPTY: access denied", "Failed to open Windows ConPTY: access denied"],
       ["SFTP error: SSH connect failed: Connection refused", "Connection refused"],
+      ["SFTP error: Broken pipe", "Broken pipe"],
     ] as const;
 
     for (const [raw, expected] of systemErrors) {

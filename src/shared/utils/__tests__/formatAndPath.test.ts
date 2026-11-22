@@ -3,7 +3,9 @@ import { fmtMode, fmtSize, fmtSpeed } from "@/shared/utils/formatters";
 import {
   joinRemote,
   localParent,
+  normalizeEditorPathKey,
   normPosix,
+  pathBaseName,
   posixCdCmd,
   posixParent,
   splitLocalCrumbs,
@@ -69,8 +71,22 @@ describe("formatters & path utils", () => {
     expect(posixCdCmd("/C:/Users/tienc")).toBe('cd "C:\\Users\\tienc"\r');
   });
 
-  it("quotes posix cd command safely", () => {
+  it("quotes posix cd command safely and blocks command substitution / control chars", () => {
     expect(posixCdCmd("/var/my 'dir'/")).toBe("cd -- '/var/my '\\''dir'\\'''\r");
+    expect(posixCdCmd("/C:/tmp/$(id)")).toBe("cd 'C:\\tmp\\$(id)'\r");
+    expect(posixCdCmd("/C:/tmp/`calc`")).toBe("cd 'C:\\tmp\\`calc`'\r");
+    expect(posixCdCmd("/var/log/test\nrm -rf /")).toBe("cd -- '/var/log/testrm -rf '\r");
+  });
+
+  it("normalizes editor path keys and extracts path basenames", () => {
+    expect(pathBaseName("C:\\Users\\dev\\config.json")).toBe("config.json");
+    expect(pathBaseName("/etc/nginx/nginx.conf")).toBe("nginx.conf");
+    expect(normalizeEditorPathKey("local", "C:\\Users\\Dev\\App.tsx")).toBe(
+      normalizeEditorPathKey("local", "c:/users/dev/app.tsx")
+    );
+    expect(normalizeEditorPathKey("remote", "//etc/nginx//nginx.conf")).toBe(
+      "/etc/nginx/nginx.conf"
+    );
   });
 
   it("handles edge cases in formatters", () => {

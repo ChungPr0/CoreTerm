@@ -87,7 +87,11 @@ pub async fn session_submit_host_key(
     action: Option<String>,
     decision: Option<String>,
 ) -> AppResult<()> {
-    let act = action.or(decision).unwrap_or_else(|| "ACCEPT".to_string());
+    let act = action
+        .or(decision)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::Validation("Host key action cannot be empty".to_string()))?;
     state
         .pty_manager
         .submit_host_key(&app, &state.hosts, &tab_id, &act)

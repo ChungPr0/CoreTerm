@@ -9,6 +9,7 @@ use base64::Engine;
 use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey};
+use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::restrict_private_key_acl;
@@ -120,7 +121,8 @@ impl SshKeyEngine {
         let priv_path = keys_dir.join(format!("{key_id}.{ext}"));
         let pub_path = keys_dir.join(format!("{key_id}.{ext}.pub"));
 
-        let mut private_key = if normalized_type == "RSA_4096" {
+        let has_passphrase = passphrase.map(|p| !p.is_empty()).unwrap_or(false);
+        let mut private_key = if normalized_type == "RSA_4096" && !has_passphrase {
             Self::try_generate_rsa_with_ssh_keygen(&priv_path, &pub_path, comment_str)
         } else {
             None
@@ -139,7 +141,6 @@ impl SshKeyEngine {
             .map_err(|e| CoreError::Internal(format!("Public key formatting failed: {e}")))?;
         let fingerprint = pub_key.fingerprint(HashAlg::Sha256).to_string();
 
-        let has_passphrase = passphrase.map(|p| !p.is_empty()).unwrap_or(false);
         let final_key = if let Some(pw) = passphrase.filter(|p| !p.is_empty()) {
             private_key
                 .encrypt(&mut OsRng, pw.as_bytes())
@@ -156,7 +157,7 @@ impl SshKeyEngine {
         fs::write(&pub_path, public_key_content.as_bytes())?;
 
         // Lock NTFS ACL on private key to CURRENT_USER only
-        let _ = restrict_private_key_acl(&priv_path);
+        restrict_private_key_acl(&priv_path)?;
 
         Ok(GeneratedKeyMaterial {
             key_type: normalized_type.to_string(),
@@ -168,7 +169,8 @@ impl SshKeyEngine {
     }
 
     pub fn inspect_key_file(path: &Path, has_passphrase_hint: bool) -> InspectedKeyMaterial {
-        if let Ok(bytes) = fs::read(path) {
+        if let Ok(raw_bytes) = fs::read(path) {
+            let bytes = Zeroizing::new(raw_bytes);
             if let Ok(parsed) = PrivateKey::from_openssh(&bytes) {
                 let pub_key = parsed.public_key();
                 let fingerprint = pub_key.fingerprint(HashAlg::Sha256).to_string();

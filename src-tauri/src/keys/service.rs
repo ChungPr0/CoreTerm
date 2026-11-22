@@ -5,7 +5,9 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::path_guard::validate_delete_path;
 use crate::infra::db::{key_repo, SqliteDb};
+use crate::infra::os::restrict_private_key_acl;
 use crate::infra::security::SecretVault;
 use crate::ipc::dto::{
     DeleteResultDto, GenerateSshKeyRequestDto, ImportSshKeyRequestDto, SshKeyDto,
@@ -24,6 +26,7 @@ impl KeyService {
     pub fn new(db: SqliteDb, vault: SecretVault, app_data_dir: &Path) -> CoreResult<Self> {
         let keys_dir = app_data_dir.join("keys");
         fs::create_dir_all(&keys_dir)?;
+        let _ = restrict_private_key_acl(&keys_dir);
         Ok(Self {
             db,
             vault,
@@ -176,6 +179,11 @@ impl KeyService {
     pub fn delete(&self, key_id: &str, delete_file_from_disk: bool) -> CoreResult<DeleteResultDto> {
         let conn = self.db.lock_conn()?;
         let key_info = key_repo::get_delete_info(&conn, key_id)?;
+        if delete_file_from_disk {
+            if let Some((ref priv_path, _)) = key_info {
+                validate_delete_path(Path::new(priv_path))?;
+            }
+        }
         let affected = key_repo::delete(&conn, key_id)?;
 
         if let Some((priv_path, secret_ref)) = key_info {

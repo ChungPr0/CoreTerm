@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod core;
 pub mod hosts;
 pub mod infra;
@@ -7,97 +8,41 @@ pub mod pty;
 pub mod sftp;
 pub mod ssh;
 
+pub use bootstrap::{maybe_run_cli_helpers, parse_clean_launch_dir};
+
 use tauri::{Emitter, Manager, RunEvent};
 use tracing::info;
 
-use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS};
+use crate::core::defaults::{
+    DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, FALLBACK_WINDOW_SHOW_MS,
+};
 use crate::hosts::HostService;
 use crate::infra::db::SqliteDb;
+use crate::infra::os::JobObjectSupervisor;
 use crate::infra::security::SecretVault;
-use crate::keys::KeyService;
 use crate::ipc::commands::{
     app_get_launch_dir, app_get_status, check_shell_exe, clipboard_read_text,
     clipboard_write_text, context_menu_get_status, context_menu_set_enabled,
     detect_available_shells, host_create, host_delete, host_duplicate, host_get_detail,
     host_group_create, host_group_delete, host_group_list, host_group_reorder, host_list,
     host_move_group, host_update, key_delete, key_generate, key_get_default, key_import, key_list,
-    key_set_default, local_create_dir, local_delete, local_home_dir, local_list_dir,
-    local_list_drives, local_rename, port_check_available, port_forward_delete, port_forward_probe,
-    port_forward_toggle, port_forward_upsert, session_connect, session_disconnect,
-    session_reconnect, session_resize_pty, session_submit_host_key, session_submit_secret,
-    session_write_stdin, sftp_cancel_transfer, sftp_chmod, sftp_clear_finished_transfers,
-    sftp_connect, sftp_create_dir, sftp_delete, sftp_disconnect, sftp_download, sftp_list_dir,
-    sftp_list_transfers, sftp_pause_transfer, sftp_rename, sftp_resolve_conflict,
-    sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, window_close,
-    window_is_maximized, window_minimize, window_present, window_set_launch_size,
-    window_get_position, window_set_position, window_get_size, window_set_size,
+    key_set_default, local_create_dir, local_create_file, local_delete, local_home_dir,
+    local_list_dir, local_list_drives, local_read_file, local_rename, local_write_file,
+    port_check_available, port_forward_delete, port_forward_probe, port_forward_toggle,
+    port_forward_upsert, session_connect, session_disconnect, session_reconnect,
+    session_resize_pty, session_submit_host_key, session_submit_secret, session_write_stdin,
+    sftp_cancel_transfer, sftp_chmod, sftp_clear_finished_transfers, sftp_connect,
+    sftp_create_dir, sftp_create_file, sftp_delete, sftp_disconnect, sftp_download, sftp_list_dir,
+    sftp_list_transfers, sftp_pause_transfer, sftp_read_file, sftp_rename, sftp_resolve_conflict,
+    sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, sftp_write_file,
+    window_close, window_get_position, window_get_size, window_is_maximized, window_minimize,
+    window_present, window_set_launch_size, window_set_position, window_set_size,
     window_sys_command, window_toggle_maximize, AppState,
 };
-use crate::infra::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
-use crate::infra::os::JobObjectSupervisor;
+use crate::ipc::events::EVENT_OPEN_DIRECTORY;
+use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
-
-/// Runs elevated ConPTY named-pipe relay or CLI helper flags before GUI bootstrap.
-pub fn maybe_run_cli_helpers() -> Option<i32> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(first) = args.first() {
-        if first == ELEVATED_PTY_FLAG {
-            return Some(run_elevated_worker(&args[1..]));
-        }
-        if first == "--register-context-menu" {
-            match crate::infra::os::context_menu::register_context_menu() {
-                Ok(_) => {
-                    println!("Successfully registered 'Open in CoreTerm' context menu.");
-                    return Some(0);
-                }
-                Err(e) => {
-                    eprintln!("Failed to register context menu: {e}");
-                    return Some(1);
-                }
-            }
-        }
-        if first == "--unregister-context-menu" {
-            let _ = crate::infra::os::context_menu::unregister_context_menu();
-            println!("Successfully unregistered 'Open in CoreTerm' context menu.");
-            return Some(0);
-        }
-    }
-    None
-}
-
-/// Parses and cleans a directory path passed via CLI or context menu launch.
-/// Removes Windows extended-length prefix (`\\?\` or `\\?\UNC\`) which causes
-/// PowerShell to display `Microsoft.PowerShell.Core\FileSystem::\\?\C:\...` in prompts.
-pub fn parse_clean_launch_dir(raw: &str) -> Option<String> {
-    if raw.starts_with('-') {
-        return None;
-    }
-    let trimmed = raw.trim().trim_matches('"');
-    if trimmed.is_empty() {
-        return None;
-    }
-    let p = std::path::Path::new(trimmed);
-    if !p.exists() || !p.is_dir() {
-        return None;
-    }
-    let abs_path = if p.is_absolute() {
-        p.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .map(|cwd| cwd.join(p))
-            .unwrap_or_else(|_| p.to_path_buf())
-    };
-    let s = abs_path.to_string_lossy();
-    let cleaned = if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{}", stripped)
-    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
-        stripped.to_string()
-    } else {
-        s.to_string()
-    };
-    Some(cleaned)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -118,9 +63,12 @@ pub fn run() {
                 let _ = main_win.unminimize();
                 let _ = main_win.set_focus();
             }
-            let launch_dir = argv.into_iter().skip(1).find_map(|arg| parse_clean_launch_dir(&arg));
+            let launch_dir = argv
+                .into_iter()
+                .skip(1)
+                .find_map(|arg| parse_clean_launch_dir(&arg));
             if let Some(dir) = launch_dir {
-                let _ = app.emit("open-directory", dir);
+                let _ = app.emit(EVENT_OPEN_DIRECTORY, dir);
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -153,14 +101,19 @@ pub fn run() {
                 crate::infra::os::configure_main_window(&main_win);
                 let fallback_win = main_win.clone();
                 tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        FALLBACK_WINDOW_SHOW_MS,
+                    ))
+                    .await;
                     if !fallback_win.is_visible().unwrap_or(false) {
                         let _ = fallback_win.show();
                     }
                 });
             }
 
-            let launch_dir = std::env::args().skip(1).find_map(|arg| parse_clean_launch_dir(&arg));
+            let launch_dir = std::env::args()
+                .skip(1)
+                .find_map(|arg| parse_clean_launch_dir(&arg));
 
             crate::infra::os::context_menu::sync_context_menu_if_enabled();
 
@@ -211,6 +164,9 @@ pub fn run() {
             sftp_submit_host_key,
             sftp_list_dir,
             sftp_create_dir,
+            sftp_create_file,
+            sftp_read_file,
+            sftp_write_file,
             sftp_rename,
             sftp_delete,
             sftp_chmod,
@@ -218,6 +174,9 @@ pub fn run() {
             local_home_dir,
             local_list_dir,
             local_create_dir,
+            local_create_file,
+            local_read_file,
+            local_write_file,
             local_rename,
             local_delete,
             sftp_upload,

@@ -180,6 +180,13 @@ impl HostService {
         } else {
             new_host.trim().to_string()
         };
+        validate_host_fields(
+            &final_alias,
+            &final_host,
+            source.port,
+            &source.username,
+            &source.auth_method,
+        )?;
 
         let new_id = Uuid::new_v4().to_string();
         let tags_json = serde_json::to_string(&source.tags).unwrap_or_else(|_| "[]".to_string());
@@ -328,10 +335,7 @@ impl HostService {
         let conn = self.db.lock_conn()?;
         host_repo::set_saved_secret(&conn, host_id, &ref_id)?;
         if let Some(ar) = auto_reconnect {
-            conn.execute(
-                "UPDATE ssh_options SET auto_reconnect = ?2 WHERE host_id = ?1",
-                rusqlite::params![host_id, if ar { 1 } else { 0 }],
-            )?;
+            host_repo::set_auto_reconnect(&conn, host_id, ar)?;
         }
         Ok(())
     }

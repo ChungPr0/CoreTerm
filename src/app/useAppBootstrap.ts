@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EVENT_OPEN_DIRECTORY } from "@/shared/api/ipcEvents";
 import { listenEvent } from "@/shared/api/tauriClient";
 import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
 import {
@@ -99,7 +100,7 @@ export function useAppBootstrap({
 
     let active = true;
     let unlistenOpenDir: (() => void) | undefined;
-    listenEvent<string>("open-directory", (dir) => {
+    listenEvent<string>(EVENT_OPEN_DIRECTORY, (dir) => {
       if (dir) {
         onOpenDirectoryRef.current?.();
         useTabsStore.getState().openDirectoryInTab(dir);

@@ -46,6 +46,28 @@ export interface PortForwardStatusDto {
   owner_tab_id?: string | null;
 }
 
+export interface EditorTabMeta {
+  kind: "local" | "remote";
+  path: string;
+  name: string;
+  hostLabel: string;
+  dirty?: boolean;
+}
+
+export interface FileContentDto {
+  path: string;
+  content: string;
+  size: number;
+  mtime_ms?: number | null;
+  readonly: boolean;
+}
+
+export interface FileWriteResultDto {
+  path: string;
+  size: number;
+  mtime_ms?: number | null;
+}
+
 export interface TerminalTabItem {
   tabId: string;
   hostId: string;
@@ -62,9 +84,10 @@ export interface TerminalTabItem {
   reconnectIntervalSec?: number;
   isAdmin?: boolean;
   initialCwd?: string;
-  tabKind?: "terminal" | "sftp";
+  tabKind?: "terminal" | "sftp" | "editor";
   sftpOpen?: boolean;
   sftpSplitRatio?: number;
   sftpState?: SftpConnectionState;
   reconnectSource?: "tab" | "auto" | "banner";
+  editorFile?: EditorTabMeta;
 }

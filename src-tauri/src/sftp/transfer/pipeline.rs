@@ -11,13 +11,11 @@ use super::conflict::{
     find_non_colliding_dest, resolve_destination_conflict, ConflictContext, ConflictDetails,
     ConflictPolicy,
 };
-use super::engine::EVENT_SFTP_TRANSFER_PROGRESS;
 use super::job::{TransferDirection, TransferJobRecord};
+use crate::core::defaults::{SFTP_COPY_CHUNK_BYTES, SFTP_PROGRESS_EMIT_INTERVAL_MS};
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::core::path_guard::remote_leaf_name;
-
-const COPY_CHUNK_BYTES: usize = 128 * 1024;
-const PROGRESS_EMIT_INTERVAL_MS: u128 = 150;
+use crate::ipc::events::EVENT_SFTP_TRANSFER_PROGRESS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferEndState {
@@ -26,6 +24,36 @@ pub enum TransferEndState {
     Paused,
     Cancelled,
     Superseded,
+}
+
+async fn verify_transfer_endpoint_intact(
+    direction: TransferDirection,
+    source_path: &str,
+    dest_path: &str,
+) -> CoreResult<()> {
+    match direction {
+        TransferDirection::Download if !dest_path.is_empty() => {
+            match tokio::fs::metadata(dest_path).await {
+                Ok(meta) if meta.is_dir() => Err(CoreError::Validation(
+                    "Destination file was deleted or corrupted during transfer".to_string(),
+                )),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(CoreError::Validation(
+                    "Destination file was deleted or corrupted during transfer".to_string(),
+                )),
+                _ => Ok(()),
+            }
+        }
+        TransferDirection::Upload => match tokio::fs::metadata(source_path).await {
+            Ok(meta) if meta.is_dir() => Err(CoreError::Validation(
+                "Source file was deleted or corrupted during transfer".to_string(),
+            )),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(CoreError::Validation(
+                "Source file was deleted or corrupted during transfer".to_string(),
+            )),
+            _ => Ok(()),
+        },
+        _ => Ok(()),
+    }
 }
 
 pub async fn run_transfer_checking_conflict(
@@ -79,8 +107,8 @@ pub async fn run_transfer_checking_conflict(
         .await?;
 
         match chosen {
-            ConflictPolicy::Skip => return Ok(TransferEndState::Skipped),
-            ConflictPolicy::Overwrite | ConflictPolicy::Ask => resume_offset = 0,
+            ConflictPolicy::Skip | ConflictPolicy::Ask => return Ok(TransferEndState::Skipped),
+            ConflictPolicy::Overwrite => resume_offset = 0,
             ConflictPolicy::Resume => {
                 resume_offset = if can_resume { dest_size } else { 0 };
             }
@@ -150,10 +178,9 @@ pub async fn run_transfer_with_offset(
             }
             let mut writer = ctx.client.open_write(&dest_path, offset == 0).await?;
             if offset > 0 {
-                writer
-                    .seek(SeekFrom::Start(offset))
-                    .await
-                    .map_err(|e| CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string()))))?;
+                writer.seek(SeekFrom::Start(offset)).await.map_err(|e| {
+                    CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string())))
+                })?;
             }
             stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer, run_gen).await
         }
@@ -172,10 +199,9 @@ pub async fn run_transfer_with_offset(
             }
             let mut reader = ctx.client.open_read(&job.source_path).await?;
             if offset > 0 {
-                reader
-                    .seek(SeekFrom::Start(offset))
-                    .await
-                    .map_err(|e| CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string()))))?;
+                reader.seek(SeekFrom::Start(offset)).await.map_err(|e| {
+                    CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string())))
+                })?;
             }
             let mut writer = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -202,7 +228,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut buf = vec![0u8; COPY_CHUNK_BYTES];
+    let mut buf = vec![0u8; SFTP_COPY_CHUNK_BYTES];
     let mut last_emit = Instant::now();
     let mut speed_window_start = Instant::now();
     let mut speed_window_bytes = 0u64;
@@ -233,35 +259,7 @@ where
 
         if read_bytes == 0 {
             writer.shutdown().await.map_err(CoreError::Io)?;
-            if job.direction == TransferDirection::Download && !dest_path.is_empty() {
-                match tokio::fs::metadata(&dest_path).await {
-                    Ok(meta) if meta.is_dir() => {
-                        return Err(CoreError::Validation(
-                            "Destination file was deleted or corrupted during transfer".to_string(),
-                        ));
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        return Err(CoreError::Validation(
-                            "Destination file was deleted or corrupted during transfer".to_string(),
-                        ));
-                    }
-                    _ => {}
-                }
-            } else if job.direction == TransferDirection::Upload {
-                match tokio::fs::metadata(&job.source_path).await {
-                    Ok(meta) if meta.is_dir() => {
-                        return Err(CoreError::Validation(
-                            "Source file was deleted or corrupted during transfer".to_string(),
-                        ));
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        return Err(CoreError::Validation(
-                            "Source file was deleted or corrupted during transfer".to_string(),
-                        ));
-                    }
-                    _ => {}
-                }
-            }
+            verify_transfer_endpoint_intact(job.direction, &job.source_path, &dest_path).await?;
             return Ok(TransferEndState::Completed);
         }
 
@@ -279,43 +277,11 @@ where
 
         if last_disk_check.elapsed() >= Duration::from_millis(500) {
             last_disk_check = Instant::now();
-            match job.direction {
-                TransferDirection::Download => {
-                    if !dest_path.is_empty() {
-                        match tokio::fs::metadata(&dest_path).await {
-                            Ok(meta) if meta.is_dir() => {
-                                let _ = writer.shutdown().await;
-                                return Err(CoreError::Validation(
-                                    "Destination file was deleted or corrupted during transfer".to_string(),
-                                ));
-                            }
-                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                let _ = writer.shutdown().await;
-                                return Err(CoreError::Validation(
-                                    "Destination file was deleted or corrupted during transfer".to_string(),
-                                ));
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                TransferDirection::Upload => {
-                    match tokio::fs::metadata(&job.source_path).await {
-                        Ok(meta) if meta.is_dir() => {
-                            let _ = writer.shutdown().await;
-                            return Err(CoreError::Validation(
-                                "Source file was deleted or corrupted during transfer".to_string(),
-                            ));
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            let _ = writer.shutdown().await;
-                            return Err(CoreError::Validation(
-                                "Source file was deleted or corrupted during transfer".to_string(),
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
+            if let Err(err) =
+                verify_transfer_endpoint_intact(job.direction, &job.source_path, &dest_path).await
+            {
+                let _ = writer.shutdown().await;
+                return Err(err);
             }
         }
 
@@ -330,7 +296,7 @@ where
             speed_window_start = Instant::now();
         }
 
-        if last_emit.elapsed().as_millis() >= PROGRESS_EMIT_INTERVAL_MS {
+        if last_emit.elapsed().as_millis() >= SFTP_PROGRESS_EMIT_INTERVAL_MS {
             emit_progress(app, job);
             last_emit = Instant::now();
         }

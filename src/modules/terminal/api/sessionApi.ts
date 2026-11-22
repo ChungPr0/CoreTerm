@@ -1,4 +1,9 @@
 import { open as openNativeDialog } from "@tauri-apps/plugin-dialog";
+import {
+  EVENT_SESSION_AUTH_PROMPT,
+  EVENT_SESSION_HOST_KEY_PROMPT,
+  EVENT_SESSION_STATUS,
+} from "@/shared/api/ipcEvents";
 import { Channel, invoke, listenEvent, type UnlistenFn } from "@/shared/api/tauriClient";
 import { DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
 import type { ShellProfile } from "@/shared/types/ipc";
@@ -131,19 +136,19 @@ export const sessionApi = {
   onSessionStatus(
     handler: (payload: SessionStatusEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("session:status", handler);
+    return listenEvent(EVENT_SESSION_STATUS, handler);
   },
 
   onAuthPrompt(
     handler: (payload: SessionAuthPromptEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("session:auth_prompt", handler);
+    return listenEvent(EVENT_SESSION_AUTH_PROMPT, handler);
   },
 
   onHostKeyPrompt(
     handler: (payload: SessionHostKeyPromptEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("session:host_key_prompt", handler);
+    return listenEvent(EVENT_SESSION_HOST_KEY_PROMPT, handler);
   },
 
   appGetLaunchDir(): Promise<string | null> {

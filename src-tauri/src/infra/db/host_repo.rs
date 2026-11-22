@@ -451,6 +451,18 @@ pub fn set_saved_secret(conn: &Connection, host_id: &str, ref_id: &str) -> CoreR
     Ok(())
 }
 
+pub fn set_auto_reconnect(
+    conn: &Connection,
+    host_id: &str,
+    auto_reconnect: bool,
+) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE ssh_options SET auto_reconnect = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE host_id = ?1",
+        params![host_id, if auto_reconnect { 1 } else { 0 }],
+    )?;
+    Ok(())
+}
+
 pub fn delete(conn: &Connection, host_id: &str) -> CoreResult<usize> {
     Ok(conn.execute("DELETE FROM host_profiles WHERE id = ?1", params![host_id])?)
 }

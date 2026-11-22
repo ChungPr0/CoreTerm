@@ -240,7 +240,6 @@ export function useSftpConnection({
     intervalSec: reconnectIntervalSec,
     onReconnect: () => {
       useTabsStore.getState().bumpReconnectToken(tabId, "auto");
-      void connectSftp();
     },
   });
 

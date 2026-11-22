@@ -27,6 +27,7 @@ interface SftpBrowserPanelsProps {
   onStartSplitDrag: (e: React.MouseEvent) => void;
   onShowMenu: (x: number, y: number, items: ContextMenuEntry[]) => void;
   onNamePrompt: (prompt: NamePromptState) => void;
+  onOpenFile: (kind: "local" | "remote", item: FileItem) => void;
   onChmod: (item: FileItem) => void;
   onCopyPath: (path: string) => void;
   onRequestDelete: (kind: "local" | "remote", paths: string[]) => void;
@@ -55,6 +56,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
   onStartSplitDrag,
   onShowMenu,
   onNamePrompt,
+  onOpenFile,
   onChmod,
   onCopyPath,
   onRequestDelete,
@@ -99,9 +101,11 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
     onChangeFilter: browser.setFilter,
     onSelect: browser.setSelected,
     onNavigate: (p: string) => void browser.loadDir(p),
+    onOpenFile: (item: FileItem) => onOpenFile(kind, item),
     onUp: browser.goUp,
     onHome: browser.goHome,
     onRefresh: browser.refresh,
+    onNewFile: () => onNamePrompt({ kind: "newfile", targetKind: kind }),
     onNewFolder: () => onNamePrompt({ kind: "mkdir", targetKind: kind }),
     onRenameItem: (item: FileItem) => onNamePrompt({ kind: "rename", targetKind: kind, item }),
     onDeletePaths: (paths: string[]) => onRequestDelete(kind, paths),
@@ -143,7 +147,9 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                     showLocal,
                     t,
                     onOpenDir: (p) => void local.loadDir(p),
+                    onEditFile: (it) => onOpenFile("local", it),
                     onTransfer: onRequestUpload,
+                    onNewFile: () => onNamePrompt({ kind: "newfile", targetKind: "local" }),
                     onNewFolder: () => onNamePrompt({ kind: "mkdir", targetKind: "local" }),
                     onRename: (it) =>
                       onNamePrompt({ kind: "rename", targetKind: "local", item: it }),
@@ -202,9 +208,11 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 showLocal,
                 t,
                 onOpenDir: (p) => void remote.loadDir(p),
+                onEditFile: (it) => onOpenFile("remote", it),
                 onTransfer: onRequestDownload,
                 onUploadFiles: () => onUploadDialog(false),
                 onUploadFolder: () => onUploadDialog(true),
+                onNewFile: () => onNamePrompt({ kind: "newfile", targetKind: "remote" }),
                 onNewFolder: () => onNamePrompt({ kind: "mkdir", targetKind: "remote" }),
                 onRename: (it) =>
                   onNamePrompt({ kind: "rename", targetKind: "remote", item: it }),

@@ -1,13 +1,9 @@
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::Duration;
 
-#[cfg(windows)]
-use crate::infra::os::CREATE_NO_WINDOW;
 use crate::ipc::dto::ShellProfile;
-
-const WSL_LIST_TIMEOUT: Duration = Duration::from_millis(1500);
+use super::wsl::detect_wsl_distros;
+#[cfg(test)]
+use super::wsl::parse_wsl_distro_list;
 
 fn is_usable_file(path: &Path) -> bool {
     path.is_file() || std::fs::symlink_metadata(path).is_ok_and(|m| !m.is_dir())
@@ -49,14 +45,15 @@ pub fn resolve_shell_exe(input: &str) -> Option<String> {
     is_usable_file(candidate).then(|| trimmed.to_string())
 }
 
-fn find_executable(exe_name: &str, fallbacks: &[PathBuf]) -> Option<String> {
-    if let Some(p) = find_in_path(exe_name) {
-        return Some(p.to_string_lossy().into_owned());
-    }
-    for candidate in fallbacks {
+/// Resolves trusted system paths first before falling back to `PATH` to prevent user-PATH shadowing.
+fn find_system_first_executable(exe_name: &str, system_paths: &[PathBuf]) -> Option<String> {
+    for candidate in system_paths {
         if is_usable_file(candidate) {
             return Some(candidate.to_string_lossy().into_owned());
         }
+    }
+    if let Some(p) = find_in_path(exe_name) {
+        return Some(p.to_string_lossy().into_owned());
     }
     None
 }
@@ -68,7 +65,6 @@ fn env_path(var: &str, suffix: &str) -> Option<PathBuf> {
 }
 
 fn git_bash_from_git_exe(git_exe: &Path) -> Option<PathBuf> {
-    // Derive Git root from ...\Git\cmd\git.exe or ...\Git\mingw64\bin\git.exe.
     let mut cur = git_exe.parent()?;
     for _ in 0..3 {
         for rel in ["bin\\bash.exe", "usr\\bin\\bash.exe"] {
@@ -105,78 +101,13 @@ fn find_git_bash() -> Option<String> {
     None
 }
 
-fn decode_utf16_le(bytes: &[u8]) -> String {
-    let words: Vec<u16> = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|&c| u16::from_le_bytes(c))
-        .collect();
-    String::from_utf16_lossy(&words)
-}
-
-fn decode_wsl_output(bytes: &[u8]) -> String {
-    if bytes.starts_with(&[0xFF, 0xFE]) {
-        return decode_utf16_le(&bytes[2..]);
-    }
-    // Older Windows 10 wsl.exe emits UTF-16LE without BOM.
-    if bytes.len() >= 2 && bytes.len().is_multiple_of(2) && bytes.contains(&0) {
-        return decode_utf16_le(bytes);
-    }
-    String::from_utf8_lossy(bytes).into_owned()
-}
-
-pub(crate) fn parse_wsl_distro_list(bytes: &[u8]) -> Vec<String> {
-    let decoded = decode_wsl_output(bytes);
-    let mut seen = HashSet::new();
-    let mut distros = Vec::new();
-
-    for raw in decoded.lines() {
-        let name = raw.trim().trim_matches('\0').trim();
-        if name.is_empty() {
-            continue;
-        }
-        // Skip Docker Desktop internal WSL containers (not interactive user shells).
-        if name.eq_ignore_ascii_case("docker-desktop")
-            || name.eq_ignore_ascii_case("docker-desktop-data")
-        {
-            continue;
-        }
-        if seen.insert(name.to_string()) {
-            distros.push(name.to_string());
-        }
-    }
-    distros
-}
-
-async fn detect_wsl_distros(wsl_exe: &str) -> Vec<String> {
-    let mut cmd = tokio::process::Command::new(wsl_exe);
-    cmd.args(["-l", "-q"])
-        .env("WSL_UTF8", "1")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-
-    #[cfg(windows)]
-    cmd.creation_flags(CREATE_NO_WINDOW);
-
-    let Ok(Ok(output)) = tokio::time::timeout(WSL_LIST_TIMEOUT, cmd.output()).await else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    parse_wsl_distro_list(&output.stdout)
-}
-
 #[cfg(windows)]
 fn ps_profile() -> Option<ShellProfile> {
     let fallbacks: Vec<PathBuf> =
         env_path("SystemRoot", r"System32\WindowsPowerShell\v1.0\powershell.exe")
             .into_iter()
             .collect();
-    find_executable("powershell.exe", &fallbacks).map(|exe| ShellProfile {
+    find_system_first_executable("powershell.exe", &fallbacks).map(|exe| ShellProfile {
         id: "powershell".to_string(),
         kind: "powershell".to_string(),
         name: "PowerShell".to_string(),
@@ -198,7 +129,7 @@ fn pwsh_profile() -> Option<ShellProfile> {
     .into_iter()
     .flatten()
     .collect();
-    find_executable("pwsh.exe", &fallbacks).map(|exe| ShellProfile {
+    find_system_first_executable("pwsh.exe", &fallbacks).map(|exe| ShellProfile {
         id: "pwsh".to_string(),
         kind: "pwsh".to_string(),
         name: "PowerShell 7".to_string(),
@@ -210,6 +141,9 @@ fn pwsh_profile() -> Option<ShellProfile> {
 #[cfg(windows)]
 fn cmd_profile() -> Option<ShellProfile> {
     let mut fallbacks = Vec::new();
+    if let Some(sys_cmd) = env_path("SystemRoot", r"System32\cmd.exe") {
+        fallbacks.push(sys_cmd);
+    }
     if let Some(comspec) = std::env::var_os("ComSpec").map(PathBuf::from) {
         if comspec
             .file_name()
@@ -219,10 +153,7 @@ fn cmd_profile() -> Option<ShellProfile> {
             fallbacks.push(comspec);
         }
     }
-    if let Some(sys_cmd) = env_path("SystemRoot", r"System32\cmd.exe") {
-        fallbacks.push(sys_cmd);
-    }
-    find_executable("cmd.exe", &fallbacks).map(|exe| ShellProfile {
+    find_system_first_executable("cmd.exe", &fallbacks).map(|exe| ShellProfile {
         id: "cmd".to_string(),
         kind: "cmd".to_string(),
         name: "CMD".to_string(),
@@ -276,7 +207,12 @@ fn placeholder_shell() -> ShellProfile {
 pub fn find_default_shell() -> Option<ShellProfile> {
     #[cfg(windows)]
     {
-        first_profile([ps_profile(), pwsh_profile(), cmd_profile(), git_bash_profile()])
+        first_profile([
+            ps_profile(),
+            pwsh_profile(),
+            cmd_profile(),
+            git_bash_profile(),
+        ])
     }
     #[cfg(not(windows))]
     {
@@ -325,7 +261,7 @@ pub async fn detect_available_shells() -> Vec<ShellProfile> {
         let wsl_fallbacks: Vec<PathBuf> = env_path("SystemRoot", r"System32\wsl.exe")
             .into_iter()
             .collect();
-        if let Some(wsl_exe) = find_executable("wsl.exe", &wsl_fallbacks) {
+        if let Some(wsl_exe) = find_system_first_executable("wsl.exe", &wsl_fallbacks) {
             for distro in detect_wsl_distros(&wsl_exe).await {
                 profiles.push(ShellProfile {
                     id: format!("wsl:{distro}"),
@@ -405,7 +341,10 @@ mod tests {
             args: vec!["--login".into(), "-i".into()],
         };
 
-        assert_eq!(first_profile([None, None, Some(cmd.clone()), Some(bash)]), Some(cmd));
+        assert_eq!(
+            first_profile([None, None, Some(cmd.clone()), Some(bash)]),
+            Some(cmd)
+        );
         assert_eq!(first_profile([None, None]), None);
     }
 
@@ -445,7 +384,10 @@ mod tests {
             resolved_ext.to_ascii_lowercase().ends_with("cmd.exe"),
             "expected cmd.exe path, got {resolved_ext}"
         );
-        assert_eq!(resolve_shell_exe("definitely_nonexistent_shell_xyz_123"), None);
+        assert_eq!(
+            resolve_shell_exe("definitely_nonexistent_shell_xyz_123"),
+            None
+        );
     }
 
     #[test]

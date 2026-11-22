@@ -10,6 +10,7 @@ import { TransferConfirmModal, type PendingTransfer } from "./TransferConfirmMod
 
 export type NamePromptState =
   | { kind: "mkdir"; targetKind: "local" | "remote" }
+  | { kind: "newfile"; targetKind: "local" | "remote" }
   | { kind: "rename"; targetKind: "local" | "remote"; item: FileItem };
 
 interface SftpOverlaysProps {
@@ -62,17 +63,23 @@ export const SftpOverlays: React.FC<SftpOverlaysProps> = ({
         title={
           nameModal?.kind === "rename"
             ? t("sftp.modal_rename_title")
-            : t("sftp.modal_new_folder_title")
+            : nameModal?.kind === "newfile"
+              ? t("sftp.modal_new_file_title")
+              : t("sftp.modal_new_folder_title")
         }
         subTitle={
           nameModal?.kind === "rename"
             ? t("sftp.modal_rename_sub", { name: nameModal.item.name })
-            : t("sftp.modal_new_folder_sub")
+            : nameModal?.kind === "newfile"
+              ? t("sftp.modal_new_file_sub")
+              : t("sftp.modal_new_folder_sub")
         }
         label={
           nameModal?.kind === "rename"
             ? t("sftp.modal_rename_label")
-            : t("sftp.modal_new_folder_label")
+            : nameModal?.kind === "newfile"
+              ? t("sftp.modal_new_file_label")
+              : t("sftp.modal_new_folder_label")
         }
         initialValue={nameModal?.kind === "rename" ? nameModal.item.name : ""}
         confirmLabel={t("sftp.modal_confirm")}

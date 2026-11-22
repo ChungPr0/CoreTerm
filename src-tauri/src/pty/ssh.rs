@@ -19,6 +19,7 @@ pub(super) struct SshLaunchPlan {
     pub args: Vec<OsString>,
     pub cli_preview: String,
     pub active_forwards: Vec<PortForwardStatusDto>,
+    pub auth_method: String,
     pub ssh_key_id: Option<String>,
     pub target_host: String,
     pub target_port: u16,
@@ -32,6 +33,7 @@ pub(super) struct SshExpectContext<'a> {
     pub session: &'a Arc<PtySession>,
     pub tab_id: &'a str,
     pub host_id: &'a str,
+    pub auth_method: &'a str,
     pub target_host: &'a str,
     pub target_port: u16,
     pub host_pw_mode: &'a str,
@@ -72,7 +74,14 @@ pub(super) fn prepare_ssh_launch(
                         .unwrap_or("another process"),
                     p.conflicting_pid.unwrap_or(0)
                 );
-                emit_status(app, tab_id, host_id, "PORT_CONFLICT", vec![], Some(msg.clone()));
+                emit_status(
+                    app,
+                    tab_id,
+                    host_id,
+                    "PORT_CONFLICT",
+                    vec![],
+                    Some(msg.clone()),
+                );
                 return Err(CoreError::Validation(msg));
             }
             skipped_rule_ids.insert(p.rule_id.clone());
@@ -99,6 +108,7 @@ pub(super) fn prepare_ssh_launch(
         args,
         cli_preview,
         active_forwards,
+        auth_method: config.auth_method,
         ssh_key_id: config.ssh_key_id,
         target_host: config.host,
         target_port: config.port,
@@ -132,7 +142,14 @@ fn try_auto_fill_or_prompt(
         if let Ok(mut pending) = ctx.session.pending_prompt_type.lock() {
             *pending = Some(prompt_type.to_string());
         }
-        emit_auth_prompt(ctx.app, ctx.tab_id, ctx.host_id, prompt_type, prompt_text, attempt);
+        emit_auth_prompt(
+            ctx.app,
+            ctx.tab_id,
+            ctx.host_id,
+            prompt_type,
+            prompt_text,
+            attempt,
+        );
     }
 }
 
@@ -145,7 +162,13 @@ pub(super) fn handle_expect_signal(
 ) {
     match signal {
         ExpectSignal::None => {}
-        ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+        ExpectSignal::PasswordPrompt {
+            prompt_text,
+            attempt,
+        } => {
+            if ctx.auth_method != "PASSWORD" {
+                return;
+            }
             let secret = if attempt == 1 && ctx.host_pw_mode == "SAVED" {
                 ctx.hosts.get_secret(ctx.host_id).ok().flatten()
             } else {
@@ -153,7 +176,13 @@ pub(super) fn handle_expect_signal(
             };
             try_auto_fill_or_prompt(ctx, "PASSWORD", prompt_text, attempt, secret);
         }
-        ExpectSignal::PassphrasePrompt { prompt_text, attempt } => {
+        ExpectSignal::PassphrasePrompt {
+            prompt_text,
+            attempt,
+        } => {
+            if ctx.auth_method != "SSH_KEY" {
+                return;
+            }
             let secret = if attempt == 1 {
                 ctx.session
                     .ssh_key_id
@@ -192,11 +221,25 @@ pub(super) fn handle_expect_signal(
         }
         ExpectSignal::AuthFailed { reason } => {
             *auth_failed_reason = Some(reason.clone());
-            emit_status(ctx.app, ctx.tab_id, ctx.host_id, "AUTH_FAILED", vec![], Some(reason));
+            emit_status(
+                ctx.app,
+                ctx.tab_id,
+                ctx.host_id,
+                "AUTH_FAILED",
+                vec![],
+                Some(reason),
+            );
         }
         ExpectSignal::ConnectFailed { reason } => {
             *connect_failed_reason = Some(reason.clone());
-            emit_status(ctx.app, ctx.tab_id, ctx.host_id, "ERROR", vec![], Some(reason));
+            emit_status(
+                ctx.app,
+                ctx.tab_id,
+                ctx.host_id,
+                "ERROR",
+                vec![],
+                Some(reason),
+            );
         }
         ExpectSignal::Connected => {
             emit_status(

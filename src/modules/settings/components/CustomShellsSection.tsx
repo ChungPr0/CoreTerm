@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { FolderOpen, Pencil, Plus, Save, Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
-import { Button, IconButton, Input } from "@/shared/ui";
+import { Button, IconButton, Input, ShellIcon, useAlert } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
-import { useAlert } from "@/shared/ui";
 import {
   formatShellArgs,
   makeCustomShell,
@@ -11,7 +10,6 @@ import {
   sessionApi,
   shellNameFromPath,
 } from "@/modules/terminal";
-import { ShellIcon } from "@/modules/workspace";
 
 interface CustomShellsSectionProps {
   customShells: ShellProfile[];

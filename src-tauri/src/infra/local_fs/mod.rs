@@ -1,23 +1,18 @@
 use std::cmp::Ordering;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use crate::core::error::{CoreError, CoreResult};
+pub use crate::core::path_guard::{
+    clean_display_path, validate_delete_path, validate_local_write_path,
+};
 use crate::core::path_guard::{validate_single_entry_name, validate_windows_file_name};
-use crate::ipc::dto::{LocalDriveDto, LocalFsEntryDto};
-
-/// Strips Windows extended-length (`\\?\`) prefixes for UI display.
-pub fn clean_display_path(path: &Path) -> String {
-    let raw = path.to_string_lossy();
-    if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{unc}")
-    } else if let Some(stripped) = raw.strip_prefix(r"\\?\") {
-        stripped.to_string()
-    } else {
-        raw.into_owned()
-    }
-}
+use crate::core::text_guard::{
+    decode_editable_utf8, validate_editable_size, MAX_EDITABLE_FILE_BYTES,
+};
+use crate::ipc::dto::{FileContentDto, FileWriteResultDto, LocalDriveDto, LocalFsEntryDto};
 
 pub fn list_drives() -> CoreResult<Vec<LocalDriveDto>> {
     #[cfg(windows)]
@@ -150,8 +145,16 @@ pub fn list_dir(raw_path: &str) -> CoreResult<(String, Vec<LocalFsEntryDto>)> {
 
 pub fn create_dir(parent_dir: &str, name: &str) -> CoreResult<String> {
     let valid_name = validate_single_entry_name(name)?;
-    validate_windows_file_name(valid_name)?;
-    let target = Path::new(parent_dir.trim()).join(valid_name);
+    validate_windows_file_name(name)?;
+    let parent = Path::new(parent_dir.trim());
+    if parent_dir.trim().is_empty() || !parent.is_dir() {
+        return Err(CoreError::NotFound(format!(
+            "Local directory not found: {}",
+            clean_display_path(parent)
+        )));
+    }
+    let target = parent.join(valid_name);
+    validate_local_write_path(&target)?;
     if target.exists() {
         return Err(CoreError::Validation(format!(
             "Destination '{}' already exists",
@@ -160,6 +163,137 @@ pub fn create_dir(parent_dir: &str, name: &str) -> CoreResult<String> {
     }
     fs::create_dir(&target)?;
     Ok(clean_display_path(&target))
+}
+
+pub fn create_file(parent_dir: &str, name: &str) -> CoreResult<String> {
+    let valid_name = validate_single_entry_name(name)?;
+    validate_windows_file_name(name)?;
+    let parent = Path::new(parent_dir.trim());
+    if parent_dir.trim().is_empty() || !parent.is_dir() {
+        return Err(CoreError::NotFound(format!(
+            "Local directory not found: {}",
+            clean_display_path(parent)
+        )));
+    }
+    let target = parent.join(valid_name);
+    validate_local_write_path(&target)?;
+    if target.exists() {
+        return Err(CoreError::Validation(format!(
+            "Destination '{}' already exists",
+            clean_display_path(&target)
+        )));
+    }
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)?;
+    Ok(clean_display_path(&target))
+}
+
+pub fn read_text_file(raw_path: &str) -> CoreResult<FileContentDto> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::Validation(
+            "File path cannot be empty".to_string(),
+        ));
+    }
+    let path = Path::new(trimmed);
+    if let Some(leaf) = path.file_name().and_then(|s| s.to_str()) {
+        validate_windows_file_name(leaf)?;
+    }
+    let pre_meta = fs::metadata(path)?;
+    if pre_meta.is_dir() {
+        return Err(CoreError::Validation("Cannot edit a directory".to_string()));
+    }
+    if !pre_meta.is_file() {
+        return Err(CoreError::Validation(
+            "Binary or non-UTF-8 file cannot be edited".to_string(),
+        ));
+    }
+    validate_editable_size(pre_meta.len())?;
+
+    let file = fs::File::open(path)?;
+    let meta = file.metadata()?;
+    if meta.is_dir() {
+        return Err(CoreError::Validation("Cannot edit a directory".to_string()));
+    }
+    if !meta.is_file() {
+        return Err(CoreError::Validation(
+            "Binary or non-UTF-8 file cannot be edited".to_string(),
+        ));
+    }
+    validate_editable_size(meta.len())?;
+
+    let mut bytes = Vec::with_capacity((meta.len() as usize).min(65536));
+    file.take(MAX_EDITABLE_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+
+    let size = bytes.len() as u64;
+    let content = decode_editable_utf8(bytes)?;
+    Ok(FileContentDto {
+        path: clean_display_path(path),
+        content,
+        size,
+        mtime_ms: system_time_to_ms(meta.modified()),
+        readonly: meta.permissions().readonly(),
+    })
+}
+
+pub fn write_text_file(raw_path: &str, content: &str) -> CoreResult<FileWriteResultDto> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::Validation(
+            "File path cannot be empty".to_string(),
+        ));
+    }
+    let path = Path::new(trimmed);
+    if path.is_dir() {
+        return Err(CoreError::Validation("Cannot edit a directory".to_string()));
+    }
+    validate_local_write_path(path)?;
+    validate_editable_size(content.len() as u64)?;
+
+    let resolved = if path.exists() {
+        fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    } else {
+        path.to_path_buf()
+    };
+    if resolved.is_dir() {
+        return Err(CoreError::Validation("Cannot edit a directory".to_string()));
+    }
+    validate_local_write_path(&resolved)?;
+
+    // Write via a sibling temp file and rename atomically when possible to prevent truncation on error.
+    let wrote_atomically = if let Some(parent) = resolved.parent() {
+        let tmp_name = format!(".coreterm-write-{}.tmp", uuid::Uuid::new_v4());
+        let tmp_path = parent.join(tmp_name);
+        match fs::write(&tmp_path, content.as_bytes()) {
+            Ok(()) => match fs::rename(&tmp_path, &resolved) {
+                Ok(()) => true,
+                Err(_) => {
+                    let _ = fs::remove_file(&tmp_path);
+                    false
+                }
+            },
+            Err(_) => {
+                let _ = fs::remove_file(&tmp_path);
+                false
+            }
+        }
+    } else {
+        false
+    };
+
+    if !wrote_atomically {
+        fs::write(&resolved, content.as_bytes())?;
+    }
+
+    let meta = fs::metadata(path).ok();
+    Ok(FileWriteResultDto {
+        path: clean_display_path(path),
+        size: meta.as_ref().map(|m| m.len()).unwrap_or(content.len() as u64),
+        mtime_ms: meta.and_then(|m| system_time_to_ms(m.modified())),
+    })
 }
 
 fn is_same_local_target(src: &Path, dest: &Path) -> bool {
@@ -175,12 +309,14 @@ fn is_same_local_target(src: &Path, dest: &Path) -> bool {
 
 pub fn rename_entry(old_path: &str, new_name: &str) -> CoreResult<String> {
     let valid_name = validate_single_entry_name(new_name)?;
-    validate_windows_file_name(valid_name)?;
+    validate_windows_file_name(new_name)?;
     let src = Path::new(old_path.trim());
+    validate_local_write_path(src)?;
     let parent = src.parent().ok_or_else(|| {
         CoreError::Validation(format!("Cannot rename root path: {}", src.display()))
     })?;
     let dest = parent.join(valid_name);
+    validate_local_write_path(&dest)?;
     if !is_same_local_target(src, &dest) && dest.exists() {
         return Err(CoreError::Validation(format!(
             "Target already exists: {}",
@@ -189,160 +325,6 @@ pub fn rename_entry(old_path: &str, new_name: &str) -> CoreResult<String> {
     }
     fs::rename(src, &dest)?;
     Ok(clean_display_path(&dest))
-}
-
-fn is_root_or_drive_root(path: &Path) -> bool {
-    if path.parent().is_none() {
-        return true;
-    }
-    !path
-        .components()
-        .any(|c| matches!(c, std::path::Component::Normal(_)))
-}
-
-fn path_components_match_or_sub(target: &Path, protected: &Path) -> bool {
-    let target_comps: Vec<_> = target
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
-        .collect();
-    let prot_comps: Vec<_> = protected
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
-        .collect();
-
-    if target_comps.len() < prot_comps.len() || prot_comps.is_empty() {
-        return false;
-    }
-
-    target_comps[..prot_comps.len()] == prot_comps[..]
-}
-
-fn path_components_equal(target: &Path, other: &Path) -> bool {
-    let target_comps: Vec<_> = target
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
-        .collect();
-    let other_comps: Vec<_> = other
-        .components()
-        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
-        .collect();
-    target_comps == other_comps
-}
-
-pub fn validate_delete_path(path: &Path) -> CoreResult<()> {
-    if path.as_os_str().is_empty() {
-        return Err(CoreError::Validation("Path to delete cannot be empty".to_string()));
-    }
-
-    if is_root_or_drive_root(path) {
-        return Err(CoreError::Validation(format!(
-            "Deleting drive or root path is strictly prohibited: '{}'",
-            clean_display_path(path)
-        )));
-    }
-
-    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-
-    if is_root_or_drive_root(&target) {
-        return Err(CoreError::Validation(format!(
-            "Deleting drive or root path is strictly prohibited: '{}'",
-            clean_display_path(path)
-        )));
-    }
-
-    #[cfg(windows)]
-    {
-        let mut protected_dirs: Vec<PathBuf> = Vec::new();
-        for env_var in &["WINDIR", "SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"] {
-            if let Ok(val) = std::env::var(env_var) {
-                let trimmed = val.trim();
-                if !trimmed.is_empty() {
-                    let pb = PathBuf::from(trimmed);
-                    let canon = fs::canonicalize(&pb).unwrap_or(pb);
-                    protected_dirs.push(canon);
-                }
-            }
-        }
-
-        for prot in &protected_dirs {
-            if path_components_match_or_sub(&target, prot) {
-                return Err(CoreError::Validation(format!(
-                    "Deleting protected system path is prohibited: '{}'",
-                    clean_display_path(path)
-                )));
-            }
-        }
-
-        if let Ok(profile) = std::env::var("USERPROFILE") {
-            let trimmed = profile.trim();
-            if !trimmed.is_empty() {
-                let prof_path = PathBuf::from(trimmed);
-                let canon_prof = fs::canonicalize(&prof_path).unwrap_or(prof_path);
-                if path_components_equal(&target, &canon_prof) {
-                    return Err(CoreError::Validation(
-                        "Deleting the user profile root directory is strictly prohibited".to_string(),
-                    ));
-                }
-                if let Some(prof_parent) = canon_prof.parent() {
-                    if path_components_equal(&target, prof_parent) {
-                        return Err(CoreError::Validation(format!(
-                            "Deleting protected system path is prohibited: '{}'",
-                            clean_display_path(path)
-                        )));
-                    }
-                }
-            }
-        }
-
-        for env_var in &["APPDATA", "LOCALAPPDATA"] {
-            if let Ok(val) = std::env::var(env_var) {
-                let trimmed = val.trim();
-                if !trimmed.is_empty() {
-                    let app_dir = PathBuf::from(trimmed).join("CoreTerm");
-                    let canon_app = fs::canonicalize(&app_dir).unwrap_or(app_dir);
-                    if path_components_match_or_sub(&target, &canon_app) {
-                        return Err(CoreError::Validation(format!(
-                            "Deleting application data directory is prohibited: '{}'",
-                            clean_display_path(path)
-                        )));
-                    }
-                }
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        let unix_system_roots = [
-            "/etc", "/bin", "/sbin", "/usr", "/lib", "/lib32", "/lib64", "/var", "/boot",
-            "/dev", "/proc", "/sys", "/opt", "/root",
-        ];
-        for root in &unix_system_roots {
-            let pb = PathBuf::from(root);
-            let canon = fs::canonicalize(&pb).unwrap_or(pb);
-            if path_components_match_or_sub(&target, &canon) {
-                return Err(CoreError::Validation(format!(
-                    "Deleting protected system path is prohibited: '{}'",
-                    clean_display_path(path)
-                )));
-            }
-        }
-
-        if let Ok(home) = std::env::var("HOME") {
-            let trimmed = home.trim();
-            if !trimmed.is_empty() {
-                let home_path = PathBuf::from(trimmed);
-                let canon_home = fs::canonicalize(&home_path).unwrap_or(home_path);
-                if path_components_equal(&target, &canon_home) {
-                    return Err(CoreError::Validation(
-                        "Deleting the user profile root directory is strictly prohibited".to_string(),
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 pub fn delete_entries(paths: &[String]) -> CoreResult<()> {
@@ -392,15 +374,18 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_delete_path_blocks_roots_and_system_dirs() {
+    fn test_validate_delete_and_write_path_blocks_roots_and_system_dirs() {
         assert!(validate_delete_path(Path::new("")).is_err());
+        assert!(validate_local_write_path(Path::new("")).is_err());
         #[cfg(windows)]
         {
             assert!(validate_delete_path(Path::new("C:\\")).is_err());
             assert!(validate_delete_path(Path::new("c:/")).is_err());
+            assert!(validate_local_write_path(Path::new("C:\\")).is_err());
             if let Ok(windir) = std::env::var("WINDIR") {
                 assert!(validate_delete_path(Path::new(&windir)).is_err());
                 assert!(validate_delete_path(&Path::new(&windir).join("System32")).is_err());
+                assert!(validate_local_write_path(&Path::new(&windir).join("win.ini")).is_err());
             }
             if let Ok(profile) = std::env::var("USERPROFILE") {
                 assert!(validate_delete_path(Path::new(&profile)).is_err());
@@ -418,5 +403,27 @@ mod tests {
         fs::write(&a, b"delete me").unwrap();
         assert!(delete_entries(&[a.to_string_lossy().to_string()]).is_ok());
         assert!(!a.exists());
+    }
+
+    #[test]
+    fn test_create_read_write_text_file_and_guards() {
+        let dir = tempdir().expect("tempdir");
+        let created = create_file(&dir.path().to_string_lossy(), "notes.conf").expect("create");
+        assert!(Path::new(&created).is_file());
+        assert!(create_file(&dir.path().to_string_lossy(), "notes.conf").is_err());
+        assert!(create_file(&dir.path().to_string_lossy(), "CON .txt").is_err());
+
+        let wrote = write_text_file(&created, "server_name example.com;\n").expect("write");
+        assert_eq!(wrote.size, "server_name example.com;\n".len() as u64);
+
+        let read = read_text_file(&created).expect("read");
+        assert_eq!(read.content, "server_name example.com;\n");
+        assert!(!read.readonly);
+
+        let bin = dir.path().join("bin.dat");
+        fs::write(&bin, b"\x89PNG\r\n\x1a\n\x00\x00").unwrap();
+        assert!(read_text_file(&bin.to_string_lossy()).is_err());
+
+        assert!(read_text_file(&dir.path().to_string_lossy()).is_err());
     }
 }

@@ -1,5 +1,14 @@
+import {
+  EVENT_SFTP_AUTH_PROMPT,
+  EVENT_SFTP_HOST_KEY_PROMPT,
+  EVENT_SFTP_STATUS,
+  EVENT_SFTP_TRANSFER_CONFLICT,
+  EVENT_SFTP_TRANSFER_PROGRESS,
+} from "@/shared/api/ipcEvents";
 import { invoke, listenEvent, type UnlistenFn } from "@/shared/api/tauriClient";
 import type {
+  FileContentDto,
+  FileWriteResultDto,
   SftpAuthPromptEventDto,
   SftpConflictPolicy,
   SftpConnectAckDto,
@@ -62,6 +71,37 @@ export const sftpApi = {
       tab_id: tabId,
       parent_dir: parentDir,
       name,
+    });
+  },
+
+  sftpCreateFile(
+    tabId: string,
+    parentDir: string,
+    name: string
+  ): Promise<string> {
+    return invoke<string>("sftp_create_file", {
+      tab_id: tabId,
+      parent_dir: parentDir,
+      name,
+    });
+  },
+
+  sftpReadFile(tabId: string, path: string): Promise<FileContentDto> {
+    return invoke<FileContentDto>("sftp_read_file", {
+      tab_id: tabId,
+      path,
+    });
+  },
+
+  sftpWriteFile(
+    tabId: string,
+    path: string,
+    content: string
+  ): Promise<FileWriteResultDto> {
+    return invoke<FileWriteResultDto>("sftp_write_file", {
+      tab_id: tabId,
+      path,
+      content,
     });
   },
 
@@ -161,30 +201,30 @@ export const sftpApi = {
   onSftpStatus(
     handler: (payload: SftpStatusEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("sftp:status", handler);
+    return listenEvent(EVENT_SFTP_STATUS, handler);
   },
 
   onSftpAuthPrompt(
     handler: (payload: SftpAuthPromptEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("sftp:auth_prompt", handler);
+    return listenEvent(EVENT_SFTP_AUTH_PROMPT, handler);
   },
 
   onSftpHostKeyPrompt(
     handler: (payload: SftpHostKeyPromptEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("sftp:host_key_prompt", handler);
+    return listenEvent(EVENT_SFTP_HOST_KEY_PROMPT, handler);
   },
 
   onSftpTransferProgress(
     handler: (payload: SftpTransferJobDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("sftp:transfer_progress", handler);
+    return listenEvent(EVENT_SFTP_TRANSFER_PROGRESS, handler);
   },
 
   onSftpTransferConflict(
     handler: (payload: SftpTransferConflictEventDto) => void
   ): Promise<UnlistenFn> {
-    return listenEvent("sftp:transfer_conflict", handler);
+    return listenEvent(EVENT_SFTP_TRANSFER_CONFLICT, handler);
   },
 };

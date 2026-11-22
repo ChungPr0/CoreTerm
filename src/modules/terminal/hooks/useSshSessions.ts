@@ -21,6 +21,9 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
   const renamingTabId = useTabsStore((s) => s.renamingTabId);
   const openedSftpTabs = useTabsStore((s) => s.openedSftpTabs);
   const sftpModalByTab = useTabsStore((s) => s.sftpModalByTab);
+  const editorCloseSeqByTab = useTabsStore((s) => s.editorCloseSeqByTab);
+  const setEditorDirty = useTabsStore((s) => s.setEditorDirty);
+  const bumpSftpRefresh = useTabsStore((s) => s.bumpSftpRefresh);
   const startRenamingTab = useTabsStore((s) => s.startRenamingTab);
   const cancelRenamingTab = useTabsStore((s) => s.cancelRenamingTab);
   const renameTab = useTabsStore((s) => s.renameTab);
@@ -57,6 +60,9 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     renamingTabId,
     openedSftpTabs,
     sftpModalByTab,
+    editorCloseSeqByTab,
+    setEditorDirty,
+    bumpSftpRefresh,
     startRenamingTab,
     cancelRenamingTab,
     renameTab,
@@ -74,6 +80,7 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     connectHost: prompts.connectWithConflictCheck,
     openSftpTab: controller.openSftpTab,
     closeTabById: controller.closeTabById,
+    forceCloseTabById: controller.forceCloseTabById,
     abortAuthTab: controller.abortAuthPromptTab,
     handleCloseTab: controller.handleCloseTab,
     reorderTab,

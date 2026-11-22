@@ -47,6 +47,23 @@ export function joinRemote(dir: string, name: string): string {
   return base.endsWith("/") ? `${base}${name}` : `${base}/${name}`;
 }
 
+export function pathBaseName(raw: string): string {
+  const clean = raw.trim().replace(/[\\/]+$/, "");
+  if (!clean) return raw.trim();
+  const parts = clean.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? clean;
+}
+
+export function normalizeEditorPathKey(kind: "local" | "remote", rawPath: string): string {
+  if (kind === "remote") {
+    return normPosix(rawPath);
+  }
+  const normalized = rawPath.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
+  const stripped =
+    normalized.length > 1 && normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+  return stripped.toLowerCase();
+}
+
 export interface PathCrumb {
   label: string;
   path: string;
@@ -100,10 +117,16 @@ export function splitLocalCrumbs(raw: string): PathCrumb[] {
 }
 
 export function posixCdCmd(remotePath: string): string {
-  const win = parseWinSftpPath(remotePath);
+  // Strip ASCII control characters (including CR/LF/NUL) to prevent multi-line command injection.
+  const sanitized = remotePath.replace(/[\x00-\x1f\x7f]+/g, "");
+  const win = parseWinSftpPath(sanitized);
   if (win) {
-    const winPath = `${win.drive}\\${win.rest.join("\\")}`;
-    return `cd "${winPath.replace(/"/g, '\\"')}"\r`;
+    const winPath = `${win.drive}\\${win.rest.join("\\")}`.replace(/"/g, "");
+    // If shell expansion characters ($ or `) appear, single-quote to prevent command substitution.
+    if (/[$`]/.test(winPath)) {
+      return `cd '${winPath.replace(/'/g, "''")}'\r`;
+    }
+    return `cd "${winPath}"\r`;
   }
-  return `cd -- '${normPosix(remotePath).replace(/'/g, `'\\''`)}'\r`;
+  return `cd -- '${normPosix(sanitized).replace(/'/g, `'\\''`)}'\r`;
 }

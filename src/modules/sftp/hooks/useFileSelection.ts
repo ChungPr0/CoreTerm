@@ -7,6 +7,7 @@ interface UseFileSelectionOptions {
   selected: string[];
   onSelect: (paths: string[]) => void;
   onNavigate: (path: string) => void;
+  onOpenFile?: (item: FileItem) => void;
   onBack?: () => void;
   onForward?: () => void;
   onUp: () => void;
@@ -19,6 +20,7 @@ export function useFileSelection({
   selected,
   onSelect,
   onNavigate,
+  onOpenFile,
   onBack,
   onForward,
   onUp,
@@ -89,9 +91,10 @@ export function useFileSelection({
       if (selected.length !== 1) return;
       const item = visibleItems.find((i) => i.path === selected[0]);
       if (!item) return;
-      if (e.key === "Enter" && item.isDir) {
+      if (e.key === "Enter") {
         e.preventDefault();
-        onNavigate(item.path);
+        if (item.isDir) onNavigate(item.path);
+        else onOpenFile?.(item);
       } else if (e.key === "F2") {
         e.preventDefault();
         onRenameItem(item);
@@ -106,6 +109,7 @@ export function useFileSelection({
       onUp,
       onDeletePaths,
       onNavigate,
+      onOpenFile,
       onRenameItem,
     ]
   );

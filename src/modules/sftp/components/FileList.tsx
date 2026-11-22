@@ -30,6 +30,7 @@ interface FileListProps {
   onChangeFilter: (v: string) => void;
   onSelect: (paths: string[]) => void;
   onNavigate: (path: string) => void;
+  onOpenFile?: (item: FileItem) => void;
   onBack?: () => void;
   onForward?: () => void;
   onActivatePane?: () => void;
@@ -37,6 +38,7 @@ interface FileListProps {
   onHome: () => void;
   onRefresh: () => void;
   onRefreshDrives?: () => void;
+  onNewFile?: () => void;
   onNewFolder: () => void;
   onRenameItem: (item: FileItem) => void;
   onDeletePaths: (paths: string[]) => void;
@@ -69,6 +71,7 @@ export const FileList: React.FC<FileListProps> = ({
   onChangeFilter,
   onSelect,
   onNavigate,
+  onOpenFile,
   onBack,
   onForward,
   onActivatePane,
@@ -76,6 +79,7 @@ export const FileList: React.FC<FileListProps> = ({
   onHome,
   onRefresh,
   onRefreshDrives,
+  onNewFile,
   onNewFolder,
   onRenameItem,
   onDeletePaths,
@@ -103,6 +107,7 @@ export const FileList: React.FC<FileListProps> = ({
     selected,
     onSelect,
     onNavigate,
+    onOpenFile,
     onBack,
     onForward,
     onUp,
@@ -164,6 +169,7 @@ export const FileList: React.FC<FileListProps> = ({
         onHome={onHome}
         onRefresh={onRefresh}
         onRefreshDrives={onRefreshDrives}
+        onNewFile={onNewFile}
         onNewFolder={onNewFolder}
       />
 
@@ -227,6 +233,7 @@ export const FileList: React.FC<FileListProps> = ({
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     if (item.isDir) onNavigate(item.path);
+                    else onOpenFile?.(item);
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();

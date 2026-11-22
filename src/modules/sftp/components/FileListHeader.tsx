@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   CornerLeftUp,
+  FilePlus,
   FolderPlus,
   HardDrive,
   Home,
@@ -35,6 +36,7 @@ interface FileListHeaderProps {
   onHome: () => void;
   onRefresh: () => void;
   onRefreshDrives?: () => void;
+  onNewFile?: () => void;
   onNewFolder: () => void;
 }
 
@@ -56,6 +58,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
   onHome,
   onRefresh,
   onRefreshDrives,
+  onNewFile,
   onNewFolder,
 }) => {
   const { t } = useI18n();
@@ -191,6 +194,14 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
             size="sm"
             icon={<RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-[#58a6ff]" : ""}`} />}
           />
+          {onNewFile && (
+            <IconButton
+              onClick={onNewFile}
+              title={t("sftp.new_file")}
+              size="sm"
+              icon={<FilePlus className="h-3.5 w-3.5" />}
+            />
+          )}
           <IconButton
             onClick={onNewFolder}
             title={t("sftp.new_folder")}

@@ -1,5 +1,10 @@
 import { invoke } from "@/shared/api/tauriClient";
-import type { LocalDriveDto, LocalListDirResultDto } from "../types";
+import type {
+  FileContentDto,
+  FileWriteResultDto,
+  LocalDriveDto,
+  LocalListDirResultDto,
+} from "../types";
 
 export const localFsApi = {
   localListDrives(): Promise<LocalDriveDto[]> {
@@ -19,6 +24,21 @@ export const localFsApi = {
       parent_dir: parentDir,
       name,
     });
+  },
+
+  localCreateFile(parentDir: string, name: string): Promise<string> {
+    return invoke<string>("local_create_file", {
+      parent_dir: parentDir,
+      name,
+    });
+  },
+
+  localReadFile(path: string): Promise<FileContentDto> {
+    return invoke<FileContentDto>("local_read_file", { path });
+  },
+
+  localWriteFile(path: string, content: string): Promise<FileWriteResultDto> {
+    return invoke<FileWriteResultDto>("local_write_file", { path, content });
   },
 
   localRename(oldPath: string, newName: string): Promise<string> {

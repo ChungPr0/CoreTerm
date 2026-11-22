@@ -1,3 +1,5 @@
+use super::ansi::strip_ansi;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpectPhase {
     Handshaking,
@@ -27,63 +29,6 @@ pub enum ExpectSignal {
         reason: String,
     },
     Connected,
-}
-
-fn strip_ansi(raw: &str) -> String {
-    let bytes = raw.as_bytes();
-    let mut out = String::with_capacity(raw.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == 0x1B {
-            i += 1;
-            if i >= bytes.len() {
-                break;
-            }
-            if bytes[i] == b'[' {
-                i += 1;
-                while i < bytes.len() && !(0x40..=0x7E).contains(&bytes[i]) {
-                    i += 1;
-                }
-                if i < bytes.len() {
-                    // Preserve line separation on ConPTY cursor-position / next-line sequences.
-                    if matches!(bytes[i], b'H' | b'f' | b'E' | b'G') && !out.ends_with('\n') {
-                        out.push('\n');
-                    }
-                    i += 1;
-                }
-            } else if bytes[i] == b']' {
-                i += 1;
-                while i < bytes.len() {
-                    if bytes[i] == 0x07 {
-                        i += 1;
-                        break;
-                    }
-                    if bytes[i] == 0x1B && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-                        i += 2;
-                        break;
-                    }
-                    i += 1;
-                }
-            } else {
-                i += 1;
-            }
-            continue;
-        }
-        if bytes[i] == b'\r' {
-            if !out.ends_with('\n') {
-                out.push('\n');
-            }
-            i += 1;
-            if i < bytes.len() && bytes[i] == b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        let ch = raw[i..].chars().next().unwrap_or('\0');
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
 }
 
 /// Inspects raw ConPTY output during SSH handshake to detect password, passphrase, or host key prompts.
@@ -246,7 +191,10 @@ impl ExpectStateMachine {
             matched_line
         };
         let trimmed = line.trim();
-        let cleaned = if let Some(_rest) = trimmed.to_ascii_lowercase().strip_prefix("banner exchange:") {
+        let cleaned = if let Some(_rest) = trimmed
+            .to_ascii_lowercase()
+            .strip_prefix("banner exchange:")
+        {
             trimmed["banner exchange:".len()..].trim().to_string()
         } else {
             trimmed.to_string()
@@ -263,7 +211,7 @@ impl ExpectStateMachine {
     fn is_ssh_password_prompt(line: &str) -> bool {
         let trimmed = line.trim();
         let lower = trimmed.to_lowercase();
-        if !lower.ends_with(':') {
+        if !lower.ends_with(':') || lower.contains("[sudo]") {
             return false;
         }
         // Standard OpenSSH: "user@host's password:" or "user@host’s password:"
@@ -274,11 +222,7 @@ impl ExpectStateMachine {
         if lower == "password:" || lower == "enter password:" {
             return true;
         }
-        // Standard PAM or sudo: "[sudo] password for <user>:" or "password for <user>:"
-        if lower.contains("password for ") {
-            return true;
-        }
-        // Parenthesized user prompt: e.g. "(root) password:"
+        // Parenthesized user prompt: e.g. "(root@host) password:"
         if lower.ends_with(") password:") {
             return true;
         }
@@ -353,7 +297,10 @@ mod tests {
         let mut sm = ExpectStateMachine::new();
         let sig = sm.feed(b"\x1b[?25l\x1b[2;1Hroot@10.0.0.1's password: \x1b[?25h");
         match sig {
-            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+            ExpectSignal::PasswordPrompt {
+                prompt_text,
+                attempt,
+            } => {
                 assert_eq!(prompt_text, "root@10.0.0.1's password:");
                 assert_eq!(attempt, 1);
             }
@@ -363,10 +310,16 @@ mod tests {
         let sig2 = sm.feed(b"\x1b]0;ssh.exe\x07Enter passphrase for key '/id_ed25519'");
         assert!(matches!(sig2, ExpectSignal::None));
         let sig3 = sm.feed(b": \x1b[?25h");
-        assert!(matches!(sig3, ExpectSignal::PassphrasePrompt { attempt: 1, .. }));
+        assert!(matches!(
+            sig3,
+            ExpectSignal::PassphrasePrompt { attempt: 1, .. }
+        ));
 
         let sig4 = sm.feed(b"Permission denied, please try again.\r\nroot@10.0.0.1's password: ");
-        assert!(matches!(sig4, ExpectSignal::PasswordPrompt { attempt: 2, .. }));
+        assert!(matches!(
+            sig4,
+            ExpectSignal::PasswordPrompt { attempt: 2, .. }
+        ));
 
         let sig5 = sm.feed(b"Too many authentication failures\r\n");
         assert!(matches!(sig5, ExpectSignal::AuthFailed { .. }));
@@ -402,7 +355,8 @@ mod tests {
     #[test]
     fn detects_ssh_connect_timeout_and_windows_shell_connected() {
         let mut sm_err = ExpectStateMachine::new();
-        let err_sig = sm_err.feed(b"ssh: connect to host 192.168.88.152 port 22: Connection timed out\r\n");
+        let err_sig =
+            sm_err.feed(b"ssh: connect to host 192.168.88.152 port 22: Connection timed out\r\n");
         match err_sig {
             ExpectSignal::ConnectFailed { reason } => {
                 assert_eq!(
@@ -424,22 +378,23 @@ mod tests {
     fn test_rejects_fake_password_banners_and_avoids_premature_passthrough() {
         let mut sm = ExpectStateMachine::new();
 
-        // Pre-auth banner containing "password:" but not a real prompt
         let fake_banner = sm.feed(
             b"*** SECURITY WARNING ***\r\nUnauthorized access prohibited. Never share your password:\r\n",
         );
         assert!(matches!(fake_banner, ExpectSignal::None));
         assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
 
-        // Pre-auth banner containing "Welcome to ..."
-        let welcome_banner = sm.feed(b"Welcome to Ubuntu 22.04 LTS (GNU/Linux 5.15.0-generic)\r\n");
+        let welcome_banner =
+            sm.feed(b"Welcome to Ubuntu 22.04 LTS (GNU/Linux 5.15.0-generic)\r\n");
         assert!(matches!(welcome_banner, ExpectSignal::None));
         assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
 
-        // Actual OpenSSH password prompt
         let real_prompt = sm.feed(b"deploy@10.0.0.2's password: ");
         match real_prompt {
-            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+            ExpectSignal::PasswordPrompt {
+                prompt_text,
+                attempt,
+            } => {
                 assert_eq!(prompt_text, "deploy@10.0.0.2's password:");
                 assert_eq!(attempt, 1);
             }
@@ -448,32 +403,28 @@ mod tests {
     }
 
     #[test]
-    fn detects_fragmented_streaming_prompts_and_sudo_prompts() {
+    fn detects_fragmented_streaming_prompts_and_rejects_remote_sudo_prompts() {
         let mut sm = ExpectStateMachine::new();
 
-        // Chunks arriving piece by piece
         assert!(matches!(sm.feed(b"deploy@"), ExpectSignal::None));
         assert!(matches!(sm.feed(b"my-server's "), ExpectSignal::None));
         let final_sig = sm.feed(b"password: ");
 
         match final_sig {
-            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
+            ExpectSignal::PasswordPrompt {
+                prompt_text,
+                attempt,
+            } => {
                 assert_eq!(prompt_text, "deploy@my-server's password:");
                 assert_eq!(attempt, 1);
             }
             other => panic!("expected PasswordPrompt, got {other:?}"),
         }
 
-        // Test sudo password prompt
+        // Remote sudo prompts must NOT trigger SSH handshake password auto-fill
         let mut sm_sudo = ExpectStateMachine::new();
         let sudo_sig = sm_sudo.feed(b"[sudo] password for deploy: ");
-        match sudo_sig {
-            ExpectSignal::PasswordPrompt { prompt_text, attempt } => {
-                assert_eq!(prompt_text, "[sudo] password for deploy:");
-                assert_eq!(attempt, 1);
-            }
-            other => panic!("expected PasswordPrompt, got {other:?}"),
-        }
+        assert!(matches!(sudo_sig, ExpectSignal::None));
     }
 
     #[test]
@@ -490,7 +441,8 @@ mod tests {
         }
 
         let mut sm_refused = ExpectStateMachine::new();
-        let ref_sig = sm_refused.feed(b"ssh: connect to host 10.0.0.5 port 22: Connection refused\r\n");
+        let ref_sig =
+            sm_refused.feed(b"ssh: connect to host 10.0.0.5 port 22: Connection refused\r\n");
         match ref_sig {
             ExpectSignal::ConnectFailed { reason } => {
                 assert!(reason.contains("Connection refused"));
@@ -502,15 +454,24 @@ mod tests {
     #[test]
     fn detects_interactive_shell_prompts() {
         let mut sm_bash = ExpectStateMachine::new();
-        assert!(matches!(sm_bash.feed(b"user@server:~$ "), ExpectSignal::Connected));
+        assert!(matches!(
+            sm_bash.feed(b"user@server:~$ "),
+            ExpectSignal::Connected
+        ));
         assert_eq!(sm_bash.phase(), &ExpectPhase::Passthrough);
 
         let mut sm_root = ExpectStateMachine::new();
-        assert!(matches!(sm_root.feed(b"root@server:~# "), ExpectSignal::Connected));
+        assert!(matches!(
+            sm_root.feed(b"root@server:~# "),
+            ExpectSignal::Connected
+        ));
         assert_eq!(sm_root.phase(), &ExpectPhase::Passthrough);
 
         let mut sm_zsh = ExpectStateMachine::new();
-        assert!(matches!(sm_zsh.feed("dev in ~/project ❯ ".as_bytes()), ExpectSignal::Connected));
+        assert!(matches!(
+            sm_zsh.feed("dev in ~/project ❯ ".as_bytes()),
+            ExpectSignal::Connected
+        ));
         assert_eq!(sm_zsh.phase(), &ExpectPhase::Passthrough);
     }
 }

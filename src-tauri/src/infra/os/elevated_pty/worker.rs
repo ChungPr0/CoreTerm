@@ -9,8 +9,12 @@ mod win_worker {
         OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
     };
 
-    use crate::core::defaults::{DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, MIN_PTY_COLS, MIN_PTY_ROWS};
-    use crate::infra::os::elevated_pty::pipe::{open_client_pipe, OwnedHandle};
+    use crate::core::defaults::{
+        DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, MIN_PTY_COLS, MIN_PTY_ROWS, PTY_READ_BUF_BYTES,
+    };
+    use crate::infra::os::elevated_pty::pipe::{
+        is_valid_coreterm_pipe_base, open_client_pipe, OwnedHandle,
+    };
     use crate::infra::os::elevated_pty::protocol::{
         read_frame, write_frame, FRAME_CLOSE, FRAME_DATA, FRAME_ERROR, FRAME_EXIT, FRAME_RESIZE,
     };
@@ -144,7 +148,7 @@ mod win_worker {
         let target_exe = parsed.executable;
         let shell_args = parsed.shell_args;
 
-        if pipe_base.is_empty() || secret.is_empty() {
+        if !is_valid_coreterm_pipe_base(&pipe_base) || secret.is_empty() {
             return 2;
         }
 
@@ -269,7 +273,7 @@ mod win_worker {
             }
         });
 
-        let mut buf = [0u8; 16 * 1024];
+        let mut buf = [0u8; PTY_READ_BUF_BYTES];
         loop {
             match pty_reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,

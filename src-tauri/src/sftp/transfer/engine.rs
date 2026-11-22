@@ -12,13 +12,11 @@ use super::pipeline::{
     emit_progress, run_transfer_checking_conflict, run_transfer_with_offset, TransferEndState,
 };
 use super::walker::{collect_download_plan, collect_upload_plan};
+use crate::core::defaults::MAX_CONCURRENT_TRANSFERS;
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::ipc::dto::SftpTransferJobDto;
+pub use crate::ipc::events::EVENT_SFTP_TRANSFER_PROGRESS;
 use crate::sftp::session::RemoteSftpClient;
-
-pub const EVENT_SFTP_TRANSFER_PROGRESS: &str = "sftp:transfer_progress";
-
-const MAX_CONCURRENT_TRANSFERS: usize = 2;
 
 /// Manages queued, running, and paused file transfers for a single connected SFTP session.
 pub struct TransferEngine {
@@ -98,7 +96,9 @@ impl TransferEngine {
         conflict_policy: String,
     ) -> CoreResult<Vec<SftpTransferJobDto>> {
         let batch = BatchConflictState::new(ConflictPolicy::parse(&conflict_policy));
-        let specs = collect_upload_plan(&self.client, local_paths, &remote_dir).await?;
+        let specs =
+            collect_upload_plan(&self.client, local_paths, &remote_dir, &self.session_cancel)
+                .await?;
         Ok(self.spawn_planned_jobs(specs, batch))
     }
 
@@ -109,7 +109,9 @@ impl TransferEngine {
         conflict_policy: String,
     ) -> CoreResult<Vec<SftpTransferJobDto>> {
         let batch = BatchConflictState::new(ConflictPolicy::parse(&conflict_policy));
-        let specs = collect_download_plan(&self.client, remote_paths, &local_dir).await?;
+        let specs =
+            collect_download_plan(&self.client, remote_paths, &local_dir, &self.session_cancel)
+                .await?;
         Ok(self.spawn_planned_jobs(specs, batch))
     }
 

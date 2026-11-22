@@ -1,26 +1,27 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SFTP_DISCONNECT_RE, SFTP_PANE_SPLIT_DEFAULT } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
-import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import { ReconnectBanner, useAlert, type ContextMenuEntry } from "@/shared/ui";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
-import { copyText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
 import { localParent, posixParent } from "@/shared/utils/path";
+import { useTabsStore } from "@/modules/workspace";
 import { localFsApi } from "../api/localFsApi";
 import { sftpApi } from "../api/sftpApi";
 import { toLocalItem, toRemoteItem } from "../hooks/fileListUtils";
 import { useDirectoryBrowser } from "../hooks/useDirectoryBrowser";
 import { useSftpConnection } from "../hooks/useSftpConnection";
+import { useSftpEntryActions } from "../hooks/useSftpEntryActions";
 import { useSftpEvents } from "../hooks/useSftpEvents";
 import { useSftpFileDrag } from "../hooks/useSftpFileDrag";
 import { useSftpMouseNav } from "../hooks/useSftpMouseNav";
 import { useSftpTransfers } from "../hooks/useSftpTransfers";
 import { buildQueueMenu, buildToolbarMenu } from "../menus/sftpMenus";
-import type { FileItem, SftpConnectionState } from "../types";
+import type { SftpConnectionState } from "../types";
 import { SftpBrowserPanels } from "./SftpBrowserPanels";
-import { SftpOverlays, type NamePromptState } from "./SftpOverlays";
+import { SftpOverlays } from "./SftpOverlays";
 import { SftpToolbar } from "./SftpToolbar";
 import { TransferQueue } from "./TransferQueue";
 
@@ -62,9 +63,7 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   const alert = useAlert();
 
   const [showLocal, setShowLocal] = useState(mode === "full");
-  const [splitRatio, setSplitRatio] = useState(0.5);
-  const [nameModal, setNameModal] = useState<NamePromptState | null>(null);
-  const [chmodItem, setChmodItem] = useState<FileItem | null>(null);
+  const [splitRatio, setSplitRatio] = useState(SFTP_PANE_SPLIT_DEFAULT);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const remoteDropRef = useRef<HTMLDivElement>(null);
@@ -88,7 +87,7 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
       return { path: res.path, items: res.entries.map(toRemoteItem) };
     },
     onError: (err) => {
-      if (/sender dropped|channel closed|disconnected|not found/i.test(extractRawErrorMessage(err))) {
+      if (SFTP_DISCONNECT_RE.test(extractRawErrorMessage(err))) {
         markDisconnectRef.current();
       }
       notifyError(err);
@@ -136,6 +135,18 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   connStateRef.current = conn.connState;
   markDisconnectRef.current = conn.markDisconnectedOnError;
 
+  const hostLabel = tab.title.replace(/^SFTP:\s*/i, "");
+  const entryActions = useSftpEntryActions({
+    tab,
+    hostLabel,
+    connStateRef,
+    showLocalRef,
+    remote,
+    local,
+    notifyError,
+    onConfirmDelete,
+  });
+
   const isAutoReconnect = Boolean(tab.autoReconnect && tab.canAutoReconnect !== false);
   const showSftpConnectingBanner =
     conn.connState === "CONNECTING" &&
@@ -145,8 +156,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
 
   const hasSftpModal =
     transfers.conflicts.length > 0 ||
-    nameModal !== null ||
-    chmodItem !== null ||
+    entryActions.nameModal !== null ||
+    entryActions.chmodItem !== null ||
     transfers.pendingTransfer !== null;
   modalOpenRef.current = hasSftpModal;
 
@@ -184,53 +195,6 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     },
   });
 
-  const handleCopyPath = useCallback(
-    (path: string) => void copyText(path).then(() => alert.info(t("sftp.copied"), 2500)),
-    [alert, t]
-  );
-
-  const requestDelete = useCallback(
-    (targetKind: "local" | "remote", paths: string[]) => {
-      if (paths.length === 0 || (targetKind === "remote" && connStateRef.current !== "CONNECTED")) {
-        return;
-      }
-      onConfirmDelete({
-        title: t("sftp.delete_confirm_title"),
-        message: t("sftp.delete_confirm_message", { count: paths.length }),
-        onConfirm: async () => {
-          if (targetKind === "remote") {
-            await sftpApi.sftpDelete(tab.tabId, paths);
-            remote.refresh();
-          } else {
-            await localFsApi.localDelete(paths);
-            local.refresh();
-          }
-        },
-      });
-    },
-    [local, onConfirmDelete, remote, t, tab.tabId]
-  );
-
-  const handleNameSubmit = async (name: string) => {
-    if (!nameModal) return;
-    if (nameModal.kind === "mkdir") {
-      if (nameModal.targetKind === "remote") {
-        await sftpApi.sftpCreateDir(tab.tabId, remote.cwd, name);
-        remote.refresh([name]);
-      } else {
-        await localFsApi.localCreateDir(local.cwd, name);
-        local.refresh([name]);
-      }
-    } else if (nameModal.targetKind === "remote") {
-      await sftpApi.sftpRename(tab.tabId, nameModal.item.path, name);
-      remote.refresh([name]);
-    } else {
-      await localFsApi.localRename(nameModal.item.path, name);
-      local.refresh([name]);
-    }
-    setNameModal(null);
-  };
-
   const startMouseDrag = useWindowMouseDrag();
 
   const startSplitDrag = (e: React.MouseEvent) => {
@@ -260,9 +224,14 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   }, [canConnect, conn, local.cwdRef]);
 
   const manualReconnectSftp = useCallback(() => {
+    if (!canConnect) return;
+    conn.setAuthBlocked(false);
+    conn.clearErrorDedup();
     useTabsStore.getState().bumpReconnectToken(tab.tabId, "banner");
-    reconnectSftp();
-  }, [reconnectSftp, tab.tabId]);
+    if (!local.cwdRef.current) {
+      void conn.loadLocalFs();
+    }
+  }, [canConnect, conn, local.cwdRef, tab.tabId]);
 
   return (
     <div
@@ -272,10 +241,10 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         e.stopPropagation();
         onShowMenu(e.clientX, e.clientY, []);
       }}
-      className="relative flex h-full min-h-0 select-none flex-col bg-[#0d1117] text-[#c9d1d9]"
+      className="relative flex h-full min-h-0 select-none flex-col bg-ct-panel text-[#c9d1d9]"
     >
       <SftpToolbar
-        hostLabel={tab.title.replace(/^SFTP:\s*/i, "")}
+        hostLabel={hostLabel}
         connState={conn.connState}
         remoteCwd={remote.cwd}
         showLocal={showLocal}
@@ -308,13 +277,14 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         localDrives={conn.localDrives}
         remoteDrives={conn.remoteDrives}
         fileDrag={fileDrag}
-        onResetSplit={() => setSplitRatio(0.5)}
+        onResetSplit={() => setSplitRatio(SFTP_PANE_SPLIT_DEFAULT)}
         onStartSplitDrag={startSplitDrag}
         onShowMenu={onShowMenu}
-        onNamePrompt={setNameModal}
-        onChmod={setChmodItem}
-        onCopyPath={handleCopyPath}
-        onRequestDelete={requestDelete}
+        onNamePrompt={entryActions.setNameModal}
+        onOpenFile={entryActions.handleOpenFile}
+        onChmod={entryActions.setChmodItem}
+        onCopyPath={entryActions.handleCopyPath}
+        onRequestDelete={entryActions.requestDelete}
         onRequestUpload={requestUpload}
         onRequestDownload={(paths) => void requestDownload(paths)}
         onUploadDialog={(dir) => void transfers.uploadViaDialog(dir)}
@@ -354,26 +324,18 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         onConfirmTransfer={transfers.confirmPendingTransfer}
         activeConflict={transfers.conflicts[0] ?? null}
         onResolveConflict={transfers.resolveConflict}
-        nameModal={nameModal}
-        onCancelNameModal={() => setNameModal(null)}
-        onSubmitNameModal={handleNameSubmit}
-        chmodItem={chmodItem}
-        onCloseChmod={() => setChmodItem(null)}
-        onConfirmChmod={async (nextMode) => {
-          if (!chmodItem) return;
-          try {
-            await sftpApi.sftpChmod(tab.tabId, chmodItem.path, nextMode);
-            remote.refresh();
-          } catch (err) {
-            notifyError(err);
-          }
-        }}
+        nameModal={entryActions.nameModal}
+        onCancelNameModal={() => entryActions.setNameModal(null)}
+        onSubmitNameModal={entryActions.handleNameSubmit}
+        chmodItem={entryActions.chmodItem}
+        onCloseChmod={() => entryActions.setChmodItem(null)}
+        onConfirmChmod={entryActions.handleConfirmChmod}
         dragPreview={fileDrag.dragPreview}
       />
 
       {conn.connState === "CONNECTING" && (
         <div className="absolute top-0 left-0 right-0 z-30 h-[2px] overflow-hidden bg-sky-950/30 pointer-events-none">
-          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-[#58a6ff] to-transparent animate-shimmer" />
+          <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-ct-accent to-transparent animate-shimmer" />
         </div>
       )}
 

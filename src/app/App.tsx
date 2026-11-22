@@ -17,6 +17,9 @@ import { useShellActions } from "./useShellActions";
 
 const loadContextMenu = () => import("@/shared/ui/ContextMenu");
 const ContextMenu = lazy(() => loadContextMenu().then((m) => ({ default: m.ContextMenu })));
+const FileEditorPane = lazy(() =>
+  import("@/modules/editor").then((m) => ({ default: m.FileEditorPane }))
+);
 const PRELOADERS = [...APP_PRELOADERS, loadContextMenu];
 
 export const App: React.FC = () => {
@@ -136,7 +139,12 @@ export const App: React.FC = () => {
     const activeId = sessions.activeTabId;
     if (!activeId) return;
     const activeTab = sessions.tabs.find((item) => item.tabId === activeId);
-    if (!activeTab || activeTab.hostId === "local" || activeTab.tabKind === "sftp") {
+    if (
+      !activeTab ||
+      activeTab.hostId === "local" ||
+      activeTab.tabKind === "sftp" ||
+      activeTab.tabKind === "editor"
+    ) {
       return;
     }
     sessions.toggleSftpSplit(activeId);
@@ -255,6 +263,34 @@ export const App: React.FC = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
           const isTabActive = tab.tabId === sessions.activeTabId;
+          if (tab.tabKind === "editor" && tab.editorFile) {
+            return (
+              <div
+                key={tab.tabId}
+                style={{ display: isTabActive ? "flex" : "none" }}
+                className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0c0f14]"
+              >
+                <Suspense fallback={null}>
+                  <FileEditorPane
+                    tab={tab}
+                    file={tab.editorFile}
+                    isActive={isTabActive}
+                    hasBlockingModal={hasModalOpen}
+                    findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
+                    closeRequestToken={sessions.editorCloseSeqByTab[tab.tabId] ?? 0}
+                    onDirtyChange={(dirty) => sessions.setEditorDirty(tab.tabId, dirty)}
+                    onForceClose={() => sessions.forceCloseTabById(tab.tabId)}
+                    onShowMenu={openMenu}
+                    onModalChange={sessions.handleSftpModalChange}
+                    onSaved={() => {
+                      sessions.bumpSftpRefresh(tab.hostId);
+                    }}
+                  />
+                </Suspense>
+              </div>
+            );
+          }
+
           const pauseAutoReconnect =
             sessions.authPrompt?.tab_id === tab.tabId ||
             sessions.hostKeyPrompt?.tab_id === tab.tabId ||

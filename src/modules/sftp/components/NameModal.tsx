@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Edit3, FolderPlus } from "lucide-react";
+import { Edit3, FilePlus, FolderPlus } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { ActionModal, Input, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 
 interface NameModalProps {
   isOpen: boolean;
-  kind?: "mkdir" | "rename";
+  kind?: "mkdir" | "rename" | "newfile";
   title: string;
   subTitle?: string;
   label: string;
@@ -45,7 +45,22 @@ export const NameModal: React.FC<NameModalProps> = ({
   }, [isOpen, initialValue]);
 
   const trimmed = value.trim();
-  const isMkdir = kind === "mkdir";
+  const isRename = kind === "rename";
+  const isNewFile = kind === "newfile";
+  const modalIcon = isNewFile ? (
+    <FilePlus className="h-4 w-4" />
+  ) : isRename ? (
+    <Edit3 className="h-4 w-4" />
+  ) : (
+    <FolderPlus className="h-4 w-4" />
+  );
+  const confirmBtnIcon = isNewFile ? (
+    <FilePlus className="h-3.5 w-3.5" />
+  ) : isRename ? (
+    <Edit3 className="h-3.5 w-3.5" />
+  ) : (
+    <FolderPlus className="h-3.5 w-3.5" />
+  );
 
   const handleSubmit = async () => {
     if (saving) return;
@@ -73,24 +88,12 @@ export const NameModal: React.FC<NameModalProps> = ({
       busy={saving}
       title={title}
       subtitle={subTitle}
-      icon={
-        isMkdir ? (
-          <FolderPlus className="h-4 w-4" />
-        ) : (
-          <Edit3 className="h-4 w-4" />
-        )
-      }
-      iconTone={isMkdir ? "primary" : "warning"}
+      icon={modalIcon}
+      iconTone={isRename ? "warning" : "primary"}
       size="md"
       confirmLabel={confirmLabel}
       confirmVariant="primary"
-      confirmIcon={
-        isMkdir ? (
-          <FolderPlus className="h-3.5 w-3.5" />
-        ) : (
-          <Edit3 className="h-3.5 w-3.5" />
-        )
-      }
+      confirmIcon={confirmBtnIcon}
       confirmDisabled={saving || !trimmed}
       cancelLabel={t("sftp.modal_cancel")}
       onConfirm={handleSubmit}

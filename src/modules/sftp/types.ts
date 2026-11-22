@@ -1,4 +1,9 @@
-import type { SftpConflictPolicy, SftpConnectionState } from "@/shared/types/ipc";
+import type {
+  FileContentDto,
+  FileWriteResultDto,
+  SftpConflictPolicy,
+  SftpConnectionState,
+} from "@/shared/types/ipc";
 
 export type SftpTransferStatus =
   | "QUEUED"
@@ -9,7 +14,12 @@ export type SftpTransferStatus =
   | "CANCELLED"
   | "SKIPPED";
 
-export type { SftpConflictPolicy, SftpConnectionState };
+export type {
+  FileContentDto,
+  FileWriteResultDto,
+  SftpConflictPolicy,
+  SftpConnectionState,
+};
 
 export interface SftpConnectAckDto {
   tab_id: string;

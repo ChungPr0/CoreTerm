@@ -1,5 +1,7 @@
 use crate::infra::local_fs;
-use crate::ipc::dto::{LocalDriveDto, LocalListDirResultDto};
+use crate::ipc::dto::{
+    FileContentDto, FileWriteResultDto, LocalDriveDto, LocalListDirResultDto,
+};
 use crate::ipc::error::{AppError, AppResult};
 
 async fn spawn_fs<F, T>(f: F) -> AppResult<T>
@@ -37,6 +39,21 @@ pub async fn local_list_dir(path: String) -> AppResult<LocalListDirResultDto> {
 #[tauri::command(rename_all = "snake_case")]
 pub async fn local_create_dir(parent_dir: String, name: String) -> AppResult<String> {
     spawn_fs(move || local_fs::create_dir(&parent_dir, &name)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn local_create_file(parent_dir: String, name: String) -> AppResult<String> {
+    spawn_fs(move || local_fs::create_file(&parent_dir, &name)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn local_read_file(path: String) -> AppResult<FileContentDto> {
+    spawn_fs(move || local_fs::read_text_file(&path)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn local_write_file(path: String, content: String) -> AppResult<FileWriteResultDto> {
+    spawn_fs(move || local_fs::write_text_file(&path, &content)).await
 }
 
 #[tauri::command(rename_all = "snake_case")]

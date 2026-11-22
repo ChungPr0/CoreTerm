@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import {
+  Copy,
   CopyPlus,
   Edit3,
   FolderSync,
@@ -10,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
+import { copyText } from "@/shared/utils/clipboard";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { windowApi } from "../api/windowApi";
 import { startInteractiveWindowMove } from "../utils/interactiveWindowActions";
@@ -70,6 +72,54 @@ export function buildTabContextItems({
   onCloseTab,
   onCloseOtherTabs,
 }: BuildTabContextItemsOpts): ContextMenuEntry[] {
+  if (tab.tabKind === "editor") {
+    const editorItems: ContextMenuEntry[] = [
+      {
+        id: "tab-find",
+        label: t("ctx.find"),
+        icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
+        shortcut: "Ctrl+F",
+        onSelect: () => onFindInTab(tab.tabId),
+      },
+    ];
+    if (tab.editorFile?.path) {
+      const pathToCopy = tab.editorFile.path;
+      editorItems.push({
+        id: "tab-copy-path",
+        label: t("ctx.sftp_copy_path"),
+        icon: <Copy className="h-3.5 w-3.5" />,
+        onSelect: () => void copyText(pathToCopy),
+      });
+    }
+    if (tab.editorFile?.kind === "remote") {
+      editorItems.push({
+        id: "tab-reconnect",
+        label: t("common.reconnect"),
+        icon: <RotateCw className="h-3.5 w-3.5 text-sky-400" />,
+        onSelect: () => onReconnectTab(tab.tabId),
+      });
+    }
+    editorItems.push(
+      { type: "separator", id: "sep-editor-close" },
+      {
+        id: "tab-close",
+        label: t("ctx.close_tab"),
+        icon: <X className="h-3.5 w-3.5" />,
+        shortcut: "Ctrl+Shift+W",
+        onSelect: () => onCloseTab(tab.tabId),
+      }
+    );
+    if (tabsCount > 1) {
+      editorItems.push({
+        id: "tab-close-others",
+        label: t("ctx.close_other_tabs"),
+        icon: <XCircle className="h-3.5 w-3.5" />,
+        onSelect: () => onCloseOtherTabs(tab.tabId),
+      });
+    }
+    return editorItems;
+  }
+
   const items: ContextMenuEntry[] = [
     {
       id: "tab-duplicate",
