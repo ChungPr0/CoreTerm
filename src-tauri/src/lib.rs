@@ -8,7 +8,10 @@ pub mod pty;
 pub mod sftp;
 pub mod ssh;
 
-pub use bootstrap::{maybe_run_cli_helpers, parse_clean_launch_dir};
+pub use bootstrap::{
+    maybe_run_cli_helpers, parse_clean_launch_dir, parse_clean_launch_target,
+    parse_clean_launch_target_with_base, LaunchTarget,
+};
 
 use tauri::{Emitter, Manager, RunEvent};
 use tracing::info;
@@ -21,8 +24,8 @@ use crate::infra::db::SqliteDb;
 use crate::infra::os::JobObjectSupervisor;
 use crate::infra::security::SecretVault;
 use crate::ipc::commands::{
-    app_get_launch_dir, app_get_status, check_shell_exe, clipboard_read_text,
-    clipboard_write_text, context_menu_get_status, context_menu_set_enabled,
+    app_get_launch_dir, app_get_launch_files, app_get_status, check_shell_exe,
+    clipboard_read_text, clipboard_write_text, context_menu_get_status, context_menu_set_enabled,
     detect_available_shells, host_create, host_delete, host_duplicate, host_get_detail,
     host_group_create, host_group_delete, host_group_list, host_group_reorder, host_list,
     host_move_group, host_update, key_delete, key_generate, key_get_default, key_import, key_list,
@@ -39,7 +42,7 @@ use crate::ipc::commands::{
     window_present, window_set_launch_size, window_set_position, window_set_size,
     window_sys_command, window_toggle_maximize, AppState,
 };
-use crate::ipc::events::EVENT_OPEN_DIRECTORY;
+use crate::ipc::events::{EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE};
 use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
@@ -57,18 +60,26 @@ pub fn run() {
         JobObjectSupervisor::new().expect("Failed to initialize Windows Job Object Supervisor");
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if let Some(main_win) = app.get_webview_window("main") {
                 let _ = main_win.show();
                 let _ = main_win.unminimize();
                 let _ = main_win.set_focus();
             }
-            let launch_dir = argv
+            let base_dir = std::path::Path::new(&cwd);
+            for target in argv
                 .into_iter()
                 .skip(1)
-                .find_map(|arg| parse_clean_launch_dir(&arg));
-            if let Some(dir) = launch_dir {
-                let _ = app.emit(EVENT_OPEN_DIRECTORY, dir);
+                .filter_map(|arg| parse_clean_launch_target_with_base(&arg, Some(base_dir)))
+            {
+                match target {
+                    LaunchTarget::Directory(dir) => {
+                        let _ = app.emit(EVENT_OPEN_DIRECTORY, dir);
+                    }
+                    LaunchTarget::File(file) => {
+                        let _ = app.emit(EVENT_OPEN_FILE, file);
+                    }
+                }
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -111,9 +122,23 @@ pub fn run() {
                 });
             }
 
-            let launch_dir = std::env::args()
+            let mut launch_dir: Option<String> = None;
+            let mut launch_files: Vec<String> = Vec::new();
+            for target in std::env::args()
                 .skip(1)
-                .find_map(|arg| parse_clean_launch_dir(&arg));
+                .filter_map(|arg| parse_clean_launch_target(&arg))
+            {
+                match target {
+                    LaunchTarget::Directory(dir) => {
+                        if launch_dir.is_none() {
+                            launch_dir = Some(dir);
+                        }
+                    }
+                    LaunchTarget::File(file) => {
+                        launch_files.push(file);
+                    }
+                }
+            }
 
             crate::infra::os::context_menu::sync_context_menu_if_enabled();
 
@@ -123,6 +148,7 @@ pub fn run() {
                 pty_manager,
                 sftp_manager,
                 launch_dir,
+                launch_files,
             });
             Ok(())
         })
@@ -189,6 +215,7 @@ pub fn run() {
             sftp_clear_finished_transfers,
             app_get_status,
             app_get_launch_dir,
+            app_get_launch_files,
             context_menu_get_status,
             context_menu_set_enabled,
             clipboard_read_text,

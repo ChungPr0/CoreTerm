@@ -46,6 +46,11 @@ pub async fn app_get_launch_dir(state: State<'_, AppState>) -> AppResult<Option<
     Ok(state.launch_dir.clone())
 }
 
+#[tauri::command]
+pub async fn app_get_launch_files(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    Ok(state.launch_files.clone())
+}
+
 fn calc_launch_dims(cols: u16, rows: u16, width: Option<f64>, height: Option<f64>) -> (f64, f64) {
     let clamped_cols = cols.clamp(MIN_LAUNCH_COLS, MAX_LAUNCH_COLS) as f64;
     let clamped_rows = rows.clamp(MIN_LAUNCH_ROWS, MAX_LAUNCH_ROWS) as f64;

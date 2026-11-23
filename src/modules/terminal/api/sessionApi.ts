@@ -155,6 +155,10 @@ export const sessionApi = {
     return invoke<string | null>("app_get_launch_dir");
   },
 
+  appGetLaunchFiles(): Promise<string[]> {
+    return invoke<string[]>("app_get_launch_files");
+  },
+
   contextMenuGetStatus(): Promise<boolean> {
     return invoke<boolean>("context_menu_get_status");
   },

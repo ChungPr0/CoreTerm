@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { LOCAL_HOST_ID } from "@/shared/defaults";
+import { pathBaseName } from "@/shared/utils/path";
 import type {
   EditorTabMeta,
   PortForwardStatusDto,
@@ -65,6 +66,12 @@ interface TabsStoreState {
   markLocalTabsAdmin: () => void;
   setLaunchDir: (dir: string) => void;
   openDirectoryInTab: (dir: string) => void;
+  openLocalFileInTab: (filePath: string, hostLabel: string) => string;
+  openLaunchFiles: (
+    files: string[],
+    hostLabel: string,
+    opts?: { replaceInitialLocal?: boolean; onDisposeTab?: (tabId: string) => void }
+  ) => void;
 }
 
 const initialSettings = loadSettings();
@@ -419,5 +426,62 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       tabs: [...s.tabs, newTab],
       activeTabId: newTab.tabId,
     }));
+  },
+
+  openLocalFileInTab: (filePath: string, hostLabel: string) => {
+    const trimmed = filePath.trim();
+    const name = pathBaseName(trimmed) || trimmed;
+    return get().openEditorTab(
+      {
+        kind: "local",
+        path: trimmed,
+        name,
+        hostLabel,
+      },
+      LOCAL_HOST_ID
+    );
+  },
+
+  openLaunchFiles: (files, hostLabel, opts) => {
+    const validFiles = files.map((f) => f.trim()).filter(Boolean);
+    if (validFiles.length === 0) return;
+
+    const currentTabs = get().tabs;
+    const canReplaceInitial =
+      Boolean(opts?.replaceInitialLocal) &&
+      currentTabs.length === 1 &&
+      currentTabs[0].hostId === LOCAL_HOST_ID &&
+      currentTabs[0].tabKind !== "editor" &&
+      currentTabs[0].tabKind !== "sftp";
+
+    if (canReplaceInitial) {
+      const initialTabId = currentTabs[0].tabId;
+      const editorTabs: TerminalTabItem[] = [];
+      for (const filePath of validFiles) {
+        const meta: EditorTabMeta = {
+          kind: "local",
+          path: filePath,
+          name: pathBaseName(filePath) || filePath,
+          hostLabel,
+        };
+        if (findExistingEditorTab(editorTabs, meta, LOCAL_HOST_ID)) {
+          continue;
+        }
+        editorTabs.push(buildNewEditorTab(crypto.randomUUID(), meta, LOCAL_HOST_ID));
+      }
+      if (editorTabs.length > 0) {
+        set({
+          tabs: editorTabs,
+          activeTabId: editorTabs[editorTabs.length - 1].tabId,
+          renamingTabId: null,
+        });
+        opts?.onDisposeTab?.(initialTabId);
+        return;
+      }
+    }
+
+    for (const filePath of validFiles) {
+      get().openLocalFileInTab(filePath, hostLabel);
+    }
   },
 }));

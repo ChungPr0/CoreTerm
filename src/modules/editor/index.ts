@@ -1,6 +1,10 @@
 export { FileEditorPane } from "./components/FileEditorPane";
 export { EditorGotoLineModal } from "./components/EditorGotoLineModal";
-export { buildEditorContextItems } from "./menus/editorMenus";
+export {
+  buildEditorContextItems,
+  buildEditorToolbarMenu,
+  type BuildEditorToolbarMenuOpts,
+} from "./menus/editorMenus";
 export {
   EDITOR_LANGUAGES,
   convertLineEnding,

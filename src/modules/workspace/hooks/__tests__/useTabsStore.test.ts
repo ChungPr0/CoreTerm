@@ -417,4 +417,49 @@ describe("useTabsStore", () => {
     expect(useTabsStore.getState().activeTabId).toBe(localId);
     expect(useTabsStore.getState().editorCloseSeqByTab[localId]).toBe(1);
   });
+
+  it("opens local files in editor via openLocalFileInTab and openLaunchFiles", () => {
+    // 1. Cold start with single local terminal tab: replaceInitialLocal replaces it cleanly
+    useTabsStore.setState({
+      tabs: [makeTab({ tabId: "init-local", hostId: "local", title: "PowerShell" })],
+      activeTabId: "init-local",
+      renamingTabId: null,
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+      editorCloseSeqByTab: {},
+      sftpRefreshSeqByHost: {},
+    });
+
+    const disposedIds: string[] = [];
+    useTabsStore.getState().openLaunchFiles(
+      ["D:\\Notes\\todo.md", "d:/notes/TODO.md", "D:\\Notes\\app.json"],
+      "Local",
+      {
+        replaceInitialLocal: true,
+        onDisposeTab: (id) => disposedIds.push(id),
+      }
+    );
+
+    expect(disposedIds).toEqual(["init-local"]);
+    const afterLaunch = useTabsStore.getState().tabs;
+    expect(afterLaunch).toHaveLength(2);
+    expect(afterLaunch[0].tabKind).toBe("editor");
+    expect(afterLaunch[0].title).toBe("todo.md");
+    expect(afterLaunch[0].editorFile?.kind).toBe("local");
+    expect(afterLaunch[0].editorFile?.path).toBe("D:\\Notes\\todo.md");
+    expect(afterLaunch[1].title).toBe("app.json");
+    expect(useTabsStore.getState().activeTabId).toBe(afterLaunch[1].tabId);
+
+    // 2. Single-instance openLocalFileInTab activates existing tab instead of duplicating
+    const existingId = useTabsStore.getState().openLocalFileInTab("d:/notes/todo.md", "Local");
+    expect(existingId).toBe(afterLaunch[0].tabId);
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+    expect(useTabsStore.getState().activeTabId).toBe(afterLaunch[0].tabId);
+
+    // 3. Single-instance openLocalFileInTab opens new file alongside existing tabs
+    const thirdId = useTabsStore.getState().openLocalFileInTab("C:\\Windows\\hosts", "Local");
+    expect(useTabsStore.getState().tabs).toHaveLength(3);
+    expect(useTabsStore.getState().activeTabId).toBe(thirdId);
+    expect(useTabsStore.getState().tabs[2].title).toBe("hosts");
+  });
 });

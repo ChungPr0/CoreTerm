@@ -233,7 +233,7 @@
     "file_filter_exe": "Tệp thực thi",
     "file_filter_all": "Tất cả tệp",
     "context_menu_title": "Open in CoreTerm",
-    "context_menu_desc": "Thêm \"Open in CoreTerm\" vào menu ngữ cảnh khi click chuột phải thư mục",
+    "context_menu_desc": "Thêm \"Open in CoreTerm\" vào menu chuột phải thư mục và tệp",
     "context_menu_enabled": "Đã thêm \"Open in CoreTerm\" vào menu chuột phải Windows",
     "context_menu_disabled": "Đã gỡ \"Open in CoreTerm\" khỏi menu chuột phải Windows"
   },
@@ -267,6 +267,7 @@
     "select_all": "Chọn tất cả",
     "clear_terminal": "Xóa màn hình",
     "find": "Tìm kiếm...",
+    "replace": "Thay thế...",
     "rename_tab": "Đổi tên Tab",
     "new_tab_name": "Tab mới ({{name}})",
     "new_tab_admin_name": "Tab mới ({{name}} - Administrator)",
@@ -393,6 +394,7 @@
     "name_required": "Vui lòng nhập tên hợp lệ."
   },
   "editor": {
+    "title": "Editor",
     "loading": "Đang tải tệp...",
     "save": "Lưu",
     "saving": "Đang lưu...",

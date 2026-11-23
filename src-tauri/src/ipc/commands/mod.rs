@@ -23,4 +23,5 @@ pub struct AppState {
     pub pty_manager: PtySessionManager,
     pub sftp_manager: SftpSessionManager,
     pub launch_dir: Option<String>,
+    pub launch_files: Vec<String>,
 }

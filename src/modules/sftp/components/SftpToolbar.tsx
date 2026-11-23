@@ -37,17 +37,22 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
   return (
     <div
       onContextMenu={onContextMenu}
-      className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#21262d] bg-[#161b22] px-3 py-1.5"
+      className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-[#21262d] bg-[#161b22] px-3 select-none"
     >
-      <div className="flex min-h-6 flex-wrap items-center gap-2.5 text-xs">
-        <span className={`h-2 w-2 rounded-full ${statusMeta.dot}`} />
-        <span className="font-semibold text-[#e6edf3]">
+      <div
+        className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+        title={`${t("sftp.title")} — ${hostLabel}`}
+      >
+        <span
+          className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`}
+          title={statusMeta.label}
+        />
+        <span className="truncate font-semibold text-[#e6edf3]">
           {t("sftp.title")} — {hostLabel}
         </span>
-        <span className={`text-[11px] font-medium ${statusMeta.text}`}>{statusMeta.label}</span>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 shrink-0">
         {onOpenInTerminal && remoteCwd && (
           <Button
             variant="outline"

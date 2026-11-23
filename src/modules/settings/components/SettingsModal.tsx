@@ -319,7 +319,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-slate-300 font-medium min-w-0">
               <MousePointerClick className="w-4 h-4 text-sky-400 shrink-0" />
-              <span className="truncate" title={t("settings.context_menu_title")}>
+              <span className="truncate" title={t("settings.context_menu_desc")}>
                 {t("settings.context_menu_title")}
               </span>
             </div>

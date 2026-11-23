@@ -233,7 +233,7 @@
     "file_filter_exe": "Executable",
     "file_filter_all": "All Files",
     "context_menu_title": "Open in CoreTerm",
-    "context_menu_desc": "Add \"Open in CoreTerm\" to folder right-click context menu",
+    "context_menu_desc": "Add \"Open in CoreTerm\" to folder and file right-click context menu",
     "context_menu_enabled": "\"Open in CoreTerm\" added to context menu",
     "context_menu_disabled": "\"Open in CoreTerm\" removed from context menu"
   },
@@ -267,6 +267,7 @@
     "select_all": "Select All",
     "clear_terminal": "Clear Terminal",
     "find": "Find...",
+    "replace": "Replace...",
     "rename_tab": "Rename Tab",
     "new_tab_name": "New Tab ({{name}})",
     "new_tab_admin_name": "New Tab ({{name}} - Administrator)",
@@ -393,6 +394,7 @@
     "name_required": "Name cannot be empty."
   },
   "editor": {
+    "title": "Editor",
     "loading": "Loading file...",
     "save": "Save",
     "saving": "Saving...",

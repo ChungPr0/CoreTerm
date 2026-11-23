@@ -1,7 +1,18 @@
-import React from "react";
-import { Copy, Hash, Lock, LockOpen, RefreshCw, Save, Search, WrapText } from "lucide-react";
+import React, { useMemo } from "react";
+import {
+  ChevronRight,
+  Copy,
+  Hash,
+  Lock,
+  LockOpen,
+  RefreshCw,
+  Save,
+  Search,
+  WrapText,
+} from "lucide-react";
 import { useI18n } from "@/shared/i18n";
-import { Button, IconButton } from "@/shared/ui";
+import { IconButton } from "@/shared/ui";
+import { splitLocalCrumbs, splitRemoteCrumbs } from "@/shared/utils/path";
 
 interface EditorToolbarProps {
   hostLabel: string;
@@ -17,6 +28,8 @@ interface EditorToolbarProps {
   connecting: boolean;
   isDirty: boolean;
   isRemoteOffline: boolean;
+  isRemote?: boolean;
+  isRemoteConnecting?: boolean;
   onCopyPath: () => void;
   onOpenFind: () => void;
   onOpenGoto: () => void;
@@ -24,6 +37,7 @@ interface EditorToolbarProps {
   onToggleReadonly: () => void;
   onReload: () => void;
   onSave: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
@@ -40,6 +54,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   connecting,
   isDirty,
   isRemoteOffline,
+  isRemote = false,
+  isRemoteConnecting = false,
   onCopyPath,
   onOpenFind,
   onOpenGoto,
@@ -47,26 +63,87 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onToggleReadonly,
   onReload,
   onSave,
+  onContextMenu,
 }) => {
   const { t } = useI18n();
 
-  return (
-    <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-3 select-none">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="shrink-0 rounded border border-slate-700/80 bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-400">
-          {hostLabel}
-        </span>
+  const crumbs = useMemo(
+    () => (isRemote ? splitRemoteCrumbs(path) : splitLocalCrumbs(path)),
+    [isRemote, path]
+  );
 
-        <Button
-          variant="ghost"
-          size="xs"
+  const statusMeta = useMemo(() => {
+    if (!isRemote) {
+      return {
+        dot: "bg-sky-400",
+        text: "text-sky-300",
+        label: "",
+      };
+    }
+    if (isRemoteOffline) {
+      return {
+        dot: "bg-rose-400",
+        text: "text-rose-300",
+        label: t("sftp.disconnected"),
+      };
+    }
+    if (isRemoteConnecting || connecting) {
+      return {
+        dot: "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.7)]",
+        text: "text-sky-300",
+        label: t("sftp.connecting"),
+      };
+    }
+    return {
+      dot: "bg-emerald-400",
+      text: "text-emerald-300",
+      label: t("sftp.connected"),
+    };
+  }, [connecting, isRemote, isRemoteConnecting, isRemoteOffline, t]);
+
+  return (
+    <div
+      onContextMenu={onContextMenu}
+      className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-[#21262d] bg-[#161b22] px-3 select-none"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div
+          className="flex min-w-0 max-w-[200px] shrink items-center gap-2 text-xs"
+          title={`${t("editor.title")} — ${hostLabel}`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`}
+            title={statusMeta.label || hostLabel}
+          />
+          <span className="truncate font-semibold text-[#e6edf3]">
+            {t("editor.title")} — {hostLabel}
+          </span>
+        </div>
+
+        <div
+          title={path}
+          className="no-scrollbar flex h-6 min-w-0 flex-1 cursor-default items-center gap-0.5 overflow-x-auto rounded border border-[#21262d] bg-[#0d1117] px-2 font-mono text-[11px] text-[#c9d1d9]"
+        >
+          {crumbs.map((c, idx) => (
+            <React.Fragment key={c.path}>
+              {idx > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-[#484f58]" />}
+              <span
+                className={`shrink-0 whitespace-nowrap px-0.5 ${
+                  idx === crumbs.length - 1 ? "font-semibold text-[#e6edf3]" : "text-[#8b949e]"
+                }`}
+              >
+                {c.label}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+
+        <IconButton
+          size="sm"
           onClick={onCopyPath}
           title={t("ctx.sftp_copy_path")}
-          rightIcon={<Copy className="h-3 w-3 opacity-60" />}
-          className="min-w-0 max-w-full justify-start px-1.5 font-mono text-[11px] font-normal text-slate-400 hover:text-slate-200"
-        >
-          <span className="block max-w-[46vw] truncate">{path}</span>
-        </Button>
+          icon={<Copy className="h-3.5 w-3.5" />}
+        />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -87,7 +164,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           icon={<Hash className="h-3.5 w-3.5" />}
         />
 
-        <div className="mx-1 h-4 w-px bg-slate-800" />
+        <div className="mx-1 h-4 w-px bg-[#21262d]" />
 
         <IconButton
           size="sm"
@@ -141,7 +218,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           }
         />
 
-        <div className="mx-1 h-4 w-px bg-slate-800" />
+        <div className="mx-1 h-4 w-px bg-[#21262d]" />
 
         <IconButton
           size="sm"

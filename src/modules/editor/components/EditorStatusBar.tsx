@@ -13,6 +13,7 @@ interface EditorStatusBarProps {
   zoomPercent: number;
   eol: EditorLineEnding;
   onToggleEol: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
@@ -24,18 +25,22 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   zoomPercent,
   eol,
   onToggleEol,
+  onContextMenu,
 }) => {
   const { t } = useI18n();
   const activeLang = useMemo(() => getEditorLanguageById(langId), [langId]);
 
   return (
-    <div className="flex h-7 shrink-0 items-center justify-between gap-2 border-t border-slate-800 bg-slate-900 px-3 text-[11px] text-slate-400 select-none overflow-hidden">
+    <div
+      onContextMenu={onContextMenu}
+      className="flex h-7 shrink-0 items-center justify-between gap-2 border-t border-[#21262d] bg-[#161b22] px-3 text-[11px] text-[#8b949e] select-none overflow-hidden"
+    >
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="w-[126px] shrink-0 px-1 text-left tabular-nums truncate">
           {t("editor.cursor_pos", { line: cursorPos.line, col: cursorPos.col })}
         </span>
 
-        <div className="h-3 w-px shrink-0 bg-slate-800" />
+        <div className="h-3 w-px shrink-0 bg-[#21262d]" />
 
         <span className="w-[152px] shrink-0 px-1 text-left tabular-nums truncate">
           {cursorPos.selLen > 0
@@ -46,11 +51,11 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
             : t("editor.chars_count", { count: totalChars })}
         </span>
 
-        <div className="h-3 w-px shrink-0 bg-slate-800" />
+        <div className="h-3 w-px shrink-0 bg-[#21262d]" />
 
         <span
           title={activeLang.label}
-          className="w-[132px] shrink-0 px-1 text-left truncate cursor-default text-slate-400"
+          className="w-[132px] shrink-0 px-1 text-left truncate cursor-default text-[#8b949e]"
         >
           {activeLang.label}
         </span>
@@ -59,7 +64,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
       <div className="flex shrink-0 items-center gap-1.5">
         <span className="w-[48px] shrink-0 text-center tabular-nums">{zoomPercent}%</span>
 
-        <div className="h-3 w-px shrink-0 bg-slate-800" />
+        <div className="h-3 w-px shrink-0 bg-[#21262d]" />
 
         {effectiveReadonly ? (
           <span

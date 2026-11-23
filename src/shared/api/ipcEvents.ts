@@ -9,3 +9,4 @@ export const EVENT_SFTP_TRANSFER_PROGRESS = "sftp:transfer_progress";
 export const EVENT_SFTP_TRANSFER_CONFLICT = "sftp:transfer_conflict";
 
 export const EVENT_OPEN_DIRECTORY = "open-directory";
+export const EVENT_OPEN_FILE = "open-file";

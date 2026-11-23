@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EVENT_OPEN_DIRECTORY } from "@/shared/api/ipcEvents";
+import { EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE } from "@/shared/api/ipcEvents";
 import { listenEvent } from "@/shared/api/tauriClient";
 import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
 import {
@@ -13,14 +13,18 @@ import { useTabsStore, windowApi } from "@/modules/workspace";
 
 interface UseAppBootstrapOpts {
   preloaders: Array<() => Promise<unknown>>;
+  localHostLabel: string;
   onFocusTerminal: () => void;
   onOpenDirectory?: () => void;
+  onOpenFile?: () => void;
 }
 
 export function useAppBootstrap({
   preloaders,
+  localHostLabel,
   onFocusTerminal,
   onOpenDirectory,
+  onOpenFile,
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
@@ -36,8 +40,12 @@ export function useAppBootstrap({
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const localHostLabelRef = useRef(localHostLabel);
+  localHostLabelRef.current = localHostLabel;
   const onOpenDirectoryRef = useRef(onOpenDirectory);
   onOpenDirectoryRef.current = onOpenDirectory;
+  const onOpenFileRef = useRef(onOpenFile);
+  onOpenFileRef.current = onOpenFile;
   const onFocusTerminalRef = useRef(onFocusTerminal);
   onFocusTerminalRef.current = onFocusTerminal;
   const presentedRef = useRef(false);
@@ -91,15 +99,26 @@ export function useAppBootstrap({
       })
       .catch(() => {});
 
-    sessionApi
-      .appGetLaunchDir()
-      .then((dir) => {
-        if (dir) useTabsStore.getState().setLaunchDir(dir);
-      })
-      .catch(() => {});
+    Promise.all([
+      sessionApi.appGetLaunchDir().catch(() => null),
+      sessionApi.appGetLaunchFiles().catch(() => [] as string[]),
+    ]).then(([dir, files]) => {
+      if (cancelled) return;
+      if (dir) useTabsStore.getState().setLaunchDir(dir);
+      if (files.length > 0) {
+        useTabsStore.getState().openLaunchFiles(files, localHostLabelRef.current, {
+          replaceInitialLocal: !dir,
+          onDisposeTab: (tabId) => {
+            sessionApi.sessionDisconnect(tabId).catch(() => {});
+          },
+        });
+        void presentWindow();
+      }
+    });
 
     let active = true;
     let unlistenOpenDir: (() => void) | undefined;
+    let unlistenOpenFile: (() => void) | undefined;
     listenEvent<string>(EVENT_OPEN_DIRECTORY, (dir) => {
       if (dir) {
         onOpenDirectoryRef.current?.();
@@ -116,10 +135,26 @@ export function useAppBootstrap({
       })
       .catch(() => {});
 
+    listenEvent<string>(EVENT_OPEN_FILE, (filePath) => {
+      if (filePath) {
+        onOpenFileRef.current?.();
+        useTabsStore.getState().openLocalFileInTab(filePath, localHostLabelRef.current);
+      }
+    })
+      .then((fn) => {
+        if (!active) {
+          fn();
+        } else {
+          unlistenOpenFile = fn;
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
       cancelled = true;
       if (unlistenOpenDir) unlistenOpenDir();
+      if (unlistenOpenFile) unlistenOpenFile();
       if (fallbackTimerRef.current !== null) {
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;

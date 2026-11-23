@@ -17,6 +17,8 @@ fn to_wide_null(s: &str) -> Vec<u16> {
 const KEY_DIR_SHELL: &str = "Software\\Classes\\Directory\\shell\\CoreTerm";
 #[cfg(windows)]
 const KEY_BG_SHELL: &str = "Software\\Classes\\Directory\\Background\\shell\\CoreTerm";
+#[cfg(windows)]
+const KEY_FILE_SHELL: &str = "Software\\Classes\\*\\shell\\CoreTerm";
 const MENU_TITLE: &str = "Open in CoreTerm";
 
 #[cfg(windows)]
@@ -44,7 +46,11 @@ fn set_registry_string(hkey: HKEY, name: Option<&str>, val: &str) -> Result<(), 
 }
 
 #[cfg(windows)]
-fn register_single_shell_key(base_path: &str, exe_path: &str) -> Result<(), String> {
+fn register_single_shell_key(
+    base_path: &str,
+    exe_path: &str,
+    arg_placeholder: &str,
+) -> Result<(), String> {
     let wide_base = to_wide_null(base_path);
     let mut hkey: HKEY = std::ptr::null_mut();
     let res = unsafe {
@@ -90,15 +96,15 @@ fn register_single_shell_key(base_path: &str, exe_path: &str) -> Result<(), Stri
         return Err(format!("RegCreateKeyExW for {cmd_path} failed with code {res}"));
     }
 
-    let cmd_val = format!("\"{exe_path}\" \"%V\"");
+    let cmd_val = format!("\"{exe_path}\" \"{arg_placeholder}\"");
     let set_res = set_registry_string(hcmd, None, &cmd_val);
     unsafe { RegCloseKey(hcmd) };
     set_res
 }
 
 #[cfg(windows)]
-pub fn is_context_menu_registered() -> bool {
-    let cmd_path = format!("{KEY_DIR_SHELL}\\command");
+fn is_shell_key_registered(base_path: &str) -> bool {
+    let cmd_path = format!("{base_path}\\command");
     let wide_cmd = to_wide_null(&cmd_path);
     let mut hkey: HKEY = std::ptr::null_mut();
     let status = unsafe {
@@ -115,6 +121,11 @@ pub fn is_context_menu_registered() -> bool {
     }
     unsafe { RegCloseKey(hkey) };
     true
+}
+
+#[cfg(windows)]
+pub fn is_context_menu_registered() -> bool {
+    is_shell_key_registered(KEY_DIR_SHELL) && is_shell_key_registered(KEY_FILE_SHELL)
 }
 
 #[cfg(not(windows))]
@@ -152,8 +163,9 @@ pub fn register_context_menu() -> Result<(), String> {
 
     let exe_str = exe.to_string_lossy().to_string();
 
-    register_single_shell_key(KEY_DIR_SHELL, &exe_str)?;
-    register_single_shell_key(KEY_BG_SHELL, &exe_str)?;
+    register_single_shell_key(KEY_DIR_SHELL, &exe_str, "%V")?;
+    register_single_shell_key(KEY_BG_SHELL, &exe_str, "%V")?;
+    register_single_shell_key(KEY_FILE_SHELL, &exe_str, "%1")?;
     Ok(())
 }
 
@@ -169,6 +181,8 @@ pub fn unregister_context_menu() -> Result<(), String> {
         let _ = RegDeleteTreeW(HKEY_CURRENT_USER, wide_dir.as_ptr());
         let wide_bg = to_wide_null(KEY_BG_SHELL);
         let _ = RegDeleteTreeW(HKEY_CURRENT_USER, wide_bg.as_ptr());
+        let wide_file = to_wide_null(KEY_FILE_SHELL);
+        let _ = RegDeleteTreeW(HKEY_CURRENT_USER, wide_file.as_ptr());
     }
     Ok(())
 }
@@ -213,8 +227,8 @@ pub fn is_installed_version() -> bool {
 }
 
 #[cfg(windows)]
-pub fn get_registered_command() -> Result<String, String> {
-    let cmd_path = format!("{KEY_DIR_SHELL}\\command");
+fn get_registered_command_for(base_path: &str) -> Result<String, String> {
+    let cmd_path = format!("{base_path}\\command");
     let wide_cmd = to_wide_null(&cmd_path);
     let mut hkey: HKEY = std::ptr::null_mut();
     let status = unsafe {
@@ -255,20 +269,29 @@ pub fn get_registered_command() -> Result<String, String> {
 }
 
 #[cfg(windows)]
+pub fn get_registered_command() -> Result<String, String> {
+    get_registered_command_for(KEY_DIR_SHELL)
+}
+
+#[cfg(windows)]
 pub fn sync_context_menu_if_enabled() {
     #[cfg(debug_assertions)]
     {
-        if is_context_menu_registered() {
-            if let Ok(cmd) = get_registered_command() {
-                if cmd.contains(r"\target\debug\") || cmd.contains("/target/debug/") {
-                    if let Ok(exe) = current_exe() {
-                        if let Some(parent) = exe.parent() {
-                            if parent.ends_with("debug") {
-                                if let Some(rel) = parent.parent().map(|p| p.join("release").join("coreterm.exe")) {
-                                    if rel.exists() {
-                                        let _ = register_context_menu();
-                                    }
-                                }
+        let points_to_debug = [KEY_DIR_SHELL, KEY_BG_SHELL, KEY_FILE_SHELL].iter().any(|key| {
+            get_registered_command_for(key)
+                .map(|cmd| cmd.contains(r"\target\debug\") || cmd.contains("/target/debug/"))
+                .unwrap_or(false)
+        });
+        if points_to_debug {
+            if let Ok(exe) = current_exe() {
+                if let Some(parent) = exe.parent() {
+                    if parent.ends_with("debug") {
+                        if let Some(rel) = parent
+                            .parent()
+                            .map(|p| p.join("release").join("coreterm.exe"))
+                        {
+                            if rel.exists() {
+                                let _ = register_context_menu();
                             }
                         }
                     }
@@ -279,19 +302,25 @@ pub fn sync_context_menu_if_enabled() {
 
     #[cfg(not(debug_assertions))]
     {
-        if !is_context_menu_registered() {
+        let any_registered = is_shell_key_registered(KEY_DIR_SHELL)
+            || is_shell_key_registered(KEY_BG_SHELL)
+            || is_shell_key_registered(KEY_FILE_SHELL);
+        if !any_registered {
             if is_installed_version() {
                 let _ = register_context_menu();
             }
             return;
         }
 
-        if let Ok(current_reg_val) = get_registered_command() {
-            if let Ok(exe) = current_exe() {
-                let exe_str = exe.to_string_lossy();
-                if !current_reg_val.contains(&*exe_str) {
-                    let _ = register_context_menu();
-                }
+        if let Ok(exe) = current_exe() {
+            let exe_str = exe.to_string_lossy();
+            let all_match = [KEY_DIR_SHELL, KEY_BG_SHELL, KEY_FILE_SHELL].iter().all(|key| {
+                get_registered_command_for(key)
+                    .map(|val| val.contains(&*exe_str))
+                    .unwrap_or(false)
+            });
+            if !all_match {
+                let _ = register_context_menu();
             }
         }
     }

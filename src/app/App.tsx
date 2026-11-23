@@ -49,9 +49,13 @@ export const App: React.FC = () => {
     });
   }, [focusTerminal]);
 
-  const handleOpenDirectoryRef = useRef<() => void>(() => {});
+  const dismissExternalOverlaysRef = useRef<() => void>(() => {});
   const handleOpenDirectoryFromExternal = useCallback(() => {
-    handleOpenDirectoryRef.current();
+    dismissExternalOverlaysRef.current();
+    focusTerminal();
+  }, [focusTerminal]);
+  const handleOpenFileFromExternal = useCallback(() => {
+    dismissExternalOverlaysRef.current();
   }, []);
 
   const {
@@ -65,8 +69,10 @@ export const App: React.FC = () => {
     saveAndApplySettings,
   } = useAppBootstrap({
     preloaders: PRELOADERS,
+    localHostLabel: t("sftp.local_pane"),
     onFocusTerminal: focusTerminal,
     onOpenDirectory: handleOpenDirectoryFromExternal,
+    onOpenFile: handleOpenFileFromExternal,
   });
 
   const defaultShellProfile = useMemo(() => {
@@ -78,7 +84,7 @@ export const App: React.FC = () => {
 
   const hosts = useHostProfiles({ t, onError: alert.error, onRequestDelete: setDeletePrompt });
 
-  handleOpenDirectoryRef.current = () => {
+  dismissExternalOverlaysRef.current = () => {
     setIsSidebarOpen(false);
     setIsSettingsOpen(false);
     setIsPaletteOpen(false);
@@ -87,7 +93,6 @@ export const App: React.FC = () => {
     closeMenu();
     hosts.setIsHostModalOpen(false);
     hosts.setIsGroupModalOpen(false);
-    focusTerminal();
   };
 
   const sessions = useSshSessions({

@@ -189,7 +189,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     void copyText(file.path).then(() => alert.info(t("sftp.copied"), TOAST_COPY_MS));
   }, [alert, file.path, t]);
 
-  const handleEditorContextMenu = useCallback(
+  const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (getEditableInput(e.target)) return;
       e.preventDefault();
@@ -218,7 +218,12 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
           t,
           hasSelection: selectedText.length > 0,
           readonly: session.effectiveReadonly || !view,
+          fileReadonly: session.fileReadonly,
           isDirty,
+          saving: session.saving,
+          loading: session.loading,
+          connecting: session.connecting,
+          wordWrap,
           isRemote: session.isRemote,
           isDisconnected: session.isRemoteOffline,
           onCut: () => {
@@ -245,13 +250,23 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             view.focus();
           },
           onFind: () => search.openFindBar(false),
+          onReplace: () => search.openFindBar(true),
           onGotoLine: openGotoBar,
+          onToggleWordWrap: () => setWordWrap((v) => !v),
+          onToggleReadonly: () => setUserReadonly((v) => !v),
           onSave: () => void session.handleSave(),
           onReload: requestReload,
           onReconnect: session.isRemote
             ? () => void session.connectSftp(!session.hasLoadedRef.current)
             : undefined,
           onCopyPath: handleCopyPath,
+          onClose: () => {
+            if (isDirtyRef.current) {
+              session.setConfirmDiscard("close");
+            } else {
+              onForceClose();
+            }
+          },
         })
       );
     },
@@ -259,12 +274,14 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
       cm.viewRef,
       handleCopyPath,
       isDirty,
+      onForceClose,
       onShowMenu,
       openGotoBar,
       requestReload,
       search,
       session,
       t,
+      wordWrap,
     ]
   );
 
@@ -341,11 +358,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
   return (
     <div
-      onContextMenu={(e) => {
-        if (getEditableInput(e.target)) return;
-        e.preventDefault();
-        e.stopPropagation();
-      }}
+      onContextMenu={handleContextMenu}
       className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-ct-editor text-slate-200"
     >
       {session.isRemoteConnecting && (
@@ -368,6 +381,8 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         connecting={session.connecting}
         isDirty={isDirty}
         isRemoteOffline={session.isRemoteOffline}
+        isRemote={session.isRemote}
+        isRemoteConnecting={session.isRemoteConnecting}
         onCopyPath={handleCopyPath}
         onOpenFind={() => search.openFindBar(false)}
         onOpenGoto={openGotoBar}
@@ -375,10 +390,11 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         onToggleReadonly={() => setUserReadonly((v) => !v)}
         onReload={requestReload}
         onSave={() => void session.handleSave()}
+        onContextMenu={handleContextMenu}
       />
 
       <div
-        onContextMenu={handleEditorContextMenu}
+        onContextMenu={handleContextMenu}
         onMouseDownCapture={(e) => {
           if (e.button === 2) {
             if (getEditableInput(e.target)) return;
@@ -462,6 +478,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         zoomPercent={zoomPercent}
         eol={session.eol}
         onToggleEol={session.toggleEol}
+        onContextMenu={handleContextMenu}
       />
 
       <EditorGotoLineModal
