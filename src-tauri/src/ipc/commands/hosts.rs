@@ -39,7 +39,9 @@ pub async fn host_update(
     state: State<'_, AppState>,
     req: UpdateHostRequestDto,
 ) -> AppResult<HostFullConfigDto> {
-    state.hosts.update(req)
+    let updated = state.hosts.update(req)?;
+    state.tab_secrets.clear_host(&updated.id);
+    Ok(updated)
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -57,7 +59,9 @@ pub async fn host_delete(
     state: State<'_, AppState>,
     host_id: String,
 ) -> AppResult<DeleteResultDto> {
-    state.hosts.delete(&host_id)
+    let res = state.hosts.delete(&host_id)?;
+    state.tab_secrets.clear_host(&host_id);
+    Ok(res)
 }
 
 #[tauri::command(rename_all = "snake_case")]

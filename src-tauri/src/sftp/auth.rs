@@ -9,6 +9,7 @@ use zeroize::Zeroizing;
 
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::hosts::HostService;
+use crate::infra::security::{TabSecretKind, TabSecretStore};
 use crate::ipc::dto::{
     HostFullConfigDto, SftpAuthPromptEventDto, SftpHostKeyPromptEventDto,
 };
@@ -41,7 +42,6 @@ pub struct PendingPromptSlots {
 }
 
 impl PendingPromptSlots {
-    /// Rejects any awaiting auth/host-key prompts when the tab disconnects or cancels.
     pub fn cancel_all(&self) {
         if let Ok(mut guard) = self.host_key.lock() {
             if let Some(ch) = guard.take() {
@@ -165,12 +165,12 @@ pub struct SftpAuthContext<'a> {
     pub config: &'a HostFullConfigDto,
     pub hosts: &'a HostService,
     pub keys: &'a KeyService,
+    pub tab_secrets: &'a TabSecretStore,
     pub app: &'a AppHandle,
     pub prompts: &'a PendingPromptSlots,
     pub cancel_token: &'a CancellationToken,
 }
 
-/// Applies the user's host key decision (persisting to `known_hosts` before resuming the handshake).
 pub fn apply_host_key_decision(
     slots: &PendingPromptSlots,
     action: &str,
@@ -293,19 +293,35 @@ async fn load_private_key_with_prompts(
         }
     }
 
-    let mut saved_failed = false;
+    let mut auto_failed = false;
+    let mut tried_tab_pass: Option<Zeroizing<String>> = None;
+    if let Some(tab_pass) =
+        ctx.tab_secrets
+            .get(ctx.tab_id, &ctx.config.id, TabSecretKind::KeyPassphrase)
+    {
+        if let Ok(key) = keys::load_secret_key(key_path, Some(tab_pass.as_str())) {
+            return Ok(key);
+        }
+        ctx.tab_secrets
+            .remove(ctx.tab_id, &ctx.config.id, TabSecretKind::KeyPassphrase);
+        tried_tab_pass = Some(tab_pass);
+        auto_failed = true;
+    }
+
     if let Some(ref key_id) = ctx.config.ssh_key_id {
         if let Ok(Some(saved_pass)) = ctx.keys.get_secret(key_id) {
-            if let Ok(key) = keys::load_secret_key(key_path, Some(saved_pass.as_str())) {
-                return Ok(key);
+            if tried_tab_pass.as_ref().map(|s| s.as_str()) != Some(saved_pass.as_str()) {
+                if let Ok(key) = keys::load_secret_key(key_path, Some(saved_pass.as_str())) {
+                    return Ok(key);
+                }
+                auto_failed = true;
             }
-            saved_failed = true;
         }
     }
 
     for retry in 1..=3u8 {
         let prompt_text = format!("Enter passphrase for key {key_path}");
-        let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
+        let attempt = if auto_failed { retry.saturating_add(1) } else { retry };
         let Some((secret, save_to_vault, _)) =
             request_secret_from_user(ctx, "KEY_PASSPHRASE", &prompt_text, attempt).await?
         else {
@@ -315,6 +331,12 @@ async fn load_private_key_with_prompts(
         };
 
         if let Ok(key) = keys::load_secret_key(key_path, Some(secret.as_str())) {
+            ctx.tab_secrets.set(
+                ctx.tab_id,
+                &ctx.config.id,
+                TabSecretKind::KeyPassphrase,
+                secret.clone(),
+            );
             if save_to_vault {
                 if let Some(ref key_id) = ctx.config.ssh_key_id {
                     let _ = ctx.keys.save_secret(key_id, secret.as_str());
@@ -334,12 +356,28 @@ async fn authenticate_password_with_prompts(
     ctx: &SftpAuthContext<'_>,
 ) -> CoreResult<()> {
     let username = ctx.config.username.trim();
-    let mut saved_failed = false;
-    if let Ok(Some(saved_pw)) = ctx.hosts.get_secret(&ctx.config.id) {
-        if try_password_and_kbd(session, username, saved_pw.as_str()).await? {
+    let mut auto_failed = false;
+    let mut tried_tab_pw: Option<Zeroizing<String>> = None;
+    if let Some(tab_pw) =
+        ctx.tab_secrets
+            .get(ctx.tab_id, &ctx.config.id, TabSecretKind::Password)
+    {
+        if try_password_and_kbd(session, username, tab_pw.as_str()).await? {
             return Ok(());
         }
-        saved_failed = true;
+        ctx.tab_secrets
+            .remove(ctx.tab_id, &ctx.config.id, TabSecretKind::Password);
+        tried_tab_pw = Some(tab_pw);
+        auto_failed = true;
+    }
+
+    if let Ok(Some(saved_pw)) = ctx.hosts.get_secret(&ctx.config.id) {
+        if tried_tab_pw.as_ref().map(|s| s.as_str()) != Some(saved_pw.as_str()) {
+            if try_password_and_kbd(session, username, saved_pw.as_str()).await? {
+                return Ok(());
+            }
+            auto_failed = true;
+        }
     }
 
     for retry in 1..=3u8 {
@@ -349,7 +387,7 @@ async fn authenticate_password_with_prompts(
             ctx.config.host.trim(),
             ctx.config.port
         );
-        let attempt = if saved_failed { retry.saturating_add(1) } else { retry };
+        let attempt = if auto_failed { retry.saturating_add(1) } else { retry };
         let Some((secret, save_to_vault, auto_reconnect)) =
             request_secret_from_user(ctx, "PASSWORD", &prompt_text, attempt).await?
         else {
@@ -357,6 +395,12 @@ async fn authenticate_password_with_prompts(
         };
 
         if try_password_and_kbd(session, username, secret.as_str()).await? {
+            ctx.tab_secrets.set(
+                ctx.tab_id,
+                &ctx.config.id,
+                TabSecretKind::Password,
+                secret.clone(),
+            );
             if save_to_vault {
                 let _ = ctx.hosts.save_secret(&ctx.config.id, secret.as_str(), auto_reconnect);
             }

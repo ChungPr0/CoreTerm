@@ -22,12 +22,22 @@ export function findExistingEditorTab(
   );
 }
 
+export interface EditorReconnectConfig {
+  canAutoReconnect?: boolean;
+  autoReconnect?: boolean;
+  reconnectIntervalSec?: number;
+}
+
 export function buildNewEditorTab(
   tabId: string,
   meta: EditorTabMeta,
-  resolvedHostId: string
+  resolvedHostId: string,
+  reconnectConfig?: EditorReconnectConfig
 ): TerminalTabItem {
   const isRemote = meta.kind === "remote";
+  const canAutoReconnect = isRemote ? reconnectConfig?.canAutoReconnect : false;
+  const autoReconnect =
+    isRemote && canAutoReconnect !== false ? Boolean(reconnectConfig?.autoReconnect) : false;
   return {
     tabId,
     hostId: resolvedHostId,
@@ -37,6 +47,9 @@ export function buildNewEditorTab(
     ...(isRemote ? { sftpState: "CONNECTING" as const } : {}),
     errorMessage: null,
     reconnectToken: 0,
+    canAutoReconnect,
+    autoReconnect,
+    reconnectIntervalSec: isRemote ? (reconnectConfig?.reconnectIntervalSec ?? 2) : 2,
     tabKind: "editor",
     editorFile: { ...meta, dirty: false },
   };

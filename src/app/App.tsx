@@ -268,6 +268,11 @@ export const App: React.FC = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
           const isTabActive = tab.tabId === sessions.activeTabId;
+          const pauseAutoReconnect =
+            sessions.authPrompt?.tab_id === tab.tabId ||
+            sessions.hostKeyPrompt?.tab_id === tab.tabId ||
+            sessions.portConflicts.length > 0;
+
           if (tab.tabKind === "editor" && tab.editorFile) {
             return (
               <div
@@ -281,6 +286,7 @@ export const App: React.FC = () => {
                     file={tab.editorFile}
                     isActive={isTabActive}
                     hasBlockingModal={hasModalOpen}
+                    pauseAutoReconnect={pauseAutoReconnect}
                     findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
                     closeRequestToken={sessions.editorCloseSeqByTab[tab.tabId] ?? 0}
                     onDirtyChange={(dirty) => sessions.setEditorDirty(tab.tabId, dirty)}
@@ -295,11 +301,6 @@ export const App: React.FC = () => {
               </div>
             );
           }
-
-          const pauseAutoReconnect =
-            sessions.authPrompt?.tab_id === tab.tabId ||
-            sessions.hostKeyPrompt?.tab_id === tab.tabId ||
-            sessions.portConflicts.length > 0;
 
           const terminalNode =
             tab.tabKind === "sftp" ? undefined : (

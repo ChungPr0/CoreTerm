@@ -103,10 +103,10 @@ pub(super) fn spawn_pty(
             exit_slot: Arc::clone(&exit_slot),
         },
         pending_prompt_type: Mutex::new(None),
+        staged_secret: Mutex::new(None),
         manual_disconnect: AtomicBool::new(false),
     });
 
-    // Wait on the child process and close ConPTY master after exit so Windows ConPTY sends pipe EOF reliably.
     let waiter_session = Arc::clone(&session);
     let _ = std::thread::Builder::new()
         .name(format!("conpty-waiter-{}", cfg.tab_id))

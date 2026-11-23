@@ -10,6 +10,7 @@ use zeroize::Zeroizing;
 use crate::core::defaults::LOCAL_HOST_ID;
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
 use crate::hosts::HostService;
+use crate::infra::security::TabSecretStore;
 use crate::ipc::dto::SftpConnectAckDto;
 use crate::keys::KeyService;
 use crate::sftp::auth::{
@@ -37,18 +38,19 @@ struct SessionSlot {
     entry: Arc<TabSessionEntry>,
 }
 
-/// Manages active SFTP connections and transfer engines keyed by `tab_id`.
 #[derive(Default)]
 pub struct SftpSessionManager {
     sessions: DashMap<String, SessionSlot>,
     next_gen: AtomicU64,
+    tab_secrets: TabSecretStore,
 }
 
 impl SftpSessionManager {
-    pub fn new() -> Self {
+    pub fn new(tab_secrets: TabSecretStore) -> Self {
         Self {
             sessions: DashMap::new(),
             next_gen: AtomicU64::new(0),
+            tab_secrets,
         }
     }
 
@@ -133,6 +135,7 @@ impl SftpSessionManager {
             config,
             hosts,
             keys,
+            tab_secrets: &self.tab_secrets,
             app,
             prompts,
             cancel_token: cancel_token.clone(),
@@ -214,8 +217,7 @@ impl SftpSessionManager {
         }
         Ok(())
     }
-
-    /// Cancels all active SFTP connections and file transfers on application exit.
+    
     pub fn shutdown_all(&self) {
         let keys: Vec<String> = self.sessions.iter().map(|e| e.key().clone()).collect();
         for tab_id in keys {
@@ -240,6 +242,7 @@ impl SftpSessionManager {
                 }
             }
         }
+        self.tab_secrets.clear_all();
     }
 
     pub fn submit_secret(
@@ -314,7 +317,7 @@ mod tests {
 
     #[test]
     fn stale_generation_cannot_remove_newer_session() {
-        let mgr = SftpSessionManager::new();
+        let mgr = SftpSessionManager::new(TabSecretStore::new());
         let tab = "tab-1";
         let g1 = mgr.next_gen.fetch_add(1, Ordering::Relaxed) + 1;
         mgr.sessions.insert(

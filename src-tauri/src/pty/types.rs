@@ -11,6 +11,8 @@ use tauri::AppHandle;
 use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::elevated_pty;
+use crate::infra::security::TabSecretKind;
+use zeroize::Zeroizing;
 
 pub(super) const READ_BUF_SIZE: usize = 16 * 1024;
 pub(super) const MAX_BATCH_SIZE: usize = 32 * 1024;
@@ -76,10 +78,27 @@ pub struct PtySession {
     pub is_admin: bool,
     pub(super) backend: PtyBackend,
     pub(super) pending_prompt_type: Mutex<Option<String>>,
+    pub(super) staged_secret: Mutex<Option<(TabSecretKind, Zeroizing<String>)>>,
     pub(super) manual_disconnect: AtomicBool,
 }
 
 impl PtySession {
+    pub(super) fn stage_secret(&self, kind: TabSecretKind, secret: Zeroizing<String>) {
+        if let Ok(mut guard) = self.staged_secret.lock() {
+            *guard = Some((kind, secret));
+        }
+    }
+
+    pub(super) fn take_staged_secret(&self) -> Option<(TabSecretKind, Zeroizing<String>)> {
+        self.staged_secret.lock().ok().and_then(|mut g| g.take())
+    }
+
+    pub(super) fn clear_staged_secret(&self) {
+        if let Ok(mut guard) = self.staged_secret.lock() {
+            *guard = None;
+        }
+    }
+
     pub(super) fn tab_id(&self) -> String {
         self.tab_id
             .lock()
@@ -152,7 +171,6 @@ impl PtySession {
         }
     }
 
-    /// Drops ConPTY master/writer handles so Windows ConPTY flushes and signals pipe EOF cleanly.
     pub(super) fn close_pty_handles(&self) {
         if let PtyBackend::Direct { master, writer, .. } = &self.backend {
             if let Ok(mut w) = writer.lock() {

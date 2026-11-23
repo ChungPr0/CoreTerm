@@ -8,6 +8,7 @@ interface EditorLoadErrorViewProps {
   loadErrDisconnected: boolean;
   connecting: boolean;
   retrying?: boolean;
+  isAutoReconnect?: boolean;
   onForceClose: () => void;
   onReconnectAndReload: () => void;
   onRetryLoad: () => void;
@@ -18,17 +19,19 @@ export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
   loadErrDisconnected,
   connecting,
   retrying = false,
+  isAutoReconnect = false,
   onForceClose,
   onReconnectAndReload,
   onRetryLoad,
 }) => {
   const { t } = useI18n();
+  const blockClose = retrying || (connecting && !(loadErrDisconnected && isAutoReconnect));
 
   return (
     <ActionModal
       isOpen={true}
       onClose={onForceClose}
-      busy={connecting || retrying}
+      busy={blockClose}
       title={t("editor.load_err_title")}
       icon={<AlertCircle className="h-4 w-4" />}
       iconTone="danger"
@@ -40,7 +43,7 @@ export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
           <Button
             variant="secondary"
             size="sm"
-            disabled={connecting || retrying}
+            disabled={blockClose}
             onClick={onForceClose}
           >
             {t("common.close")}

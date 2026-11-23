@@ -13,6 +13,7 @@ pub use sftp::*;
 pub use window::*;
 
 use crate::hosts::HostService;
+use crate::infra::security::TabSecretStore;
 use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
@@ -20,6 +21,7 @@ use crate::sftp::SftpSessionManager;
 pub struct AppState {
     pub hosts: HostService,
     pub keys: KeyService,
+    pub tab_secrets: TabSecretStore,
     pub pty_manager: PtySessionManager,
     pub sftp_manager: SftpSessionManager,
     pub launch_dir: Option<String>,

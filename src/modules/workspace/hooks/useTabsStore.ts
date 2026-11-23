@@ -19,6 +19,7 @@ import {
   applyUpdateSessionAck,
   buildNewEditorTab,
   findExistingEditorTab,
+  type EditorReconnectConfig,
 } from "./tabsStoreHelpers";
 
 export type TabDisposeCallback = (tab: TerminalTabItem, hadSftp: boolean) => void;
@@ -36,7 +37,11 @@ interface TabsStoreState {
   cancelRenamingTab: () => void;
   renameTab: (tabId: string, title: string) => void;
   addTab: (tab: TerminalTabItem) => void;
-  openEditorTab: (meta: EditorTabMeta, hostId: string) => string;
+  openEditorTab: (
+    meta: EditorTabMeta,
+    hostId: string,
+    reconnectConfig?: EditorReconnectConfig
+  ) => string;
   setEditorDirty: (tabId: string, dirty: boolean) => void;
   requestEditorClose: (tabId: string) => void;
   bumpSftpRefresh: (hostId: string) => void;
@@ -121,9 +126,10 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       renamingTabId: null,
     })),
 
-  openEditorTab: (meta, hostId) => {
+  openEditorTab: (meta, hostId, reconnectConfig) => {
     const resolvedHostId = meta.kind === "local" ? LOCAL_HOST_ID : hostId;
-    const existing = findExistingEditorTab(get().tabs, meta, resolvedHostId);
+    const currentTabs = get().tabs;
+    const existing = findExistingEditorTab(currentTabs, meta, resolvedHostId);
     if (existing) {
       set({ activeTabId: existing.tabId, renamingTabId: null });
       return existing.tabId;
@@ -131,7 +137,18 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
 
     const tabId = crypto.randomUUID();
     const isRemote = meta.kind === "remote";
-    const newTab = buildNewEditorTab(tabId, meta, resolvedHostId);
+    const hostTab = isRemote
+      ? currentTabs.find((t) => t.hostId === resolvedHostId)
+      : undefined;
+    const resolvedReconnect: EditorReconnectConfig | undefined = isRemote
+      ? {
+          canAutoReconnect: reconnectConfig?.canAutoReconnect ?? hostTab?.canAutoReconnect,
+          autoReconnect: reconnectConfig?.autoReconnect ?? hostTab?.autoReconnect,
+          reconnectIntervalSec:
+            reconnectConfig?.reconnectIntervalSec ?? hostTab?.reconnectIntervalSec,
+        }
+      : undefined;
+    const newTab = buildNewEditorTab(tabId, meta, resolvedHostId, resolvedReconnect);
     set((s) => ({
       tabs: [...s.tabs, newTab],
       activeTabId: tabId,

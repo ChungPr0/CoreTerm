@@ -385,6 +385,82 @@ describe("useTabsStore", () => {
     expect(useTabsStore.getState().tabs.find((t) => t.tabId === id1)?.state).toBe("DISCONNECTED");
   });
 
+  it("propagates and syncs autoReconnect config for remote editor tabs while disabling for local", () => {
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          tabId: "sftp-1",
+          hostId: "h1",
+          tabKind: "sftp",
+          canAutoReconnect: true,
+          autoReconnect: true,
+          reconnectIntervalSec: 5,
+        }),
+      ],
+      activeTabId: "sftp-1",
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    // Inherits from existing host tab when config is omitted
+    const inheritedId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "remote",
+        path: "/etc/nginx/nginx.conf",
+        name: "nginx.conf",
+        hostLabel: "prod-1",
+      },
+      "h1"
+    );
+    const inheritedTab = useTabsStore.getState().tabs.find((t) => t.tabId === inheritedId);
+    expect(inheritedTab?.canAutoReconnect).toBe(true);
+    expect(inheritedTab?.autoReconnect).toBe(true);
+    expect(inheritedTab?.reconnectIntervalSec).toBe(5);
+
+    // Explicit config overrides and respects canAutoReconnect === false
+    const restrictedId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "remote",
+        path: "/etc/hosts",
+        name: "hosts",
+        hostLabel: "prod-2",
+      },
+      "h2",
+      { canAutoReconnect: false, autoReconnect: true, reconnectIntervalSec: 10 }
+    );
+    const restrictedTab = useTabsStore.getState().tabs.find((t) => t.tabId === restrictedId);
+    expect(restrictedTab?.canAutoReconnect).toBe(false);
+    expect(restrictedTab?.autoReconnect).toBe(false);
+    expect(restrictedTab?.reconnectIntervalSec).toBe(10);
+
+    // Local editor tabs always keep autoReconnect disabled
+    const localId = useTabsStore.getState().openEditorTab(
+      {
+        kind: "local",
+        path: "C:\\temp\\notes.txt",
+        name: "notes.txt",
+        hostLabel: "Local",
+      },
+      "h1",
+      { canAutoReconnect: true, autoReconnect: true, reconnectIntervalSec: 5 }
+    );
+    const localTab = useTabsStore.getState().tabs.find((t) => t.tabId === localId);
+    expect(localTab?.canAutoReconnect).toBe(false);
+    expect(localTab?.autoReconnect).toBe(false);
+
+    // syncHostConfig propagates updated auto_reconnect settings to remote editor tabs
+    useTabsStore.getState().syncHostConfig({
+      id: "h1",
+      auth_method: "SSH_KEY",
+      password_mode: "NONE",
+      options: { auto_reconnect: false, reconnect_interval_sec: 8 } as any,
+    } as any);
+    const syncedEditor = useTabsStore.getState().tabs.find((t) => t.tabId === inheritedId);
+    expect(syncedEditor?.canAutoReconnect).toBe(true);
+    expect(syncedEditor?.autoReconnect).toBe(false);
+    expect(syncedEditor?.reconnectIntervalSec).toBe(8);
+  });
+
   it("normalizes Windows local editor paths and guards dirty editor tabs on closeOtherTabs", () => {
     const localId = useTabsStore.getState().openEditorTab(
       {

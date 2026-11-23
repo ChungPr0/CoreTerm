@@ -22,7 +22,7 @@ use crate::core::defaults::{
 use crate::hosts::HostService;
 use crate::infra::db::SqliteDb;
 use crate::infra::os::JobObjectSupervisor;
-use crate::infra::security::SecretVault;
+use crate::infra::security::{SecretVault, TabSecretStore};
 use crate::ipc::commands::{
     app_get_launch_dir, app_get_launch_files, app_get_status, check_shell_exe,
     clipboard_read_text, clipboard_write_text, context_menu_get_status, context_menu_set_enabled,
@@ -100,13 +100,14 @@ pub fn run() {
             let keys = KeyService::new(db, vault, &app_data_dir)
                 .expect("Failed to initialize SSH key storage");
 
-            let pty_manager = PtySessionManager::new(job_supervisor.clone());
+            let tab_secrets = TabSecretStore::new();
+            let pty_manager = PtySessionManager::new(job_supervisor.clone(), tab_secrets.clone());
             pty_manager.prewarm_local_shell(DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS);
             let shell_scan_manager = pty_manager.clone();
             tauri::async_runtime::spawn(async move {
                 let _ = shell_scan_manager.detect_available_shells(false).await;
             });
-            let sftp_manager = SftpSessionManager::new();
+            let sftp_manager = SftpSessionManager::new(tab_secrets.clone());
 
             if let Some(main_win) = app.get_webview_window("main") {
                 crate::infra::os::configure_main_window(&main_win);
@@ -145,6 +146,7 @@ pub fn run() {
             app.manage(AppState {
                 hosts,
                 keys,
+                tab_secrets,
                 pty_manager,
                 sftp_manager,
                 launch_dir,
@@ -240,6 +242,7 @@ pub fn run() {
             if let Some(state) = app_handle.try_state::<AppState>() {
                 state.pty_manager.shutdown_all();
                 state.sftp_manager.shutdown_all();
+                state.tab_secrets.clear_all();
             }
         }
     });

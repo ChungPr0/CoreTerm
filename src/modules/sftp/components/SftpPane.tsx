@@ -120,6 +120,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     tabId: tab.tabId,
     hostId: tab.hostId,
     reconnectToken: tab.reconnectToken,
+    reconnectSource: tab.reconnectSource,
+    isSplit,
     autoReconnect: tab.autoReconnect,
     canAutoReconnect: tab.canAutoReconnect,
     pauseAutoReconnect,
@@ -147,7 +149,9 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     onConfirmDelete,
   });
 
-  const isAutoReconnect = Boolean(tab.autoReconnect && tab.canAutoReconnect !== false);
+  const isAutoReconnect = Boolean(
+    tab.autoReconnect && tab.canAutoReconnect !== false && !conn.authBlocked
+  );
   const showSftpConnectingBanner =
     conn.connState === "CONNECTING" &&
     (tab.reconnectSource === "auto" || tab.reconnectSource === "banner");

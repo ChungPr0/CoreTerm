@@ -26,7 +26,11 @@ pub async fn sftp_disconnect(
     state: State<'_, AppState>,
     tab_id: String,
 ) -> AppResult<()> {
-    state.sftp_manager.disconnect(&app, &tab_id).await
+    let res = state.sftp_manager.disconnect(&app, &tab_id).await;
+    if !state.pty_manager.has_tab(&tab_id) {
+        state.tab_secrets.clear_tab(&tab_id);
+    }
+    res
 }
 
 #[tauri::command(rename_all = "snake_case")]

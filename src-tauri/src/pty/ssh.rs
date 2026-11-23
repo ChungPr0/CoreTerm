@@ -7,6 +7,7 @@ use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::hosts::HostService;
+use crate::infra::security::{TabSecretKind, TabSecretStore};
 use crate::ipc::dto::{PortForwardStatusDto, SessionHostKeyPromptEventDto};
 use crate::keys::KeyService;
 use crate::pty::expect::ExpectSignal;
@@ -30,6 +31,7 @@ pub(super) struct SshExpectContext<'a> {
     pub app: &'a AppHandle,
     pub hosts: &'a HostService,
     pub keys: &'a KeyService,
+    pub tab_secrets: &'a TabSecretStore,
     pub session: &'a Arc<PtySession>,
     pub tab_id: &'a str,
     pub host_id: &'a str,
@@ -40,7 +42,6 @@ pub(super) struct SshExpectContext<'a> {
     pub active_forwards: &'a [PortForwardStatusDto],
 }
 
-/// Resolves SSH tunnel conflicts, compiles `ssh.exe` CLI arguments, and reserves local forwards.
 pub(super) fn prepare_ssh_launch(
     app: &AppHandle,
     hosts: &HostService,
@@ -153,7 +154,6 @@ fn try_auto_fill_or_prompt(
     }
 }
 
-/// Processes a ConPTY Expect signal and tracks terminal auth/connect errors before EOF.
 pub(super) fn handle_expect_signal(
     signal: ExpectSignal,
     ctx: &SshExpectContext<'_>,
@@ -169,8 +169,21 @@ pub(super) fn handle_expect_signal(
             if ctx.auth_method != "PASSWORD" {
                 return;
             }
-            let secret = if attempt == 1 && ctx.host_pw_mode == "SAVED" {
-                ctx.hosts.get_secret(ctx.host_id).ok().flatten()
+            if attempt > 1 {
+                ctx.session.clear_staged_secret();
+                ctx.tab_secrets
+                    .remove(ctx.tab_id, ctx.host_id, TabSecretKind::Password);
+            }
+            let secret = if attempt == 1 {
+                ctx.tab_secrets
+                    .get(ctx.tab_id, ctx.host_id, TabSecretKind::Password)
+                    .or_else(|| {
+                        if ctx.host_pw_mode == "SAVED" {
+                            ctx.hosts.get_secret(ctx.host_id).ok().flatten()
+                        } else {
+                            None
+                        }
+                    })
             } else {
                 None
             };
@@ -183,11 +196,20 @@ pub(super) fn handle_expect_signal(
             if ctx.auth_method != "SSH_KEY" {
                 return;
             }
+            if attempt > 1 {
+                ctx.session.clear_staged_secret();
+                ctx.tab_secrets
+                    .remove(ctx.tab_id, ctx.host_id, TabSecretKind::KeyPassphrase);
+            }
             let secret = if attempt == 1 {
-                ctx.session
-                    .ssh_key_id
-                    .as_ref()
-                    .and_then(|key_id| ctx.keys.get_secret(key_id).ok().flatten())
+                ctx.tab_secrets
+                    .get(ctx.tab_id, ctx.host_id, TabSecretKind::KeyPassphrase)
+                    .or_else(|| {
+                        ctx.session
+                            .ssh_key_id
+                            .as_ref()
+                            .and_then(|key_id| ctx.keys.get_secret(key_id).ok().flatten())
+                    })
             } else {
                 None
             };
@@ -220,6 +242,8 @@ pub(super) fn handle_expect_signal(
             );
         }
         ExpectSignal::AuthFailed { reason } => {
+            ctx.session.clear_staged_secret();
+            ctx.tab_secrets.clear_tab(ctx.tab_id);
             *auth_failed_reason = Some(reason.clone());
             emit_status(
                 ctx.app,
@@ -242,6 +266,9 @@ pub(super) fn handle_expect_signal(
             );
         }
         ExpectSignal::Connected => {
+            if let Some((kind, secret)) = ctx.session.take_staged_secret() {
+                ctx.tab_secrets.set(ctx.tab_id, ctx.host_id, kind, secret);
+            }
             emit_status(
                 ctx.app,
                 ctx.tab_id,

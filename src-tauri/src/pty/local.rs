@@ -70,6 +70,7 @@ impl PtySessionManager {
                     pipe_out,
                 },
                 pending_prompt_type: Mutex::new(None),
+                staged_secret: Mutex::new(None),
                 manual_disconnect: AtomicBool::new(false),
             });
 
@@ -117,7 +118,6 @@ impl PtySessionManager {
                             Ok(Some(_)) => {}
                             Err(e) => {
                                 let was_manual = session_ref.manual_disconnect.load(Ordering::SeqCst);
-                                // ERROR_OPERATION_ABORTED (995) is expected when CancelIoEx aborts ReadFile on disconnect.
                                 if !was_manual && e.raw_os_error() != Some(995) {
                                     warn!("Elevated PTY pipe read error on {reader_tab_id}: {e}");
                                 }

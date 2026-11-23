@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { LOCAL_HOST_ID, SFTP_DISCONNECT_RE } from "@/shared/defaults";
+import { LOCAL_HOST_ID, SFTP_AUTH_BLOCKED_RE, SFTP_DISCONNECT_RE } from "@/shared/defaults";
+import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
 import { useI18n } from "@/shared/i18n";
 import type { EditorTabMeta, FileWriteResultDto, TerminalTabItem } from "@/shared/types/ipc";
 import { useAlert } from "@/shared/ui";
@@ -20,6 +21,7 @@ interface UseEditorFileSessionOpts {
   file: EditorTabMeta;
   viewRef: React.MutableRefObject<EditorView | null>;
   userReadonly: boolean;
+  pauseAutoReconnect?: boolean;
   onUpdateDirty: (dirty: boolean) => void;
   onResetOverlays: () => void;
   onSetLangId: (langId: string) => void;
@@ -36,6 +38,7 @@ export function useEditorFileSession({
   file,
   viewRef,
   userReadonly,
+  pauseAutoReconnect = false,
   onUpdateDirty,
   onResetOverlays,
   onSetLangId,
@@ -52,6 +55,7 @@ export function useEditorFileSession({
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [authBlocked, setAuthBlocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadErrDisconnected, setLoadErrDisconnected] = useState(false);
@@ -67,6 +71,16 @@ export function useEditorFileSession({
     isRemote &&
     !connecting &&
     (tab.state === "DISCONNECTED" || tab.state === "ERROR" || tab.state === "AUTH_FAILED");
+  const isRemoteRetryableOffline =
+    isRemote && !connecting && (tab.state === "DISCONNECTED" || tab.state === "ERROR");
+  const isAutoReconnect = Boolean(
+    isRemote &&
+    tab.hostId !== LOCAL_HOST_ID &&
+    tab.canAutoReconnect !== false &&
+    tab.autoReconnect &&
+    !authBlocked &&
+    tab.state !== "AUTH_FAILED"
+  );
   const effectiveReadonly = fileReadonly || userReadonly;
 
   const mountedRef = useRef(true);
@@ -77,16 +91,21 @@ export function useEditorFileSession({
   const readonlyRef = useRef(false);
   const userReadonlyRef = useRef(userReadonly);
   const hasLoadedRef = useRef(false);
+  const loadErrorRef = useRef<string | null>(null);
+  const lastErrRef = useRef<string | null>(null);
   const connectSeqRef = useRef(0);
   const connectingSeqRef = useRef(0);
   const loadSeqRef = useRef(0);
-  const connectRef = useRef<(reloadAfter: boolean) => Promise<boolean>>(async () => false);
+  const connectRef = useRef<(reloadAfter: boolean, isRetry?: boolean) => Promise<boolean>>(
+    async () => false
+  );
   const prevReconnectTokenRef = useRef(tab.reconnectToken);
 
   savingRef.current = saving;
   readonlyRef.current = effectiveReadonly;
   userReadonlyRef.current = userReadonly;
   hasLoadedRef.current = hasLoadedDoc;
+  loadErrorRef.current = loadError;
   eolRef.current = eol;
   savedEolRef.current = savedEol;
 
@@ -220,6 +239,8 @@ export function useEditorFileSession({
         await sftpApi.sftpConnect(tab.tabId, tab.hostId);
         if (isStale()) return false;
 
+        setAuthBlocked(false);
+        lastErrRef.current = null;
         setConnecting(false);
         useTabsStore.getState().setSftpState(tab.tabId, "CONNECTED");
         if (reloadAfter || !hasLoadedRef.current) {
@@ -228,6 +249,10 @@ export function useEditorFileSession({
         return true;
       } catch (err) {
         if (isStale()) return false;
+        const rawMsg = extractRawErrorMessage(err);
+        if (SFTP_AUTH_BLOCKED_RE.test(rawMsg)) {
+          setAuthBlocked(true);
+        }
         setConnecting(false);
         setLoading(false);
         setRetrying(false);
@@ -236,7 +261,8 @@ export function useEditorFileSession({
         if (!hasLoadedRef.current) {
           setLoadError(localized);
           setLoadErrDisconnected(true);
-        } else {
+        } else if (!rawMsg || lastErrRef.current !== rawMsg) {
+          lastErrRef.current = rawMsg || "ERROR";
           alert.error(localized);
         }
         return false;
@@ -252,6 +278,8 @@ export function useEditorFileSession({
   connectRef.current = connectSftp;
 
   useEffect(() => {
+    setAuthBlocked(false);
+    lastErrRef.current = null;
     const timer = window.setTimeout(() => {
       if (!mountedRef.current) return;
       if (isRemote) void connectRef.current(true);
@@ -269,9 +297,46 @@ export function useEditorFileSession({
   useEffect(() => {
     if (tab.reconnectToken > prevReconnectTokenRef.current) {
       prevReconnectTokenRef.current = tab.reconnectToken;
-      if (isRemote) void connectRef.current(!hasLoadedRef.current);
+      if (isRemote) {
+        if (tab.reconnectSource !== "auto") {
+          setAuthBlocked(false);
+          lastErrRef.current = null;
+        }
+        void connectRef.current(!hasLoadedRef.current, Boolean(loadErrorRef.current));
+      }
     }
-  }, [isRemote, tab.reconnectToken]);
+  }, [isRemote, tab.reconnectToken, tab.reconnectSource]);
+
+  useAutoReconnect({
+    enabled: isAutoReconnect,
+    connected: isRemote && !connecting && tab.state === "ONLINE",
+    disconnected: isRemoteRetryableOffline,
+    paused: pauseAutoReconnect,
+    intervalSec: tab.reconnectIntervalSec,
+    onReconnect: () => {
+      useTabsStore.getState().bumpReconnectToken(tab.tabId, "auto");
+    },
+  });
+
+  const manualReconnect = useCallback(
+    (source: "tab" | "banner" = "banner") => {
+      if (!isRemote || tab.hostId === LOCAL_HOST_ID) return;
+      setAuthBlocked(false);
+      lastErrRef.current = null;
+      useTabsStore.getState().bumpReconnectToken(tab.tabId, source);
+    },
+    [isRemote, tab.hostId, tab.tabId]
+  );
+
+  const reconnectAndReload = useCallback(
+    (isRetry = false) => {
+      if (!isRemote || tab.hostId === LOCAL_HOST_ID) return;
+      setAuthBlocked(false);
+      lastErrRef.current = null;
+      void connectSftp(true, isRetry);
+    },
+    [connectSftp, isRemote, tab.hostId]
+  );
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (!viewRef.current || savingRef.current || readonlyRef.current) return false;
@@ -315,6 +380,7 @@ export function useEditorFileSession({
     loading,
     retrying,
     connecting,
+    authBlocked,
     saving,
     loadError,
     loadErrDisconnected,
@@ -324,6 +390,7 @@ export function useEditorFileSession({
     isRemote,
     isRemoteConnecting,
     isRemoteOffline,
+    isAutoReconnect,
     eol,
     confirmDiscard,
     setConfirmDiscard,
@@ -335,6 +402,8 @@ export function useEditorFileSession({
     hasLoadedRef,
     loadFile,
     connectSftp,
+    manualReconnect,
+    reconnectAndReload,
     handleSave,
     toggleEol,
   };

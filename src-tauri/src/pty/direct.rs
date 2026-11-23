@@ -232,6 +232,7 @@ impl PtySessionManager {
         let app_handle = app.clone();
         let hosts = services.hosts.clone();
         let keys = services.keys.clone();
+        let tab_secrets = self.tab_secrets.clone();
         let reader_tab_id = spec.tab_id;
 
         std::thread::Builder::new()
@@ -239,7 +240,6 @@ impl PtySessionManager {
             .spawn(move || {
                 let mut buf = [0u8; READ_BUF_SIZE];
                 let mut expect = ExpectStateMachine::new();
-                // Keep final failure reason intact when ssh.exe exits with code 255.
                 let mut auth_failed_reason: Option<String> = None;
                 let mut connect_failed_reason: Option<String> = None;
 
@@ -247,6 +247,7 @@ impl PtySessionManager {
                     app: &app_handle,
                     hosts: &hosts,
                     keys: &keys,
+                    tab_secrets: &tab_secrets,
                     session: &session_ref,
                     tab_id: &reader_tab_id,
                     host_id: &spec.host_id,

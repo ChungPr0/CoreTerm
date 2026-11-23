@@ -22,6 +22,7 @@ use crate::core::path_guard::{
     validate_octal_mode, validate_single_entry_name,
 };
 use crate::hosts::HostService;
+use crate::infra::security::TabSecretStore;
 use crate::ipc::dto::{
     HostFullConfigDto, LocalDriveDto, SftpEntryDto, SftpStatusEventDto,
 };
@@ -47,19 +48,20 @@ pub struct SftpConnectParams<'a> {
     pub config: HostFullConfigDto,
     pub hosts: &'a HostService,
     pub keys: &'a KeyService,
+    pub tab_secrets: &'a TabSecretStore,
     pub app: &'a AppHandle,
     pub prompts: PendingPromptSlots,
     pub cancel_token: CancellationToken,
 }
 
 impl RemoteSftpClient {
-    /// Connects, verifies host key, authenticates, and initializes an `SftpSession`.
     pub async fn connect(params: SftpConnectParams<'_>) -> CoreResult<Self> {
         let SftpConnectParams {
             tab_id,
             config,
             hosts,
             keys,
+            tab_secrets,
             app,
             prompts,
             cancel_token,
@@ -133,6 +135,7 @@ impl RemoteSftpClient {
             config: &config,
             hosts,
             keys,
+            tab_secrets,
             app,
             prompts: &prompts,
             cancel_token: &cancel_token,
@@ -378,7 +381,6 @@ impl RemoteSftpClient {
             .map_err(|e| map_sftp_error("Failed to update permissions", e))
     }
 
-    /// Recursively deletes remote entries using `lstat` so symlinks are unlinked without traversing targets.
     pub async fn delete_entries(&self, paths: &[String]) -> CoreResult<()> {
         let mut processed_entries = 0usize;
         for raw in paths {

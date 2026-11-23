@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SFTP_AUTH_BLOCKED_RE } from "@/shared/defaults";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
 import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import { extractRawErrorMessage } from "@/shared/utils/formatError";
@@ -11,6 +12,8 @@ interface UseSftpConnectionOptions {
   tabId: string;
   hostId: string;
   reconnectToken: number;
+  reconnectSource?: "tab" | "auto" | "banner";
+  isSplit?: boolean;
   autoReconnect?: boolean;
   canAutoReconnect?: boolean;
   pauseAutoReconnect?: boolean;
@@ -27,6 +30,8 @@ export function useSftpConnection({
   tabId,
   hostId,
   reconnectToken,
+  reconnectSource,
+  isSplit = false,
   autoReconnect,
   canAutoReconnect,
   pauseAutoReconnect = false,
@@ -116,11 +121,7 @@ export function useSftpConnection({
     } catch (err) {
       if (isStale()) return;
       const rawMsg = extractRawErrorMessage(err);
-      if (
-        /authentication cancelled|authentication failed|host key verification|known_hosts/i.test(
-          rawMsg
-        )
-      ) {
+      if (SFTP_AUTH_BLOCKED_RE.test(rawMsg)) {
         setAuthBlocked(true);
       }
       setConnState("ERROR");
@@ -186,7 +187,6 @@ export function useSftpConnection({
     localRef.current.refresh();
   }, []);
 
-  // Load local filesystem immediately without waiting on remote SFTP auth/network.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (mountedRef.current) void loadLocalFs();
@@ -194,7 +194,6 @@ export function useSftpConnection({
     return () => window.clearTimeout(timer);
   }, [loadLocalFs]);
 
-  // Initial or state-driven SFTP connect: only runs when enabled (e.g. pure SFTP tab or SSH is online)
   useEffect(() => {
     if (!enabled) {
       setConnState("DISCONNECTED");
@@ -217,13 +216,18 @@ export function useSftpConnection({
   }, [enabled, connectSftp, hostId, tabId]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      reconnectTokenRef.current = reconnectToken;
+      return;
+    }
     if (reconnectTokenRef.current === reconnectToken) return;
     reconnectTokenRef.current = reconnectToken;
-    setAuthBlocked(false);
-    lastErrRef.current = null;
+    if (reconnectSource !== "auto") {
+      setAuthBlocked(false);
+      lastErrRef.current = null;
+    }
     void connectSftp();
-  }, [enabled, reconnectToken, connectSftp]);
+  }, [enabled, reconnectToken, reconnectSource, connectSftp]);
 
   const sftpOffline = connState === "DISCONNECTED" || connState === "ERROR";
 
@@ -239,7 +243,11 @@ export function useSftpConnection({
     paused: pauseAutoReconnect,
     intervalSec: reconnectIntervalSec,
     onReconnect: () => {
-      useTabsStore.getState().bumpReconnectToken(tabId, "auto");
+      if (isSplit) {
+        void connectSftp();
+      } else {
+        useTabsStore.getState().bumpReconnectToken(tabId, "auto");
+      }
     },
   });
 
@@ -268,6 +276,7 @@ export function useSftpConnection({
     connState,
     connStateRef,
     sftpOffline,
+    authBlocked,
     localDrives,
     remoteDrives,
     setAuthBlocked,

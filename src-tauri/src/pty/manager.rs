@@ -10,6 +10,7 @@ use zeroize::Zeroizing;
 use crate::core::error::{CoreError, CoreResult};
 use crate::hosts::HostService;
 use crate::infra::os::{is_process_elevated, JobObjectSupervisor};
+use crate::infra::security::{TabSecretKind, TabSecretStore};
 use crate::ipc::dto::{
     PortProbeResultDto, SessionConnectAckDto, SessionConnectRequestDto,
     SessionReconnectRequestDto, ShellProfile,
@@ -32,6 +33,7 @@ pub struct PtySessionManager {
     tab_host_map: Arc<DashMap<String, String>>,
     tab_admin_map: Arc<DashMap<String, bool>>,
     tab_shell_map: Arc<DashMap<String, ShellProfile>>,
+    pub(super) tab_secrets: TabSecretStore,
     pub(super) tunnel_registry: ActiveTunnelRegistry,
     pub(super) job_supervisor: JobObjectSupervisor,
     pub(super) prewarmed_local: Arc<Mutex<Option<PrewarmedLocalSession>>>,
@@ -40,19 +42,25 @@ pub struct PtySessionManager {
 }
 
 impl PtySessionManager {
-    pub fn new(job_supervisor: JobObjectSupervisor) -> Self {
+    pub fn new(job_supervisor: JobObjectSupervisor, tab_secrets: TabSecretStore) -> Self {
         Self {
             sessions: Arc::new(DashMap::new()),
             in_flight_connects: Arc::new(DashMap::new()),
             tab_host_map: Arc::new(DashMap::new()),
             tab_admin_map: Arc::new(DashMap::new()),
             tab_shell_map: Arc::new(DashMap::new()),
+            tab_secrets,
             tunnel_registry: ActiveTunnelRegistry::new(),
             job_supervisor,
             prewarmed_local: Arc::new(Mutex::new(None)),
             prewarm_cancelled: Arc::new(AtomicBool::new(false)),
             cached_shells: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub fn has_tab(&self, tab_id: &str) -> bool {
+        let trimmed = tab_id.trim();
+        self.tab_host_map.contains_key(trimmed) || self.sessions.contains_key(trimmed)
     }
 
     pub async fn detect_available_shells(&self, refresh: bool) -> Vec<ShellProfile> {
@@ -119,11 +127,17 @@ impl PtySessionManager {
         };
 
         if self.sessions.contains_key(&req.tab_id) {
-            let _ = self.disconnect(app, &req.tab_id);
+            let _ = self.disconnect_session_only(app, &req.tab_id);
         }
 
-        self.tab_host_map
-            .insert(req.tab_id.clone(), req.host_id.clone());
+        if let Some(prev_host) = self
+            .tab_host_map
+            .insert(req.tab_id.clone(), req.host_id.clone())
+        {
+            if prev_host != req.host_id {
+                self.tab_secrets.clear_tab(&req.tab_id);
+            }
+        }
 
         let is_local = req.host_id == "local";
         let app_elevated = is_process_elevated();
@@ -170,7 +184,6 @@ impl PtySessionManager {
             None
         };
 
-        // When parent app is unelevated and user asks for an Admin terminal tab, use UAC helper bridge.
         if is_admin && !app_elevated {
             let profile = local_profile.unwrap_or_else(default_shell_profile);
             #[cfg(windows)]
@@ -267,6 +280,9 @@ impl PtySessionManager {
             .and_then(|mut g| g.take())
             .unwrap_or_else(|| "PASSWORD".to_string());
 
+        let secret_kind = TabSecretKind::from_prompt_type(&prompt_type);
+        session.stage_secret(secret_kind, zeroized_secret.clone());
+
         if save_to_vault {
             if prompt_type == "KEY_PASSPHRASE" {
                 if let Some(ref key_id) = session.ssh_key_id {
@@ -281,7 +297,6 @@ impl PtySessionManager {
         session.write_bytes(line.as_bytes())
     }
 
-    /// Handles host key verification (`ACCEPT`, `REJECT`, or `REMOVE_OLD_AND_ACCEPT` via `ssh-keygen -R`).
     pub fn submit_host_key(
         &self,
         app: &AppHandle,
@@ -388,6 +403,7 @@ impl PtySessionManager {
         self.tab_host_map.remove(tab_id);
         self.tab_admin_map.remove(tab_id);
         self.tab_shell_map.remove(tab_id);
+        self.tab_secrets.clear_tab(tab_id);
     }
 
     fn disconnect_session_only(&self, app: &AppHandle, tab_id: &str) -> CoreResult<()> {
@@ -426,6 +442,7 @@ impl PtySessionManager {
             let _ = self.terminate_active_session(&tab_id);
             self.cleanup_tab_metadata(&tab_id);
         }
+        self.tab_secrets.clear_all();
         info!("All ConPTY sessions shut down.");
     }
 }
@@ -436,16 +453,31 @@ mod tests {
 
     #[test]
     fn cleanup_tab_metadata_clears_all_tracking_maps() {
-        let mgr = PtySessionManager::new(JobObjectSupervisor::new().expect("job supervisor"));
-        mgr.tab_host_map.insert("tab-1".into(), "local".into());
+        let tab_secrets = TabSecretStore::new();
+        let mgr = PtySessionManager::new(
+            JobObjectSupervisor::new().expect("job supervisor"),
+            tab_secrets.clone(),
+        );
+        mgr.tab_host_map.insert("tab-1".into(), "host-1".into());
         mgr.tab_admin_map.insert("tab-1".into(), true);
         mgr.tab_shell_map
             .insert("tab-1".into(), default_shell_profile());
+        tab_secrets.set(
+            "tab-1",
+            "host-1",
+            TabSecretKind::Password,
+            Zeroizing::new("pw".into()),
+        );
+        assert!(mgr.has_tab("tab-1"));
 
         mgr.cleanup_tab_metadata("tab-1");
 
+        assert!(!mgr.has_tab("tab-1"));
         assert!(mgr.tab_host_map.is_empty());
         assert!(mgr.tab_admin_map.is_empty());
         assert!(mgr.tab_shell_map.is_empty());
+        assert!(tab_secrets
+            .get("tab-1", "host-1", TabSecretKind::Password)
+            .is_none());
     }
 }

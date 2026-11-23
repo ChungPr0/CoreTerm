@@ -53,7 +53,9 @@ pub async fn key_delete(
     key_id: String,
     delete_file_from_disk: Option<bool>,
 ) -> AppResult<DeleteResultDto> {
-    state
+    let res = state
         .keys
-        .delete(&key_id, delete_file_from_disk.unwrap_or(false))
+        .delete(&key_id, delete_file_from_disk.unwrap_or(false))?;
+    state.tab_secrets.clear_all_passphrases();
+    Ok(res)
 }

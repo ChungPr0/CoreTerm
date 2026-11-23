@@ -68,19 +68,22 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
 
   if (!prompt) return null;
 
+  const isPasswordPrompt = prompt.prompt_type === "PASSWORD";
+
   const handleSubmit = async () => {
     if (!secret) return void alert.error(t("auth.secret_required"));
     setSubmitting(true);
     try {
+      const nextAutoReconnect = isPasswordPrompt && saveVault ? autoReconnect : undefined;
       if (source === "sftp") {
-        await sftpApi.sftpSubmitSecret(prompt.tab_id, secret, saveVault, autoReconnect);
+        await sftpApi.sftpSubmitSecret(prompt.tab_id, secret, saveVault, nextAutoReconnect);
       } else {
-        await sessionApi.sessionSubmitSecret(prompt.tab_id, secret, saveVault, autoReconnect);
+        await sessionApi.sessionSubmitSecret(prompt.tab_id, secret, saveVault, nextAutoReconnect);
       }
-      if (saveVault) {
+      if (saveVault && isPasswordPrompt) {
         useTabsStore.setState((s) => ({
           tabs: s.tabs.map((tab) =>
-            tab.tabId === prompt.tab_id
+            tab.tabId === prompt.tab_id || (prompt.host_id && tab.hostId === prompt.host_id)
               ? {
                   ...tab,
                   canAutoReconnect: true,
@@ -161,18 +164,20 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
             label={t("auth.save_vault")}
           />
 
-          <div
-            className={`flex items-center shrink-0 transition-opacity duration-150 ${
-              saveVault ? "opacity-100" : "opacity-0 pointer-events-none"
-            }`}
-          >
-            <Switch
-              disabled={!saveVault}
-              checked={autoReconnect && saveVault}
-              onChange={(checked) => setAutoReconnect(checked)}
-              label={t("session.auto_reconnect")}
-            />
-          </div>
+          {isPasswordPrompt && (
+            <div
+              className={`flex items-center shrink-0 transition-opacity duration-150 ${
+                saveVault ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <Switch
+                disabled={!saveVault}
+                checked={autoReconnect && saveVault}
+                onChange={(checked) => setAutoReconnect(checked)}
+                label={t("session.auto_reconnect")}
+              />
+            </div>
+          )}
         </div>
       </div>
     </ActionModal>

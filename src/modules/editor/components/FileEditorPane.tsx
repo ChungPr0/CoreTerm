@@ -27,6 +27,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   file,
   isActive,
   hasBlockingModal = false,
+  pauseAutoReconnect = false,
   findToken = 0,
   closeRequestToken = 0,
   onDirtyChange,
@@ -105,6 +106,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     file,
     viewRef: cm.viewRef,
     userReadonly,
+    pauseAutoReconnect,
     onUpdateDirty: updateDirty,
     onResetOverlays: handleResetOverlays,
     onSetLangId: cm.setLangId,
@@ -173,7 +175,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
       return;
     }
     if (session.isRemote && session.isRemoteOffline) {
-      void session.connectSftp(true);
+      session.reconnectAndReload(false);
       return;
     }
     void session.loadFile();
@@ -257,7 +259,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
           onSave: () => void session.handleSave(),
           onReload: requestReload,
           onReconnect: session.isRemote
-            ? () => void session.connectSftp(!session.hasLoadedRef.current)
+            ? () => session.manualReconnect("tab")
             : undefined,
           onCopyPath: handleCopyPath,
           onClose: () => {
@@ -355,6 +357,13 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
   const editorReady = !session.loading && !session.loadError;
   const zoomPercent = Math.round((fontSize / EDITOR_FONT_SIZE_DEFAULT) * 100);
+  const showConnectingBanner =
+    session.isRemoteConnecting &&
+    (tab.reconnectSource === "auto" || tab.reconnectSource === "banner");
+  const showReconnectBanner =
+    session.hasLoadedDoc &&
+    !session.loadError &&
+    (session.isRemoteOffline || showConnectingBanner);
 
   return (
     <div
@@ -445,8 +454,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             loadErrDisconnected={session.loadErrDisconnected}
             connecting={session.connecting}
             retrying={session.retrying}
+            isAutoReconnect={session.isAutoReconnect}
             onForceClose={onForceClose}
-            onReconnectAndReload={() => void session.connectSftp(true, true)}
+            onReconnectAndReload={() => session.reconnectAndReload(true)}
             onRetryLoad={() => void session.loadFile(true)}
           />
         )}
@@ -458,15 +468,14 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
           }`}
         />
 
-        {session.hasLoadedDoc &&
-          !session.loadError &&
-          (session.isRemoteOffline || session.isRemoteConnecting) && (
-            <ReconnectBanner
-              isDisconnected={session.isRemoteOffline}
-              isConnecting={session.isRemoteConnecting}
-              onReconnect={() => void session.connectSftp(false)}
-            />
-          )}
+        {showReconnectBanner && (
+          <ReconnectBanner
+            isDisconnected={session.isRemoteOffline}
+            isConnecting={session.isRemoteConnecting}
+            isAutoReconnect={session.isAutoReconnect}
+            onReconnect={() => session.manualReconnect("banner")}
+          />
+        )}
       </div>
 
       <EditorStatusBar
@@ -498,7 +507,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
           const action = session.confirmDiscard;
           session.setConfirmDiscard(null);
           if (action === "close") onForceClose();
-          else if (session.isRemote && session.isRemoteOffline) void session.connectSftp(true);
+          else if (session.isRemote && session.isRemoteOffline) session.reconnectAndReload(false);
           else void session.loadFile();
         }}
         onSaveAndClose={async () => {

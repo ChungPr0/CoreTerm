@@ -117,7 +117,9 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   const isAutoReconnect = Boolean(
     tab.hostId !== "local" &&
     tab.canAutoReconnect !== false &&
-    tab.autoReconnect
+    tab.autoReconnect &&
+    tab.state !== "AUTH_FAILED" &&
+    tab.state !== "PORT_CONFLICT"
   );
 
   const showConnectingBanner =

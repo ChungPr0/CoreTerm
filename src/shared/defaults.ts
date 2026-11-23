@@ -36,6 +36,9 @@ export const THEME_SEARCH_ACTIVE_BORDER = "#f59e0b";
 export const SFTP_DISCONNECT_RE =
   /sender dropped|channel closed|disconnected|session not found|still connecting|connection lost/i;
 
+export const SFTP_AUTH_BLOCKED_RE =
+  /authentication cancelled|authentication failed|rejected the private key|passphrase|private_key_path|failed to load ssh private key|unsupported auth_method|host key verification|known_hosts|unknown key/i;
+
 /** Clamps launch column count within supported bounds, falling back to default. */
 export function clampLaunchCols(raw: unknown): number {
   const num = Number(raw);

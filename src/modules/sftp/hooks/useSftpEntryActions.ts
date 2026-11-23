@@ -101,10 +101,25 @@ export function useSftpEntryActions({
           name,
           hostLabel: kind === "remote" ? hostLabel : t("sftp.local_pane"),
         },
-        tab.hostId
+        tab.hostId,
+        kind === "remote"
+          ? {
+              canAutoReconnect: tab.canAutoReconnect,
+              autoReconnect: tab.autoReconnect,
+              reconnectIntervalSec: tab.reconnectIntervalSec,
+            }
+          : undefined
       );
     },
-    [connStateRef, hostLabel, t, tab.hostId]
+    [
+      connStateRef,
+      hostLabel,
+      t,
+      tab.autoReconnect,
+      tab.canAutoReconnect,
+      tab.hostId,
+      tab.reconnectIntervalSec,
+    ]
   );
 
   const handleOpenFile = useCallback(
