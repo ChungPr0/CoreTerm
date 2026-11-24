@@ -14,7 +14,7 @@ use super::conflict::{
 use super::job::{TransferDirection, TransferJobRecord};
 use crate::core::defaults::{SFTP_COPY_CHUNK_BYTES, SFTP_PROGRESS_EMIT_INTERVAL_MS};
 use crate::core::error::{dedupe_error_text, CoreError, CoreResult};
-use crate::core::path_guard::remote_leaf_name;
+use crate::core::path_guard::{remote_leaf_name, validate_local_write_path};
 use crate::ipc::events::EVENT_SFTP_TRANSFER_PROGRESS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,18 +70,21 @@ pub async fn run_transfer_checking_conflict(
             .try_stat(&dest_path)
             .await?
             .map(|a| (a.len(), a.mtime.map(|m| m as u64 * 1000), a.file_type().is_dir())),
-        TransferDirection::Download => match tokio::fs::metadata(&dest_path).await {
-            Ok(m) => {
-                let mtime = m
-                    .modified()
-                    .ok()
-                    .and_then(|st| st.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_millis() as u64);
-                Some((m.len(), mtime, m.is_dir()))
+        TransferDirection::Download => {
+            validate_local_write_path(Path::new(&dest_path))?;
+            match tokio::fs::metadata(&dest_path).await {
+                Ok(m) => {
+                    let mtime = m
+                        .modified()
+                        .ok()
+                        .and_then(|st| st.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64);
+                    Some((m.len(), mtime, m.is_dir()))
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(CoreError::Io(e)),
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(CoreError::Io(e)),
-        },
+        }
     };
 
     if let Some((dest_size, dest_mtime_ms, dest_is_dir)) = dest_meta {
@@ -114,6 +117,9 @@ pub async fn run_transfer_checking_conflict(
             }
             ConflictPolicy::Rename => {
                 dest_path = find_non_colliding_dest(ctx.client, job.direction, &dest_path).await?;
+                if job.direction == TransferDirection::Download {
+                    validate_local_write_path(Path::new(&dest_path))?;
+                }
                 let leaf = match job.direction {
                     TransferDirection::Upload => remote_leaf_name(&dest_path).to_string(),
                     TransferDirection::Download => Path::new(&dest_path)
@@ -185,6 +191,7 @@ pub async fn run_transfer_with_offset(
             stream_copy_with_controls(ctx.app, job, &mut reader, &mut writer, run_gen).await
         }
         TransferDirection::Download => {
+            validate_local_write_path(Path::new(&dest_path))?;
             if offset > 0 {
                 let dest_len = match tokio::fs::metadata(&dest_path).await {
                     Ok(m) => m.len(),
@@ -203,6 +210,7 @@ pub async fn run_transfer_with_offset(
                     CoreError::Sftp(format!("Seek failed: {}", dedupe_error_text(&e.to_string())))
                 })?;
             }
+            validate_local_write_path(Path::new(&dest_path))?;
             let mut writer = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create(true)

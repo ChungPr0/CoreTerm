@@ -185,22 +185,42 @@ impl PtySessionManager {
         };
 
         if is_admin && !app_elevated {
-            let profile = local_profile.unwrap_or_else(default_shell_profile);
+            let mut profile = local_profile.unwrap_or_else(default_shell_profile);
             #[cfg(windows)]
-            if let Err(msg) = crate::infra::os::elevated_pty::validate_elevated_shell(
-                &profile.executable,
-                &profile.args,
-            ) {
-                let err = CoreError::Validation(msg);
-                emit_status(
-                    app,
-                    &req.tab_id,
-                    &req.host_id,
-                    "ERROR",
-                    vec![],
-                    Some(err.to_string()),
-                );
-                return Err(err);
+            {
+                let resolved_exe = match crate::infra::os::elevated_pty::resolve_elevated_shell_executable(
+                    &profile.executable,
+                ) {
+                    Ok(path) => path,
+                    Err(msg) => {
+                        let err = CoreError::Validation(msg);
+                        emit_status(
+                            app,
+                            &req.tab_id,
+                            &req.host_id,
+                            "ERROR",
+                            vec![],
+                            Some(err.to_string()),
+                        );
+                        return Err(err);
+                    }
+                };
+                if let Err(msg) = crate::infra::os::elevated_pty::validate_elevated_shell(
+                    &resolved_exe,
+                    &profile.args,
+                ) {
+                    let err = CoreError::Validation(msg);
+                    emit_status(
+                        app,
+                        &req.tab_id,
+                        &req.host_id,
+                        "ERROR",
+                        vec![],
+                        Some(err.to_string()),
+                    );
+                    return Err(err);
+                }
+                profile.executable = resolved_exe;
             }
             return self.connect_elevated_local(app, req, &profile, on_output);
         }
@@ -252,6 +272,9 @@ impl PtySessionManager {
             })?
             .clone();
 
+        if data.contains(&0x03) {
+            session.cancel_pending_askpass();
+        }
         session.write_bytes(data)
     }
 
@@ -273,28 +296,30 @@ impl PtySessionManager {
             })?
             .clone();
 
-        let prompt_type = session
-            .pending_prompt_type
-            .lock()
-            .ok()
-            .and_then(|mut g| g.take())
-            .unwrap_or_else(|| "PASSWORD".to_string());
+        let Some((prompt_type, is_reusable)) =
+            session.deliver_askpass_secret(zeroized_secret.clone())
+        else {
+            return Err(CoreError::NotFound(
+                "No pending SSH authentication prompt".to_string(),
+            ));
+        };
 
-        let secret_kind = TabSecretKind::from_prompt_type(&prompt_type);
-        session.stage_secret(secret_kind, zeroized_secret.clone());
+        if is_reusable {
+            let secret_kind = TabSecretKind::from_prompt_type(&prompt_type);
+            session.stage_secret(secret_kind, zeroized_secret.clone());
 
-        if save_to_vault {
-            if prompt_type == "KEY_PASSPHRASE" {
-                if let Some(ref key_id) = session.ssh_key_id {
-                    let _ = keys.save_secret(key_id, &zeroized_secret);
+            if save_to_vault {
+                if prompt_type == "KEY_PASSPHRASE" {
+                    if let Some(ref key_id) = session.ssh_key_id {
+                        let _ = keys.save_secret(key_id, &zeroized_secret);
+                    }
+                } else {
+                    let _ = hosts.save_secret(&session.host_id, &zeroized_secret, auto_reconnect);
                 }
-            } else {
-                let _ = hosts.save_secret(&session.host_id, &zeroized_secret, auto_reconnect);
             }
         }
 
-        let line = Zeroizing::new(format!("{}\r\n", zeroized_secret.as_str()));
-        session.write_bytes(line.as_bytes())
+        Ok(())
     }
 
     pub fn submit_host_key(
@@ -305,8 +330,18 @@ impl PtySessionManager {
         action: &str,
     ) -> CoreResult<()> {
         match action {
-            "ACCEPT" => self.write_stdin(tab_id, b"yes\r\n"),
+            "ACCEPT" => {
+                if let Some(session) = self.sessions.get(tab_id) {
+                    if session.deliver_askpass_host_key(Some("yes".to_string())) {
+                        return Ok(());
+                    }
+                }
+                self.write_stdin(tab_id, b"yes\r\n")
+            }
             "REJECT" => {
+                if let Some(session) = self.sessions.get(tab_id) {
+                    let _ = session.deliver_askpass_host_key(Some("no".to_string()));
+                }
                 let _ = self.write_stdin(tab_id, b"no\r\n");
                 let _ = self.disconnect_session_only(app, tab_id);
                 Ok(())

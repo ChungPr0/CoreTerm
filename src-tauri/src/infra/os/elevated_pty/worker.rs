@@ -1,23 +1,27 @@
 #[cfg(windows)]
 mod win_worker {
     use std::io::{Read, Write};
+    use std::os::windows::io::AsRawHandle;
     use std::sync::{Arc, Mutex};
 
     use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, HANDLE};
     use windows_sys::Win32::System::Threading::{
         OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
     };
+    use zeroize::Zeroizing;
 
     use crate::core::defaults::{
         DEFAULT_TERM_COLS, DEFAULT_TERM_ROWS, MIN_PTY_COLS, MIN_PTY_ROWS, PTY_READ_BUF_BYTES,
     };
     use crate::infra::os::elevated_pty::pipe::{
-        is_valid_coreterm_pipe_base, open_client_pipe, OwnedHandle,
+        is_valid_coreterm_pipe_base, open_client_pipe, verify_pipe_server_pid, OwnedHandle,
     };
     use crate::infra::os::elevated_pty::protocol::{
-        read_frame, write_frame, FRAME_CLOSE, FRAME_DATA, FRAME_ERROR, FRAME_EXIT, FRAME_RESIZE,
+        read_frame, write_frame, FRAME_CLOSE, FRAME_DATA, FRAME_ERROR, FRAME_EXIT, FRAME_HANDSHAKE,
+        FRAME_RESIZE,
     };
+    use crate::infra::os::is_process_elevated;
     use crate::infra::os::job_object::JobObjectSupervisor;
 
     #[derive(Default)]
@@ -62,10 +66,9 @@ mod win_worker {
         pipe_base: String,
         cols: u16,
         rows: u16,
-        secret: String,
         cwd: Option<String>,
         parent_pid: Option<u32>,
-        executable: String,
+        executable: Option<String>,
         shell_args: Vec<String>,
     }
 
@@ -73,10 +76,9 @@ mod win_worker {
         let mut pipe_base = String::new();
         let mut cols: u16 = DEFAULT_TERM_COLS;
         let mut rows: u16 = DEFAULT_TERM_ROWS;
-        let mut secret = String::new();
         let mut cwd: Option<String> = None;
         let mut parent_pid: Option<u32> = None;
-        let mut exe: Option<String> = None;
+        let mut executable: Option<String> = None;
         let mut shell_args: Vec<String> = Vec::new();
 
         let mut i = 0;
@@ -94,10 +96,6 @@ mod win_worker {
                     rows = args[i + 1].parse().unwrap_or(DEFAULT_TERM_ROWS);
                     i += 2;
                 }
-                "--secret" if i + 1 < args.len() => {
-                    secret = args[i + 1].clone();
-                    i += 2;
-                }
                 "--cwd" if i + 1 < args.len() => {
                     cwd = Some(args[i + 1].clone());
                     i += 2;
@@ -107,7 +105,7 @@ mod win_worker {
                     i += 2;
                 }
                 "--exe" if i + 1 < args.len() => {
-                    exe = Some(args[i + 1].clone());
+                    executable = Some(args[i + 1].clone());
                     i += 2;
                 }
                 "--arg" if i + 1 < args.len() => {
@@ -118,18 +116,10 @@ mod win_worker {
             }
         }
 
-        let executable = exe.unwrap_or_else(|| {
-            if shell_args.is_empty() {
-                shell_args.push("-NoLogo".to_string());
-            }
-            "powershell.exe".to_string()
-        });
-
         WorkerLaunchArgs {
             pipe_base,
             cols,
             rows,
-            secret,
             cwd,
             parent_pid,
             executable,
@@ -142,47 +132,65 @@ mod win_worker {
         let pipe_base = parsed.pipe_base;
         let cols = parsed.cols;
         let rows = parsed.rows;
-        let secret = parsed.secret;
         let cwd = parsed.cwd;
-        let parent_pid = parsed.parent_pid;
-        let target_exe = parsed.executable;
+        let Some(parent_pid) = parsed.parent_pid.filter(|&pid| pid != 0) else {
+            return 2;
+        };
+        let Some(target_exe) = parsed.executable.filter(|s| !s.trim().is_empty()) else {
+            return 2;
+        };
         let shell_args = parsed.shell_args;
 
-        if !is_valid_coreterm_pipe_base(&pipe_base) || secret.is_empty() {
+        if !is_valid_coreterm_pipe_base(&pipe_base) {
             return 2;
+        }
+        if !is_process_elevated() {
+            return 11;
         }
 
         let handles = Arc::new(Mutex::new(WorkerPtyHandles::default()));
-        if let Some(pid) = parent_pid {
-            spawn_parent_watchdog(pid, handles.clone());
-        }
+        spawn_parent_watchdog(parent_pid, handles.clone());
 
         let Ok(pipe_out_file) = open_client_pipe(&format!("{pipe_base}_out"), GENERIC_WRITE) else {
             return 3;
         };
+        if verify_pipe_server_pid(pipe_out_file.as_raw_handle() as HANDLE, parent_pid).is_err() {
+            return 12;
+        }
+
         let Ok(mut pipe_in_file) = open_client_pipe(&format!("{pipe_base}_in"), GENERIC_READ) else {
             return 4;
         };
-
-        let pipe_out = Arc::new(Mutex::new(pipe_out_file));
-        {
-            let Ok(mut guard) = pipe_out.lock() else {
-                return 5;
-            };
-            if write_frame(&mut *guard, FRAME_DATA, secret.as_bytes()).is_err() {
-                return 5;
-            }
+        if verify_pipe_server_pid(pipe_in_file.as_raw_handle() as HANDLE, parent_pid).is_err() {
+            return 12;
         }
 
+        let pipe_out = Arc::new(Mutex::new(pipe_out_file));
         let send_error = |msg: &str| {
             if let Ok(mut guard) = pipe_out.lock() {
                 let _ = write_frame(&mut *guard, FRAME_ERROR, msg.as_bytes());
             }
         };
 
-        if let Err(e) = crate::infra::os::elevated_pty::validate_elevated_shell(&target_exe, &shell_args) {
+        let challenge = match read_frame(&mut pipe_in_file) {
+            Ok(Some((FRAME_HANDSHAKE, payload))) if payload.len() == 32 => Zeroizing::new(payload),
+            _ => return 5,
+        };
+
+        if let Err(e) =
+            crate::infra::os::elevated_pty::validate_elevated_shell(&target_exe, &shell_args)
+        {
             send_error(&e);
             return 77;
+        }
+
+        {
+            let Ok(mut guard) = pipe_out.lock() else {
+                return 5;
+            };
+            if write_frame(&mut *guard, FRAME_HANDSHAKE, &challenge).is_err() {
+                return 5;
+            }
         }
 
         let pair = match native_pty_system().openpty(PtySize {
@@ -311,12 +319,12 @@ mod win_worker {
         use super::*;
 
         #[test]
-        fn parses_cmd_and_git_bash_worker_args() {
+        fn parses_cmd_and_git_bash_worker_args_without_cli_secret() {
             let cmd_args: Vec<String> = [
                 "--pipe",
                 r"\\.\pipe\coreterm_1",
-                "--secret",
-                "abc",
+                "--parent-pid",
+                "1234",
                 "--exe",
                 r"C:\Windows\System32\cmd.exe",
             ]
@@ -324,14 +332,18 @@ mod win_worker {
             .map(String::from)
             .collect();
             let parsed_cmd = parse_worker_args(&cmd_args);
-            assert_eq!(parsed_cmd.executable, r"C:\Windows\System32\cmd.exe");
+            assert_eq!(parsed_cmd.parent_pid, Some(1234));
+            assert_eq!(
+                parsed_cmd.executable.as_deref(),
+                Some(r"C:\Windows\System32\cmd.exe")
+            );
             assert!(parsed_cmd.shell_args.is_empty());
 
             let bash_args: Vec<String> = [
                 "--pipe",
                 r"\\.\pipe\coreterm_2",
-                "--secret",
-                "xyz",
+                "--parent-pid",
+                "5678",
                 "--exe",
                 r"C:\Program Files\Git\bin\bash.exe",
                 "--arg",
@@ -343,12 +355,17 @@ mod win_worker {
             .map(String::from)
             .collect();
             let parsed_bash = parse_worker_args(&bash_args);
-            assert_eq!(parsed_bash.executable, r"C:\Program Files\Git\bin\bash.exe");
+            assert_eq!(parsed_bash.parent_pid, Some(5678));
+            assert_eq!(
+                parsed_bash.executable.as_deref(),
+                Some(r"C:\Program Files\Git\bin\bash.exe")
+            );
             assert_eq!(parsed_bash.shell_args, vec!["--login", "-i"]);
 
-            let default_parsed = parse_worker_args(&[]);
-            assert_eq!(default_parsed.executable, "powershell.exe");
-            assert_eq!(default_parsed.shell_args, vec!["-NoLogo"]);
+            let empty_parsed = parse_worker_args(&[]);
+            assert_eq!(empty_parsed.parent_pid, None);
+            assert_eq!(empty_parsed.executable, None);
+            assert!(empty_parsed.shell_args.is_empty());
         }
     }
 }

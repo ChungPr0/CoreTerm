@@ -351,7 +351,12 @@ impl ActiveTunnelRegistry {
 }
 
 fn inspect_port_owner_process(port: u16) -> (Option<u32>, Option<String>) {
-    let mut cmd = Command::new("netstat");
+    #[cfg(windows)]
+    let netstat_bin = crate::infra::os::system32_binary("netstat.exe");
+    #[cfg(not(windows))]
+    let netstat_bin = std::path::PathBuf::from("netstat");
+
+    let mut cmd = Command::new(netstat_bin);
     cmd.args(["-ano", "-p", "tcp"]);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
@@ -386,7 +391,12 @@ fn inspect_port_owner_process(port: u16) -> (Option<u32>, Option<String>) {
         return (None, None);
     };
 
-    let mut tcmd = Command::new("tasklist");
+    #[cfg(windows)]
+    let tasklist_bin = crate::infra::os::system32_binary("tasklist.exe");
+    #[cfg(not(windows))]
+    let tasklist_bin = std::path::PathBuf::from("tasklist");
+
+    let mut tcmd = Command::new(tasklist_bin);
     tcmd.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
     #[cfg(windows)]
     tcmd.creation_flags(CREATE_NO_WINDOW);

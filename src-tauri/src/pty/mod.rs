@@ -1,4 +1,5 @@
 pub mod ansi;
+pub mod askpass;
 mod direct;
 mod events;
 pub mod expect;

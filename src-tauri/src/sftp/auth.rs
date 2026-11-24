@@ -413,6 +413,10 @@ async fn authenticate_password_with_prompts(
     ))
 }
 
+fn should_autofill_kbd_prompts(prompts: &[russh::client::Prompt]) -> bool {
+    prompts.len() == 1 && !prompts[0].echo
+}
+
 async fn try_password_and_kbd(
     session: &mut client::Handle<RusshClientHandler>,
     username: &str,
@@ -441,16 +445,20 @@ async fn try_password_and_kbd(
                     KeyboardInteractiveAuthResponse::Success => return Ok(true),
                     KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
                     KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
-                        if prompts.is_empty() || prompts.len() > 16 {
+                        if !should_autofill_kbd_prompts(&prompts) {
                             return Ok(false);
                         }
-                        let answers = vec![password.to_string(); prompts.len()];
-                        kbd = session
-                            .authenticate_keyboard_interactive_respond(answers)
+                        let mut answers = Zeroizing::new(vec![password.to_string()]);
+                        let res = session
+                            .authenticate_keyboard_interactive_respond(std::mem::take(
+                                &mut *answers,
+                            ))
                             .await
                             .map_err(|e| {
                                 map_russh_error("Keyboard-interactive response error", e)
-                            })?;
+                            });
+                        drop(answers);
+                        kbd = res?;
                     }
                 }
             }
@@ -494,5 +502,34 @@ async fn request_secret_from_user(
     tokio::select! {
         _ = ctx.cancel_token.cancelled() => Err(CoreError::Sftp("Connection cancelled".to_string())),
         ans = rx => Ok(ans.unwrap_or(None)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use russh::client::Prompt;
+
+    #[test]
+    fn keyboard_interactive_autofill_requires_single_hidden_prompt() {
+        assert!(!should_autofill_kbd_prompts(&[]));
+        assert!(should_autofill_kbd_prompts(&[Prompt {
+            prompt: "Password: ".to_string(),
+            echo: false,
+        }]));
+        assert!(!should_autofill_kbd_prompts(&[Prompt {
+            prompt: "Verification code: ".to_string(),
+            echo: true,
+        }]));
+        assert!(!should_autofill_kbd_prompts(&[
+            Prompt {
+                prompt: "Password: ".to_string(),
+                echo: false,
+            },
+            Prompt {
+                prompt: "OTP: ".to_string(),
+                echo: false,
+            },
+        ]));
     }
 }

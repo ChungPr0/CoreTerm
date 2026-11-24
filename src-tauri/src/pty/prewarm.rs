@@ -61,6 +61,8 @@ impl PtySessionManager {
                         cols: initial_cols,
                         rows: initial_rows,
                         cwd: cwd.as_deref(),
+                        extra_env: &[],
+                        askpass_bridge: None,
                     },
                     &manager.job_supervisor,
                 ) else {

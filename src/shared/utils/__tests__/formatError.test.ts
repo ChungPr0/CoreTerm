@@ -192,6 +192,21 @@ describe("formatError utils", () => {
         "protected system path",
       ],
       [
+        "Validation error: Writing protected system path is prohibited: 'C:\\Windows\\System32\\evil.dll'",
+        "đường dẫn hệ thống được bảo vệ",
+        "protected system path",
+      ],
+      [
+        "Validation error: Writing application data directory is prohibited: 'C:\\Users\\user\\AppData\\Roaming\\CoreTerm\\data\\app.db'",
+        "thư mục dữ liệu ứng dụng",
+        "application data directory",
+      ],
+      [
+        "Validation error: Writing the user profile root directory is strictly prohibited",
+        "thư mục gốc của người dùng",
+        "user profile root directory",
+      ],
+      [
         "Resource not found: Local path not found: D:\\Workspace\\missing.txt",
         "Không tìm thấy đường dẫn cục bộ",
         "Local path not found",

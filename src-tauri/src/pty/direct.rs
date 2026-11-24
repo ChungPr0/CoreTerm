@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -22,8 +21,11 @@ use super::events::{
 use super::manager::PtySessionManager;
 use super::shells::default_shell_profile;
 use super::spawn::{spawn_pty, PtySpawnConfig};
-use super::ssh::{handle_expect_signal, SshExpectContext, SshLaunchPlan};
-use super::types::{PtySession, READ_BUF_SIZE};
+use super::ssh::{
+    handle_expect_signal, spawn_ssh_askpass_server, SshAskpassContext, SshExpectContext,
+    SshLaunchPlan,
+};
+use super::types::{AskpassSessionBridge, PtySession, READ_BUF_SIZE};
 
 pub(super) struct DirectLaunchSpec {
     pub req: SessionConnectRequestDto,
@@ -37,25 +39,15 @@ struct DirectReaderSpec {
     tab_id: String,
     host_id: String,
     is_local: bool,
-    auth_method: String,
     target_host: String,
     target_port: u16,
-    host_pw_mode: String,
     active_forwards: Vec<PortForwardStatusDto>,
-}
-
-struct PtyServiceDeps<'a> {
-    hosts: &'a HostService,
-    keys: &'a KeyService,
 }
 
 fn resolve_ssh_binary() -> String {
     #[cfg(windows)]
-    if let Some(windir) = std::env::var_os("WINDIR") {
-        let sys_ssh = Path::new(&windir)
-            .join("System32")
-            .join("OpenSSH")
-            .join("ssh.exe");
+    if let Some(sys32) = crate::infra::os::system32_dir() {
+        let sys_ssh = sys32.join("OpenSSH").join("ssh.exe");
         if sys_ssh.is_file() {
             return sys_ssh.to_string_lossy().into_owned();
         }
@@ -140,6 +132,58 @@ impl PtySessionManager {
             None
         };
 
+        let (askpass_bridge, askpass_handle, extra_env) = if !spec.is_local {
+            let bridge = Arc::new(AskpassSessionBridge::new());
+            let handle = match spawn_ssh_askpass_server(SshAskpassContext {
+                app: app.clone(),
+                hosts: hosts.clone(),
+                keys: keys.clone(),
+                tab_secrets: self.tab_secrets.clone(),
+                bridge: Arc::clone(&bridge),
+                tab_id: tab_id.clone(),
+                host_id: host_id.clone(),
+                auth_method,
+                ssh_key_id: ssh_key_id.clone(),
+                target_host: target_host.clone(),
+                target_port,
+                host_pw_mode,
+                active_forwards: active_forwards.clone(),
+            }) {
+                Ok(h) => h,
+                Err(err) => {
+                    self.tunnel_registry.release_tab_tunnels(&tab_id);
+                    emit_status(
+                        app,
+                        &tab_id,
+                        &host_id,
+                        "ERROR",
+                        vec![],
+                        Some(err.to_string()),
+                    );
+                    return Err(err);
+                }
+            };
+            let env = match handle.ssh_env_vars() {
+                Ok(e) => e,
+                Err(err) => {
+                    handle.shutdown();
+                    self.tunnel_registry.release_tab_tunnels(&tab_id);
+                    emit_status(
+                        app,
+                        &tab_id,
+                        &host_id,
+                        "ERROR",
+                        vec![],
+                        Some(err.to_string()),
+                    );
+                    return Err(err);
+                }
+            };
+            (Some(bridge), Some(handle), env)
+        } else {
+            (None, None, Vec::new())
+        };
+
         let spawned = match spawn_pty(
             PtySpawnConfig {
                 profile: &profile,
@@ -150,11 +194,16 @@ impl PtySessionManager {
                 cols: spec.req.cols,
                 rows: spec.req.rows,
                 cwd: cwd.as_deref(),
+                extra_env: &extra_env,
+                askpass_bridge,
             },
             &self.job_supervisor,
         ) {
             Ok(s) => s,
             Err(err) => {
+                if let Some(handle) = askpass_handle {
+                    handle.shutdown();
+                }
                 self.tunnel_registry.release_tab_tunnels(&tab_id);
                 emit_status(
                     app,
@@ -167,6 +216,10 @@ impl PtySessionManager {
                 return Err(err);
             }
         };
+
+        if let Some(handle) = askpass_handle {
+            spawned.session.set_askpass_server(handle);
+        }
 
         if !spec.is_local {
             let _ = hosts.touch_last_connected(&host_id);
@@ -191,20 +244,11 @@ impl PtySessionManager {
             tab_id: tab_id.clone(),
             host_id: host_id.clone(),
             is_local: spec.is_local,
-            auth_method,
             target_host,
             target_port,
-            host_pw_mode,
             active_forwards,
         };
-        self.spawn_direct_reader(
-            app,
-            PtyServiceDeps { hosts, keys },
-            reader_spec,
-            session,
-            reader,
-            on_output,
-        )?;
+        self.spawn_direct_reader(app, reader_spec, session, reader, on_output)?;
 
         Ok(SessionConnectAckDto {
             tab_id,
@@ -220,7 +264,6 @@ impl PtySessionManager {
     fn spawn_direct_reader(
         &self,
         app: &AppHandle,
-        services: PtyServiceDeps<'_>,
         spec: DirectReaderSpec,
         session_ref: Arc<PtySession>,
         mut reader: Box<dyn Read + Send>,
@@ -230,8 +273,6 @@ impl PtySessionManager {
         let sessions_map = self.sessions.clone();
         let tunnel_reg = self.tunnel_registry.clone();
         let app_handle = app.clone();
-        let hosts = services.hosts.clone();
-        let keys = services.keys.clone();
         let tab_secrets = self.tab_secrets.clone();
         let reader_tab_id = spec.tab_id;
 
@@ -245,16 +286,12 @@ impl PtySessionManager {
 
                 let expect_ctx = SshExpectContext {
                     app: &app_handle,
-                    hosts: &hosts,
-                    keys: &keys,
                     tab_secrets: &tab_secrets,
                     session: &session_ref,
                     tab_id: &reader_tab_id,
                     host_id: &spec.host_id,
-                    auth_method: &spec.auth_method,
                     target_host: &spec.target_host,
                     target_port: spec.target_port,
-                    host_pw_mode: &spec.host_pw_mode,
                     active_forwards: &spec.active_forwards,
                 };
 
@@ -286,6 +323,7 @@ impl PtySessionManager {
                     }
                 }
 
+                session_ref.shutdown_askpass();
                 drop(tx);
                 let _ = tauri::async_runtime::block_on(batcher_handle);
 

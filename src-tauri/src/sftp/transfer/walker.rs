@@ -9,7 +9,8 @@ use crate::core::defaults::{SFTP_MAX_WALK_DEPTH, SFTP_MAX_WALK_ENTRIES};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::path_guard::{
     clean_display_path, is_win_drive_root, join_remote_path, normalize_remote_path,
-    remote_leaf_name, safe_join_windows_relative,
+    remote_leaf_name, safe_join_windows_relative, validate_local_download_root,
+    validate_local_write_path,
 };
 use crate::sftp::session::{fmt_sftp_err, RemoteSftpClient};
 
@@ -102,6 +103,15 @@ pub async fn collect_upload_plan(
     Ok(specs)
 }
 
+fn resolve_validated_download_target(
+    local_root: &std::path::Path,
+    relative_segments: &[String],
+) -> CoreResult<PathBuf> {
+    let dest_local = safe_join_windows_relative(local_root, relative_segments)?;
+    validate_local_write_path(&dest_local)?;
+    Ok(dest_local)
+}
+
 pub async fn collect_download_plan(
     client: &RemoteSftpClient,
     remote_paths: Vec<String>,
@@ -109,6 +119,7 @@ pub async fn collect_download_plan(
     cancel_token: &CancellationToken,
 ) -> CoreResult<Vec<TransferJobSpec>> {
     let local_root = PathBuf::from(local_dir.trim());
+    validate_local_download_root(&local_root)?;
     if !local_root.is_dir() {
         return Err(CoreError::NotFound(format!(
             "Local target directory not found: {}",
@@ -139,7 +150,7 @@ pub async fn collect_download_plan(
         if attrs.file_type().is_dir() {
             let mut queue: VecDeque<(String, Vec<String>)> = VecDeque::new();
             let root_segments = vec![leaf];
-            let local_subdir = safe_join_windows_relative(&local_root, &root_segments)?;
+            let local_subdir = resolve_validated_download_target(&local_root, &root_segments)?;
             fs::create_dir_all(&local_subdir)?;
             queue.push_back((norm_remote, root_segments));
 
@@ -182,7 +193,7 @@ pub async fn collect_download_plan(
                     };
                     let mut child_rel = rel_segments.clone();
                     child_rel.push(cname.clone());
-                    let dest_local = safe_join_windows_relative(&local_root, &child_rel)?;
+                    let dest_local = resolve_validated_download_target(&local_root, &child_rel)?;
 
                     if ctype.is_dir() {
                         fs::create_dir_all(&dest_local)?;
@@ -219,7 +230,8 @@ pub async fn collect_download_plan(
                         .to_string(),
                 ));
             }
-            let dest_local = safe_join_windows_relative(&local_root, std::slice::from_ref(&leaf))?;
+            let dest_local =
+                resolve_validated_download_target(&local_root, std::slice::from_ref(&leaf))?;
             specs.push(TransferJobSpec {
                 direction: TransferDirection::Download,
                 source_path: norm_remote,
@@ -231,4 +243,43 @@ pub async fn collect_download_plan(
     }
 
     Ok(specs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn sftp_download_path_validation_blocks_protected_dirs_and_allows_safe_targets() {
+        let dir = tempdir().expect("tempdir");
+        assert!(validate_local_download_root(dir.path()).is_ok());
+        let ok = resolve_validated_download_target(
+            dir.path(),
+            &["sub".to_string(), "file.txt".to_string()],
+        )
+        .expect("safe target should pass");
+        assert!(ok.ends_with("file.txt"));
+
+        #[cfg(windows)]
+        {
+            if let Ok(windir) = std::env::var("WINDIR") {
+                assert!(validate_local_download_root(std::path::Path::new(&windir)).is_err());
+                assert!(resolve_validated_download_target(
+                    std::path::Path::new(&windir),
+                    &["nested_new".to_string(), "evil.dll".to_string()]
+                )
+                .is_err());
+            }
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let app_root = PathBuf::from(appdata).join(crate::core::defaults::APP_NAME);
+                assert!(validate_local_download_root(&app_root).is_err());
+                assert!(resolve_validated_download_target(
+                    &app_root,
+                    &["data".to_string(), "app.db".to_string()]
+                )
+                .is_err());
+            }
+        }
+    }
 }

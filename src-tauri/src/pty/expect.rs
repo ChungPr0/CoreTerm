@@ -9,14 +9,6 @@ pub enum ExpectPhase {
 #[derive(Debug, Clone)]
 pub enum ExpectSignal {
     None,
-    PasswordPrompt {
-        prompt_text: String,
-        attempt: u8,
-    },
-    PassphrasePrompt {
-        prompt_text: String,
-        attempt: u8,
-    },
     HostKeyPrompt {
         algorithm: String,
         fingerprint: String,
@@ -31,12 +23,12 @@ pub enum ExpectSignal {
     Connected,
 }
 
-/// Inspects raw ConPTY output during SSH handshake to detect password, passphrase, or host key prompts.
+/// Inspects raw ConPTY output during SSH handshake to detect host key warnings, auth/connect
+/// failures, and shell readiness. Never triggers password or key passphrase auto-fill from
+/// scraped remote output (credentials are handled strictly via `SSH_ASKPASS`).
 pub struct ExpectStateMachine {
     phase: ExpectPhase,
     rolling_buf: String,
-    password_attempts: u8,
-    passphrase_attempts: u8,
     host_key_prompted: bool,
     host_key_changed_detected: bool,
 }
@@ -52,8 +44,6 @@ impl ExpectStateMachine {
         Self {
             phase: ExpectPhase::Handshaking,
             rolling_buf: String::with_capacity(512),
-            password_attempts: 0,
-            passphrase_attempts: 0,
             host_key_prompted: false,
             host_key_changed_detected: false,
         }
@@ -94,7 +84,7 @@ impl ExpectStateMachine {
             && (lower.contains("host key verification failed") || lower.contains("sha256:"))
         {
             self.host_key_changed_detected = true;
-            let (alg, fp) = Self::extract_algo_and_fingerprint(&clean);
+            let (alg, fp) = extract_algo_and_fingerprint(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::HostKeyPrompt {
                 algorithm: alg,
@@ -105,7 +95,7 @@ impl ExpectStateMachine {
 
         if !self.host_key_prompted && lower.contains("continue connecting (yes/no") {
             self.host_key_prompted = true;
-            let (alg, fp) = Self::extract_algo_and_fingerprint(&clean);
+            let (alg, fp) = extract_algo_and_fingerprint(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::HostKeyPrompt {
                 algorithm: alg,
@@ -121,28 +111,6 @@ impl ExpectStateMachine {
             let reason = Self::extract_last_line(&clean);
             self.rolling_buf.clear();
             return ExpectSignal::AuthFailed { reason };
-        }
-
-        let last_line = Self::extract_last_line(&clean);
-
-        if Self::is_ssh_passphrase_prompt(&last_line) {
-            self.passphrase_attempts = self.passphrase_attempts.saturating_add(1);
-            let prompt_text = last_line;
-            self.rolling_buf.clear();
-            return ExpectSignal::PassphrasePrompt {
-                prompt_text,
-                attempt: self.passphrase_attempts,
-            };
-        }
-
-        if Self::is_ssh_password_prompt(&last_line) {
-            self.password_attempts = self.password_attempts.saturating_add(1);
-            let prompt_text = last_line;
-            self.rolling_buf.clear();
-            return ExpectSignal::PasswordPrompt {
-                prompt_text,
-                attempt: self.password_attempts,
-            };
         }
 
         if let Some(reason) = Self::extract_connect_error(&clean, &lower) {
@@ -202,33 +170,6 @@ impl ExpectStateMachine {
         Some(cleaned)
     }
 
-    fn is_ssh_passphrase_prompt(line: &str) -> bool {
-        let trimmed = line.trim();
-        let lower = trimmed.to_lowercase();
-        lower.starts_with("enter passphrase for key") && lower.ends_with(':')
-    }
-
-    fn is_ssh_password_prompt(line: &str) -> bool {
-        let trimmed = line.trim();
-        let lower = trimmed.to_lowercase();
-        if !lower.ends_with(':') || lower.contains("[sudo]") {
-            return false;
-        }
-        // Standard OpenSSH: "user@host's password:" or "user@host’s password:"
-        if lower.contains("'s password:") || lower.contains("’s password:") {
-            return true;
-        }
-        // Direct password prompt: "password:" or "enter password:"
-        if lower == "password:" || lower == "enter password:" {
-            return true;
-        }
-        // Parenthesized user prompt: e.g. "(root@host) password:"
-        if lower.ends_with(") password:") {
-            return true;
-        }
-        false
-    }
-
     fn looks_like_shell_connected(raw: &str, clean: &str, lower: &str) -> bool {
         if raw.contains("\x1b[?2004h")
             || lower.contains("last login:")
@@ -264,28 +205,28 @@ impl ExpectStateMachine {
             .trim()
             .to_string()
     }
+}
 
-    fn extract_algo_and_fingerprint(buf: &str) -> (String, String) {
-        let upper = buf.to_uppercase();
-        let algo = if upper.contains("ED25519") {
-            "ED25519"
-        } else if upper.contains("ECDSA") {
-            "ECDSA"
-        } else if upper.contains("RSA") {
-            "RSA"
-        } else {
-            "SSH"
-        };
+pub(crate) fn extract_algo_and_fingerprint(buf: &str) -> (String, String) {
+    let upper = buf.to_uppercase();
+    let algo = if upper.contains("ED25519") {
+        "ED25519"
+    } else if upper.contains("ECDSA") {
+        "ECDSA"
+    } else if upper.contains("RSA") {
+        "RSA"
+    } else {
+        "SSH"
+    };
 
-        let mut fp = "SHA256:unknown".to_string();
-        for word in buf.split_whitespace() {
-            if word.starts_with("SHA256:") {
-                fp = word.trim_end_matches('.').to_string();
-                break;
-            }
+    let mut fp = "SHA256:unknown".to_string();
+    for word in buf.split_whitespace() {
+        if word.starts_with("SHA256:") {
+            fp = word.trim_end_matches('.').to_string();
+            break;
         }
-        (algo.to_string(), fp)
     }
+    (algo.to_string(), fp)
 }
 
 #[cfg(test)]
@@ -293,36 +234,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detects_password_and_passphrase_through_conpty_vt_sequences() {
+    fn crafted_remote_banners_and_prompts_never_trigger_secret_exfiltration() {
         let mut sm = ExpectStateMachine::new();
-        let sig = sm.feed(b"\x1b[?25l\x1b[2;1Hroot@10.0.0.1's password: \x1b[?25h");
-        match sig {
-            ExpectSignal::PasswordPrompt {
-                prompt_text,
-                attempt,
-            } => {
-                assert_eq!(prompt_text, "root@10.0.0.1's password:");
-                assert_eq!(attempt, 1);
-            }
-            other => panic!("expected PasswordPrompt, got {other:?}"),
+
+        // Spoofed OpenSSH password prompts in banner, MOTD, ForceCommand, or shell output.
+        for crafted in [
+            b"\x1b[?25l\x1b[2;1Hroot@10.0.0.1's password: \x1b[?25h".as_slice(),
+            b"Enter passphrase for key '/Users/victim/.ssh/id_ed25519': ".as_slice(),
+            b"password: ".as_slice(),
+            b"Enter password: ".as_slice(),
+            b"(root@host) password: ".as_slice(),
+            b"*** MOTD ***\r\nEnter passphrase for key '/id_rsa': ".as_slice(),
+            b"[sudo] password for deploy: ".as_slice(),
+            b"Welcome to Ubuntu 22.04 LTS (GNU/Linux 5.15.0-generic)\r\n".as_slice(),
+        ] {
+            let sig = sm.feed(crafted);
+            assert!(
+                matches!(sig, ExpectSignal::None),
+                "crafted PTY output must never emit a secret prompt signal, got {sig:?}"
+            );
+            assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
         }
 
-        let sig2 = sm.feed(b"\x1b]0;ssh.exe\x07Enter passphrase for key '/id_ed25519'");
-        assert!(matches!(sig2, ExpectSignal::None));
-        let sig3 = sm.feed(b": \x1b[?25h");
-        assert!(matches!(
-            sig3,
-            ExpectSignal::PassphrasePrompt { attempt: 1, .. }
-        ));
-
-        let sig4 = sm.feed(b"Permission denied, please try again.\r\nroot@10.0.0.1's password: ");
-        assert!(matches!(
-            sig4,
-            ExpectSignal::PasswordPrompt { attempt: 2, .. }
-        ));
-
-        let sig5 = sm.feed(b"Too many authentication failures\r\n");
-        assert!(matches!(sig5, ExpectSignal::AuthFailed { .. }));
+        // Auth failure still detected cleanly.
+        let sig_fail = sm.feed(b"Too many authentication failures\r\n");
+        assert!(matches!(sig_fail, ExpectSignal::AuthFailed { .. }));
     }
 
     #[test]
@@ -372,59 +308,6 @@ mod tests {
         let win_sig = sm_win.feed(b"tienc@CHUNG C:\\Users\\tienc>");
         assert!(matches!(win_sig, ExpectSignal::Connected));
         assert_eq!(sm_win.phase(), &ExpectPhase::Passthrough);
-    }
-
-    #[test]
-    fn test_rejects_fake_password_banners_and_avoids_premature_passthrough() {
-        let mut sm = ExpectStateMachine::new();
-
-        let fake_banner = sm.feed(
-            b"*** SECURITY WARNING ***\r\nUnauthorized access prohibited. Never share your password:\r\n",
-        );
-        assert!(matches!(fake_banner, ExpectSignal::None));
-        assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
-
-        let welcome_banner =
-            sm.feed(b"Welcome to Ubuntu 22.04 LTS (GNU/Linux 5.15.0-generic)\r\n");
-        assert!(matches!(welcome_banner, ExpectSignal::None));
-        assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
-
-        let real_prompt = sm.feed(b"deploy@10.0.0.2's password: ");
-        match real_prompt {
-            ExpectSignal::PasswordPrompt {
-                prompt_text,
-                attempt,
-            } => {
-                assert_eq!(prompt_text, "deploy@10.0.0.2's password:");
-                assert_eq!(attempt, 1);
-            }
-            other => panic!("expected PasswordPrompt, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn detects_fragmented_streaming_prompts_and_rejects_remote_sudo_prompts() {
-        let mut sm = ExpectStateMachine::new();
-
-        assert!(matches!(sm.feed(b"deploy@"), ExpectSignal::None));
-        assert!(matches!(sm.feed(b"my-server's "), ExpectSignal::None));
-        let final_sig = sm.feed(b"password: ");
-
-        match final_sig {
-            ExpectSignal::PasswordPrompt {
-                prompt_text,
-                attempt,
-            } => {
-                assert_eq!(prompt_text, "deploy@my-server's password:");
-                assert_eq!(attempt, 1);
-            }
-            other => panic!("expected PasswordPrompt, got {other:?}"),
-        }
-
-        // Remote sudo prompts must NOT trigger SSH handshake password auto-fill
-        let mut sm_sudo = ExpectStateMachine::new();
-        let sudo_sig = sm_sudo.feed(b"[sudo] password for deploy: ");
-        assert!(matches!(sudo_sig, ExpectSignal::None));
     }
 
     #[test]
