@@ -1,10 +1,14 @@
 import React, { Suspense, lazy } from "react";
+import { SFTP_SPLIT_RATIO_DEFAULT } from "@/shared/defaults";
+import { useI18n } from "@/shared/i18n";
 import type {
   SftpConflictPolicy,
   SftpConnectionState,
   TerminalTabItem,
 } from "@/shared/types/ipc";
 import type { ContextMenuEntry } from "@/shared/ui";
+import { useTabsStore } from "@/modules/workspace";
+import { buildSplitDividerMenu } from "../menus/sftpMenus";
 
 const SftpPane = lazy(() =>
   import("./SftpPane").then((m) => ({ default: m.SftpPane }))
@@ -28,6 +32,10 @@ interface SftpSplitContainerProps {
   onModalChange: (tabId: string, open: boolean) => void;
   onSftpState: (tabId: string, state: SftpConnectionState) => void;
   onToggleAutoReconnect: (tabId: string, enabled: boolean) => void;
+  onOpenSftpTab?: () => void;
+  onOpenSshTab?: () => void;
+  onOpenSettings?: () => void;
+  onCloseTab?: (tabId: string) => void;
 }
 
 export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
@@ -44,7 +52,13 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
   onModalChange,
   onSftpState,
   onToggleAutoReconnect,
+  onOpenSftpTab,
+  onOpenSshTab,
+  onOpenSettings,
+  onCloseTab,
 }) => {
+  const { t } = useI18n();
+
   if (tab.tabKind === "sftp") {
     return (
       <div
@@ -64,15 +78,20 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
             onModalChange={onModalChange}
             onSftpState={onSftpState}
             onToggleAutoReconnect={onToggleAutoReconnect}
+            onOpenSshTab={onOpenSshTab}
+            onOpenSettings={onOpenSettings}
+            onCloseTab={onCloseTab ? () => onCloseTab(tab.tabId) : undefined}
           />
         </Suspense>
       </div>
     );
   }
 
-  const ratio = tab.sftpSplitRatio ?? 0.45;
+  const ratio = tab.sftpSplitRatio ?? SFTP_SPLIT_RATIO_DEFAULT;
   const sftpOpen = Boolean(tab.sftpOpen);
   const sftpVisible = isActive && sftpOpen;
+  const resetSplitRatio = () =>
+    useTabsStore.getState().resizeSftpSplit(tab.tabId, SFTP_SPLIT_RATIO_DEFAULT);
 
   return (
     <div
@@ -89,6 +108,21 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
       {sftpOpen && (
         <div
           onMouseDown={(e) => onStartSplitResize(tab.tabId, e)}
+          onDoubleClick={resetSplitRatio}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onShowMenu(
+              e.clientX,
+              e.clientY,
+              buildSplitDividerMenu({
+                t,
+                onResetSplit: resetSplitRatio,
+                onOpenSftpTab,
+                onClosePanel: () => onToggleSftpSplit(tab.tabId),
+              })
+            );
+          }}
           className="flex h-1.5 shrink-0 cursor-row-resize items-center justify-center border-y border-slate-800 bg-slate-800/80 transition-colors hover:bg-sky-500/70"
         >
           <div className="h-0.5 w-8 rounded-full bg-slate-500/60" />
@@ -117,6 +151,8 @@ export const SftpSplitContainer: React.FC<SftpSplitContainerProps> = ({
               onSftpState={onSftpState}
               onToggleAutoReconnect={onToggleAutoReconnect}
               onCloseSplit={() => onToggleSftpSplit(tab.tabId)}
+              onOpenSftpTab={onOpenSftpTab}
+              onOpenSettings={onOpenSettings}
             />
           </Suspense>
         </div>

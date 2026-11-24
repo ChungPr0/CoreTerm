@@ -3,6 +3,7 @@ import type { HostProfileSummaryDto } from "@/modules/hosts";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import {
   buildLaunchItems,
+  buildTabBarContextItems,
   buildTabBarWindowMenu,
   buildTabContextItems,
 } from "../tabMenus";
@@ -138,6 +139,7 @@ describe("buildTabContextItems", () => {
   it("includes Rename and Find for local shell tabs, omits Rename for SSH, omits both for SFTP", () => {
     const onRenameTab = vi.fn();
     const onFindInTab = vi.fn();
+    const onOpenSettings = vi.fn();
     const common = {
       t,
       tabsCount: 2,
@@ -153,6 +155,7 @@ describe("buildTabContextItems", () => {
       onOpenSftp: vi.fn(),
       onConnectHost: vi.fn(),
       onDuplicateTab: vi.fn(),
+      onOpenSettings,
       onCloseTab: vi.fn(),
       onCloseOtherTabs: vi.fn(),
     };
@@ -162,6 +165,7 @@ describe("buildTabContextItems", () => {
     );
     expect(localIds).toContain("tab-rename");
     expect(localIds).toContain("tab-find");
+    expect(localIds).toContain("tab-settings");
     expect(localIds).not.toContain("tab-ssh-open");
 
     const sshItems = buildTabContextItems({ ...common, tab: baseTab({ hostId: "h1" }) });
@@ -170,6 +174,7 @@ describe("buildTabContextItems", () => {
     expect(sshIds).toContain("tab-find");
     expect(sshIds).toContain("tab-sftp-split");
     expect(sshIds).toContain("tab-sftp-separate");
+    expect(sshIds).toContain("tab-settings");
     expect(sshIds).not.toContain("tab-ssh-open");
 
     const findTabItem = sshItems.find((i) => i.id === "tab-find");
@@ -179,6 +184,10 @@ describe("buildTabContextItems", () => {
     const sftpSplitItem = sshItems.find((i) => i.id === "tab-sftp-split");
     expect(sftpSplitItem && sftpSplitItem.type !== "separator" && sftpSplitItem.shortcut).toBe(
       "Ctrl+Shift+E"
+    );
+    const settingsTabItem = sshItems.find((i) => i.id === "tab-settings");
+    expect(settingsTabItem && settingsTabItem.type !== "separator" && settingsTabItem.shortcut).toBe(
+      "Ctrl+,"
     );
     const closeTabItem = sshItems.find((i) => i.id === "tab-close");
     expect(closeTabItem && closeTabItem.type !== "separator" && closeTabItem.shortcut).toBe(
@@ -194,13 +203,16 @@ describe("buildTabContextItems", () => {
     expect(sftpIds).not.toContain("tab-sftp-split");
     expect(sftpIds).not.toContain("tab-sftp-separate");
     expect(sftpIds).toContain("tab-ssh-open");
+    expect(sftpIds).toContain("tab-settings");
   });
 
-  it("wires Open SSH Tab on SFTP tabs when a matching host profile exists and omits it otherwise", () => {
+  it("unifies remote & local Editor tabs with launch, settings, and cross-tab actions", () => {
     const onConnectHost = vi.fn();
+    const onOpenSftp = vi.fn();
+    const onOpenSettings = vi.fn();
     const baseOpts = {
       t,
-      tabsCount: 1,
+      tabsCount: 2,
       isAppElevated: false,
       shellProfiles: [PS],
       defaultShellProfile: PS,
@@ -209,15 +221,17 @@ describe("buildTabContextItems", () => {
       onFindInTab: vi.fn(),
       onReconnectTab: vi.fn(),
       onToggleSftp: vi.fn(),
-      onOpenSftp: vi.fn(),
+      onOpenSftp,
       onConnectHost,
       onDuplicateTab: vi.fn(),
+      onOpenSettings,
       onCloseTab: vi.fn(),
       onCloseOtherTabs: vi.fn(),
     };
 
     const withProfile = buildTabContextItems({
       ...baseOpts,
+      tabsCount: 1,
       allProfiles: [HOST_PROFILE],
       tab: baseTab({ hostId: "h1", tabKind: "sftp" }),
     });
@@ -232,14 +246,14 @@ describe("buildTabContextItems", () => {
 
     const withoutProfile = buildTabContextItems({
       ...baseOpts,
+      tabsCount: 1,
       allProfiles: [],
       tab: baseTab({ hostId: "h1", tabKind: "sftp" }),
     });
     expect(withoutProfile.map((i) => i.id)).not.toContain("tab-ssh-open");
 
-    const editorIds = buildTabContextItems({
+    const remoteEditorItems = buildTabContextItems({
       ...baseOpts,
-      tabsCount: 2,
       allProfiles: [HOST_PROFILE],
       tab: baseTab({
         hostId: "h1",
@@ -252,19 +266,91 @@ describe("buildTabContextItems", () => {
           hostLabel: "prod-1",
         },
       }),
-    }).map((i) => i.id);
-    expect(editorIds).toEqual([
+    });
+    expect(remoteEditorItems.map((i) => i.id)).toEqual([
       "tab-find",
       "tab-copy-path",
       "tab-reconnect",
-      "sep-editor-close",
+      "tab-ssh-open",
+      "tab-sftp-separate",
+      "sep-tab-1",
+      "new-tab",
+      "new-admin-tab",
+      "open-shell-submenu",
+      "open-shell-admin-submenu",
+      "sep-tab-2",
+      "tab-settings",
       "tab-close",
       "tab-close-others",
     ]);
+
+    const localEditorIds = buildTabContextItems({
+      ...baseOpts,
+      allProfiles: [HOST_PROFILE],
+      tab: baseTab({
+        hostId: "local",
+        tabKind: "editor",
+        title: "notes.txt",
+        editorFile: {
+          kind: "local",
+          path: "C:\\notes.txt",
+          name: "notes.txt",
+          hostLabel: "Local",
+        },
+      }),
+    }).map((i) => i.id);
+    expect(localEditorIds).not.toContain("tab-reconnect");
+    expect(localEditorIds).not.toContain("tab-ssh-open");
+    expect(localEditorIds).toContain("tab-find");
+    expect(localEditorIds).toContain("tab-copy-path");
+    expect(localEditorIds).toContain("new-tab");
+    expect(localEditorIds).toContain("tab-settings");
+  });
+
+  it("disables tab-reconnect while connecting or handshaking across remote tabs", () => {
+    const common = {
+      t,
+      tabsCount: 1,
+      allProfiles: [HOST_PROFILE],
+      isAppElevated: false,
+      shellProfiles: [PS],
+      defaultShellProfile: PS,
+      onNewLocalTab: vi.fn(),
+      onRenameTab: vi.fn(),
+      onFindInTab: vi.fn(),
+      onReconnectTab: vi.fn(),
+      onToggleSftp: vi.fn(),
+      onOpenSftp: vi.fn(),
+      onConnectHost: vi.fn(),
+      onDuplicateTab: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+    };
+
+    for (const tab of [
+      baseTab({ hostId: "h1", state: "CONNECTING" }),
+      baseTab({ hostId: "h1", state: "HANDSHAKING" }),
+      baseTab({ hostId: "h1", tabKind: "sftp", state: "CONNECTING" }),
+      baseTab({
+        hostId: "h1",
+        tabKind: "editor",
+        state: "CONNECTING",
+        editorFile: { kind: "remote", path: "/a", name: "a", hostLabel: "h1" },
+      }),
+    ]) {
+      const rec = buildTabContextItems({ ...common, tab }).find((i) => i.id === "tab-reconnect");
+      expect(rec && rec.type !== "separator" && rec.disabled).toBe(true);
+    }
+
+    const onlineRec = buildTabContextItems({
+      ...common,
+      tab: baseTab({ hostId: "h1", state: "ONLINE" }),
+    }).find((i) => i.id === "tab-reconnect");
+    expect(onlineRec && onlineRec.type !== "separator" && onlineRec.disabled).toBe(false);
   });
 });
 
-describe("buildTabBarWindowMenu", () => {
+describe("buildTabBarWindowMenu and buildTabBarContextItems", () => {
   it("exposes standard Restore/Move/Minimize/Maximize/Close window controls", () => {
     const onAction = vi.fn();
     const normal = buildTabBarWindowMenu(t, false, onAction);
@@ -292,5 +378,41 @@ describe("buildTabBarWindowMenu", () => {
       closeItem.onSelect?.();
     }
     expect(onAction).toHaveBeenCalledWith("close");
+  });
+
+  it("includes launch items, Settings, and window controls on TabBar blank space", () => {
+    const onOpenSettings = vi.fn();
+    const items = buildTabBarContextItems({
+      t,
+      isMaximized: false,
+      isAppElevated: false,
+      shellProfiles: [PS],
+      defaultShellProfile: PS,
+      onNewLocalTab: vi.fn(),
+      onOpenSettings,
+      onWindowAction: vi.fn(),
+    });
+
+    expect(items.map((i) => i.id)).toEqual([
+      "new-tab",
+      "new-admin-tab",
+      "open-shell-submenu",
+      "open-shell-admin-submenu",
+      "tabbar-settings",
+      "sep-tabbar-win",
+      "win-restore",
+      "win-move",
+      "win-minimize",
+      "win-maximize",
+      "sep-win-close",
+      "win-close",
+    ]);
+
+    const settingsItem = items.find((i) => i.id === "tabbar-settings");
+    if (settingsItem && settingsItem.type !== "separator") {
+      expect(settingsItem.shortcut).toBe("Ctrl+,");
+      settingsItem.onSelect?.();
+    }
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 });

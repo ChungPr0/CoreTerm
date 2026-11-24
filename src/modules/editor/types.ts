@@ -25,4 +25,7 @@ export interface FileEditorPaneProps {
   onShowMenu: (x: number, y: number, items: ContextMenuEntry[]) => void;
   onModalChange?: (tabId: string, open: boolean) => void;
   onSaved?: (res: FileWriteResultDto) => void;
+  onOpenSettings?: () => void;
+  onOpenSshTab?: () => void;
+  onOpenSftpTab?: () => void;
 }

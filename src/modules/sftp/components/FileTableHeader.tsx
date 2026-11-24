@@ -167,6 +167,7 @@ interface FileTableHeaderProps {
   onToggleSort: (key: SortKey) => void;
   onStartColDrag: (edge: ColEdge, e: React.MouseEvent) => void;
   onResetCols: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const FileTableHeader: React.FC<FileTableHeaderProps> = ({
@@ -177,6 +178,7 @@ export const FileTableHeader: React.FC<FileTableHeaderProps> = ({
   onToggleSort,
   onStartColDrag,
   onResetCols,
+  onContextMenu,
 }) => {
   const { t } = useI18n();
 
@@ -193,7 +195,10 @@ export const FileTableHeader: React.FC<FileTableHeaderProps> = ({
   ];
 
   return (
-    <thead className="sticky top-0 z-10 bg-[#0d1117] text-[10px] font-semibold uppercase tracking-wide text-[#8b949e]">
+    <thead
+      onContextMenu={onContextMenu}
+      className="sticky top-0 z-10 bg-[#0d1117] text-[10px] font-semibold uppercase tracking-wide text-[#8b949e]"
+    >
       <tr>
         {cols.map((col) => (
           <th key={col.key} className="border-b border-[#21262d] p-0 select-none">

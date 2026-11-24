@@ -280,6 +280,10 @@ export const App: React.FC = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
           const isTabActive = tab.tabId === sessions.activeTabId;
+          const hostProfile =
+            tab.hostId !== "local"
+              ? hosts.allProfiles.find((p) => p.id === tab.hostId)
+              : undefined;
           const pauseAutoReconnect =
             sessions.authPrompt?.tab_id === tab.tabId ||
             sessions.hostKeyPrompt?.tab_id === tab.tabId ||
@@ -309,6 +313,13 @@ export const App: React.FC = () => {
                     onSaved={() => {
                       sessions.bumpSftpRefresh(tab.hostId);
                     }}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                    onOpenSshTab={
+                      hostProfile ? () => void sessions.connectHost(hostProfile) : undefined
+                    }
+                    onOpenSftpTab={
+                      hostProfile ? () => sessions.openSftpTab(hostProfile) : undefined
+                    }
                   />
                 </Suspense>
               </div>
@@ -363,6 +374,14 @@ export const App: React.FC = () => {
               onModalChange={sessions.handleSftpModalChange}
               onSftpState={sessions.handleSftpState}
               onToggleAutoReconnect={sessions.toggleAutoReconnect}
+              onOpenSftpTab={
+                hostProfile ? () => sessions.openSftpTab(hostProfile) : undefined
+              }
+              onOpenSshTab={
+                hostProfile ? () => void sessions.connectHost(hostProfile) : undefined
+              }
+              onOpenSettings={() => setIsSettingsOpen(true)}
+              onCloseTab={sessions.closeTabById}
             />
           );
         })}

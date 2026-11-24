@@ -304,7 +304,20 @@
     "sftp_chmod": "Phân quyền...",
     "sftp_copy_path": "Sao chép đường dẫn",
     "sftp_delete": "Xóa",
-    "sftp_delete_count": "Xóa ({{count}} mục)"
+    "sftp_delete_count": "Xóa ({{count}} mục)",
+    "close_sftp_panel": "Đóng khung SFTP",
+    "reset_split": "Đặt lại tỷ lệ khung",
+    "reset_columns": "Đặt lại độ rộng cột",
+    "clear_selection": "Bỏ chọn",
+    "sftp_copy_source_path": "Sao chép đường dẫn nguồn",
+    "sftp_copy_dest_path": "Sao chép đường dẫn đích",
+    "expand_queue": "Mở rộng hàng đợi",
+    "collapse_queue": "Thu gọn hàng đợi",
+    "sort_by": "Sắp xếp theo {{col}}",
+    "zoom_in": "Phóng to chữ",
+    "zoom_out": "Thu nhỏ chữ",
+    "zoom_reset": "Cỡ chữ mặc định",
+    "copy_host": "Sao chép Host / IP"
   },
   "sftp": {
     "title": "SFTP",

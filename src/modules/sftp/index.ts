@@ -18,9 +18,18 @@ export {
   type SftpPaneKind,
 } from "./hooks/useSftpFileDrag";
 export {
+  buildColumnHeaderMenu,
   buildPaneMenu,
   buildQueueMenu,
+  buildSftpBannerMenu,
+  buildSplitDividerMenu,
   buildToolbarMenu,
+  type BuildColumnHeaderMenuOpts,
+  type BuildPaneMenuOpts,
+  type BuildQueueMenuOpts,
+  type BuildSftpBannerMenuOpts,
+  type BuildSplitDividerMenuOpts,
+  type BuildToolbarMenuOpts,
 } from "./menus/sftpMenus";
 export type {
   FileContentDto,

@@ -17,7 +17,12 @@ import {
 } from "../hooks/useCodeMirrorView";
 import { useEditorFileSession } from "../hooks/useEditorFileSession";
 import { useEditorSearch } from "../hooks/useEditorSearch";
-import { buildEditorContextItems } from "../menus/editorMenus";
+import {
+  buildEditorBannerMenu,
+  buildEditorContextItems,
+  buildEditorStatusBarMenu,
+  buildEditorToolbarMenu,
+} from "../menus/editorMenus";
 import type { EditorLineEnding, FileEditorPaneProps } from "../types";
 import { EditorDiscardModal } from "./EditorDiscardModal";
 import { EditorGotoLineModal } from "./EditorGotoLineModal";
@@ -39,6 +44,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   onShowMenu,
   onModalChange,
   onSaved,
+  onOpenSettings,
+  onOpenSshTab,
+  onOpenSftpTab,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -203,9 +211,77 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     void copyText(file.path).then(() => alert.info(t("sftp.copied"), TOAST_COPY_MS));
   }, [alert, file.path, t]);
 
+  const requestCloseTab = useCallback(() => {
+    if (isDirtyRef.current) {
+      session.setConfirmDiscard("close");
+    } else {
+      onForceClose();
+    }
+  }, [onForceClose, session]);
+
+  const shouldBypassEditorMenu = useCallback(
+    (target: EventTarget | null) =>
+      Boolean(
+        getEditableInput(target) ||
+          (target as HTMLElement | null)?.closest?.("[data-modal-root='true']")
+      ),
+    []
+  );
+
+  const buildSharedMenuOpts = useCallback(
+    () => ({
+      t,
+      editorReady: Boolean(cm.viewRef.current) && editorReady,
+      readonly: effectiveReadonly,
+      fileReadonly,
+      isDirty,
+      saving: session.saving,
+      loading: session.loading,
+      retrying: session.retrying,
+      connecting: session.connecting,
+      isRemoteConnecting: session.isRemoteConnecting,
+      wordWrap,
+      eol: session.eol,
+      isRemote: session.isRemote,
+      isDisconnected: session.isRemoteOffline,
+      onFind: () => search.openFindBar(false),
+      onReplace: () => search.openFindBar(true),
+      onGotoLine: openGotoBar,
+      onToggleWordWrap: () => setWordWrap((v) => !v),
+      onToggleReadonly: () => setUserReadonly((v) => !v),
+      onToggleEol: session.toggleEol,
+      onSave: () => void session.handleSave(),
+      onReload: requestReload,
+      onReconnect: session.isRemote ? () => session.manualReconnect("tab") : undefined,
+      onCopyPath: handleCopyPath,
+      onOpenSshTab,
+      onOpenSftpTab,
+      onOpenSettings,
+      onClose: requestCloseTab,
+    }),
+    [
+      cm.viewRef,
+      editorReady,
+      effectiveReadonly,
+      fileReadonly,
+      handleCopyPath,
+      isDirty,
+      onOpenSettings,
+      onOpenSftpTab,
+      onOpenSshTab,
+      openGotoBar,
+      requestCloseTab,
+      requestReload,
+      search,
+      session,
+      t,
+      wordWrap,
+    ]
+  );
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      if (getEditableInput(e.target)) return;
+      if (shouldBypassEditorMenu(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -233,19 +309,8 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         e.clientX,
         e.clientY,
         buildEditorContextItems({
-          t,
-          editorReady: Boolean(view) && editorReady,
+          ...buildSharedMenuOpts(),
           hasSelection: selectedText.length > 0,
-          readonly: effectiveReadonly,
-          fileReadonly,
-          isDirty,
-          saving: session.saving,
-          loading: session.loading,
-          retrying: session.retrying,
-          connecting: session.connecting,
-          wordWrap,
-          isRemote: session.isRemote,
-          isDisconnected: session.isRemoteOffline,
           onCut: () => {
             if (!view || !selectedText || effectiveReadonly) return;
             void copyText(selectedText);
@@ -269,44 +334,52 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             selectAll(view);
             view.focus();
           },
-          onFind: () => search.openFindBar(false),
-          onReplace: () => search.openFindBar(true),
-          onGotoLine: openGotoBar,
-          onToggleWordWrap: () => setWordWrap((v) => !v),
-          onToggleReadonly: () => setUserReadonly((v) => !v),
-          onSave: () => void session.handleSave(),
-          onReload: requestReload,
-          onReconnect: session.isRemote
-            ? () => session.manualReconnect("tab")
-            : undefined,
-          onCopyPath: handleCopyPath,
-          onClose: () => {
-            if (isDirtyRef.current) {
-              session.setConfirmDiscard("close");
-            } else {
-              onForceClose();
-            }
-          },
         })
       );
     },
     [
+      buildSharedMenuOpts,
       cm.editorHostRef,
       cm.viewRef,
-      editorReady,
       effectiveReadonly,
-      fileReadonly,
-      handleCopyPath,
-      isDirty,
-      onForceClose,
       onShowMenu,
-      openGotoBar,
-      requestReload,
-      search,
-      session,
-      t,
-      wordWrap,
+      shouldBypassEditorMenu,
     ]
+  );
+
+  const handleToolbarContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (shouldBypassEditorMenu(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onShowMenu(e.clientX, e.clientY, buildEditorToolbarMenu(buildSharedMenuOpts()));
+    },
+    [buildSharedMenuOpts, onShowMenu, shouldBypassEditorMenu]
+  );
+
+  const handleBannerContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selectedText = window.getSelection()?.toString() ?? "";
+      onShowMenu(
+        e.clientX,
+        e.clientY,
+        buildEditorBannerMenu({
+          t,
+          selectedText,
+          isConnecting: session.connecting || session.isRemoteConnecting,
+          reloadDisabled:
+            session.loading || session.retrying || session.saving || session.connecting,
+          onCopy: (text) => void copyText(text),
+          onReconnect: () => session.manualReconnect("banner"),
+          onReload: requestReload,
+          onOpenSettings,
+          onClose: requestCloseTab,
+        })
+      );
+    },
+    [onOpenSettings, onShowMenu, requestCloseTab, requestReload, session, t]
   );
 
   useEffect(() => {
@@ -379,6 +452,58 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   ]);
 
   const zoomPercent = Math.round((fontSize / EDITOR_FONT_SIZE_DEFAULT) * 100);
+  const handleStatusBarContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (shouldBypassEditorMenu(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onShowMenu(
+        e.clientX,
+        e.clientY,
+        buildEditorStatusBarMenu({
+          t,
+          editorReady: Boolean(cm.viewRef.current) && editorReady,
+          readonly: effectiveReadonly,
+          fileReadonly,
+          wordWrap,
+          eol: session.eol,
+          zoomPercent,
+          canZoomIn: fontSize < EDITOR_FONT_SIZE_MAX,
+          canZoomOut: fontSize > EDITOR_FONT_SIZE_MIN,
+          onGotoLine: openGotoBar,
+          onToggleEol: session.toggleEol,
+          onZoomIn: () => adjustFontSize(1),
+          onZoomOut: () => adjustFontSize(-1),
+          onZoomReset: () => setFontSize(EDITOR_FONT_SIZE_DEFAULT),
+          onToggleWordWrap: () => setWordWrap((v) => !v),
+          onToggleReadonly: () => setUserReadonly((v) => !v),
+          onCopyPath: handleCopyPath,
+          onOpenSettings,
+          onClose: requestCloseTab,
+        })
+      );
+    },
+    [
+      adjustFontSize,
+      cm.viewRef,
+      editorReady,
+      effectiveReadonly,
+      fileReadonly,
+      fontSize,
+      handleCopyPath,
+      onOpenSettings,
+      onShowMenu,
+      openGotoBar,
+      requestCloseTab,
+      session.eol,
+      session.toggleEol,
+      shouldBypassEditorMenu,
+      t,
+      wordWrap,
+      zoomPercent,
+    ]
+  );
+
   const showConnectingBanner =
     session.isRemoteConnecting &&
     (tab.reconnectSource === "auto" || tab.reconnectSource === "banner");
@@ -422,7 +547,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         onToggleReadonly={() => setUserReadonly((v) => !v)}
         onReload={requestReload}
         onSave={() => void session.handleSave()}
-        onContextMenu={handleContextMenu}
+        onContextMenu={handleToolbarContextMenu}
       />
 
       <div
@@ -500,6 +625,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             isConnecting={session.isRemoteConnecting}
             isAutoReconnect={session.isAutoReconnect}
             onReconnect={() => session.manualReconnect("banner")}
+            onContextMenu={handleBannerContextMenu}
           />
         )}
       </div>
@@ -513,7 +639,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         zoomPercent={zoomPercent}
         eol={session.eol}
         onToggleEol={session.toggleEol}
-        onContextMenu={handleContextMenu}
+        onContextMenu={handleStatusBarContextMenu}
       />
 
       <EditorGotoLineModal

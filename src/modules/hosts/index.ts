@@ -3,7 +3,15 @@ export { isAutoReconnectAllowed } from "./hooks/hostFormHelpers";
 export { useHostProfiles, type DeletePromptState } from "./hooks/useHostProfiles";
 export { useHostDrag, type HostDragPreview } from "./hooks/useHostDrag";
 export { useGroupDrag, type GroupDragPreview } from "./hooks/useGroupDrag";
-export { useHostMenus } from "./menus/hostMenus";
+export {
+  useHostMenus,
+  buildHostMenuItems,
+  buildGroupMenuItems,
+  buildSidebarMenuItems,
+  type BuildHostMenuItemsOpts,
+  type BuildGroupMenuItemsOpts,
+  type BuildSidebarMenuItemsOpts,
+} from "./menus/hostMenus";
 export { HostSidebar } from "./components/HostSidebar";
 export { HostCard } from "./components/HostCard";
 export { HostModal } from "./components/HostModal";

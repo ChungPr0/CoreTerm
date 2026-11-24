@@ -4,6 +4,7 @@ import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "@/shared/ui";
+import { getEditableInput } from "@/shared/utils/editableTarget";
 import { useTabDrag } from "../hooks/useTabDrag";
 import { NewTabDropdown } from "./NewTabDropdown";
 import { TabItem } from "./TabItem";
@@ -102,6 +103,7 @@ export const TabBar: React.FC<TabBarProps> = ({
     <div
       data-tauri-drag-region={isModalOpen ? "deep" : undefined}
       onContextMenu={(e) => {
+        if (getEditableInput(e.target)) return;
         if (isModalOpen) {
           e.preventDefault();
           e.stopPropagation();

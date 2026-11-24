@@ -77,7 +77,7 @@ export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
       }
     >
       <div className="space-y-1.5 leading-relaxed">
-        <p className="text-xs font-medium text-rose-300 break-words">{loadError}</p>
+        <p className="text-xs font-medium text-rose-300 break-words select-text">{loadError}</p>
         <p className="text-xs text-slate-400">
           {loadErrDisconnected ? t("editor.load_err_sftp_desc") : t("editor.load_err_desc")}
         </p>

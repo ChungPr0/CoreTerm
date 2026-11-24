@@ -38,6 +38,10 @@ export function isTabOffline(tab: TerminalTabItem): boolean {
   );
 }
 
+export function isTabConnecting(tab: TerminalTabItem): boolean {
+  return tab.state === "CONNECTING" || tab.state === "HANDSHAKING";
+}
+
 export function createLocalTab(
   profile: ShellProfile | null = DEFAULT_LOCAL_SHELL,
   isAdmin = false

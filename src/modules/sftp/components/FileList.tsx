@@ -10,6 +10,16 @@ import { FileColGroup, FileTableHeader, useTableColumns } from "./FileTableHeade
 
 export type { FileItem };
 
+export interface FilePaneContextMeta {
+  hasItems: boolean;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onSort: (key: SortKey) => void;
+  onResetCols: () => void;
+}
+
 interface FileListProps {
   kind: "local" | "remote";
   title: string;
@@ -42,7 +52,8 @@ interface FileListProps {
   onNewFolder: () => void;
   onRenameItem: (item: FileItem) => void;
   onDeletePaths: (paths: string[]) => void;
-  onContextMenuItem: (item: FileItem | null, e: React.MouseEvent) => void;
+  onContextMenuItem: (item: FileItem | null, e: React.MouseEvent, meta: FilePaneContextMeta) => void;
+  onContextMenuColumns?: (e: React.MouseEvent, meta: FilePaneContextMeta) => void;
   onStartRowDrag?: (
     item: FileItem,
     dragPaths: string[],
@@ -84,6 +95,7 @@ export const FileList: React.FC<FileListProps> = ({
   onRenameItem,
   onDeletePaths,
   onContextMenuItem,
+  onContextMenuColumns,
   onStartRowDrag,
   shouldSuppressRowClick,
 }) => {
@@ -142,6 +154,23 @@ export const FileList: React.FC<FileListProps> = ({
     }
   };
 
+  const paneMeta: FilePaneContextMeta = {
+    hasItems: visibleItems.length > 0,
+    sortKey,
+    sortDir,
+    onSelectAll: () => onSelect(visibleItems.map((i) => i.path)),
+    onClearSelection: () => onSelect([]),
+    onSort: toggleSort,
+    onResetCols: resetCols,
+  };
+
+  const handleEmptyContextMenu = (e: React.MouseEvent, clearSelection: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (clearSelection) onSelect([]);
+    onContextMenuItem(null, e, paneMeta);
+  };
+
   return (
     <div
       tabIndex={0}
@@ -171,6 +200,7 @@ export const FileList: React.FC<FileListProps> = ({
         onRefreshDrives={onRefreshDrives}
         onNewFile={onNewFile}
         onNewFolder={onNewFolder}
+        onContextMenu={(e) => onContextMenuItem(null, e, paneMeta)}
       />
 
       <div
@@ -182,10 +212,7 @@ export const FileList: React.FC<FileListProps> = ({
         }}
         onContextMenu={(e) => {
           if (e.target !== e.currentTarget) return;
-          e.preventDefault();
-          e.stopPropagation();
-          onSelect([]);
-          onContextMenuItem(null, e);
+          handleEmptyContextMenu(e, true);
         }}
       >
         <table className="w-full table-fixed border-separate border-spacing-0 text-left text-xs">
@@ -198,6 +225,11 @@ export const FileList: React.FC<FileListProps> = ({
             onToggleSort={toggleSort}
             onStartColDrag={startColDrag}
             onResetCols={resetCols}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenuColumns?.(e, paneMeta);
+            }}
           />
           <tbody>
             {visibleItems.map((item, idx) => {
@@ -239,7 +271,7 @@ export const FileList: React.FC<FileListProps> = ({
                     e.preventDefault();
                     e.stopPropagation();
                     if (!isSelected) onSelect([item.path]);
-                    onContextMenuItem(item, e);
+                    onContextMenuItem(item, e, paneMeta);
                   }}
                   className={`cursor-pointer select-none transition-colors duration-100 ${
                     isDropTarget
@@ -284,7 +316,10 @@ export const FileList: React.FC<FileListProps> = ({
         </table>
 
         {loading && visibleItems.length === 0 && (
-          <div className="flex h-36 flex-col items-center justify-center gap-2.5 text-xs text-[#8b949e]">
+          <div
+            onContextMenu={(e) => handleEmptyContextMenu(e, true)}
+            className="flex h-36 flex-col items-center justify-center gap-2.5 text-xs text-[#8b949e]"
+          >
             <RefreshCw className="h-5 w-5 animate-spin text-[#58a6ff]" />
             <span>{emptyMessage || t("common.loading")}</span>
           </div>
@@ -292,12 +327,7 @@ export const FileList: React.FC<FileListProps> = ({
 
         {!loading && visibleItems.length === 0 && (
           <div
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onSelect([]);
-              onContextMenuItem(null, e);
-            }}
+            onContextMenu={(e) => handleEmptyContextMenu(e, true)}
             className="flex h-32 items-center justify-center text-xs text-[#6e7681]"
           >
             {emptyMessage || t("sftp.empty_dir")}
@@ -305,7 +335,10 @@ export const FileList: React.FC<FileListProps> = ({
         )}
       </div>
 
-      <div className="flex h-6 shrink-0 items-center justify-between border-t border-[#21262d] bg-[#0b1016] px-3 text-[11px] text-[#8b949e]">
+      <div
+        onContextMenu={(e) => handleEmptyContextMenu(e, false)}
+        className="flex h-6 shrink-0 items-center justify-between border-t border-[#21262d] bg-[#0b1016] px-3 text-[11px] text-[#8b949e]"
+      >
         <span>{t("sftp.items_count", { count: visibleItems.length })}</span>
         {selected.length > 0 && (
           <span className="text-[#58a6ff]">{t("sftp.selected_count", { count: selected.length })}</span>

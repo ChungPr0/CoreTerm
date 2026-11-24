@@ -304,7 +304,20 @@
     "sftp_chmod": "Permissions...",
     "sftp_copy_path": "Copy Path",
     "sftp_delete": "Delete",
-    "sftp_delete_count": "Delete ({{count}})"
+    "sftp_delete_count": "Delete ({{count}})",
+    "close_sftp_panel": "Close SFTP Panel",
+    "reset_split": "Reset Split Ratio",
+    "reset_columns": "Reset Column Widths",
+    "clear_selection": "Clear Selection",
+    "sftp_copy_source_path": "Copy Source Path",
+    "sftp_copy_dest_path": "Copy Destination Path",
+    "expand_queue": "Expand Transfers",
+    "collapse_queue": "Collapse Transfers",
+    "sort_by": "Sort by {{col}}",
+    "zoom_in": "Zoom In",
+    "zoom_out": "Zoom Out",
+    "zoom_reset": "Reset Zoom",
+    "copy_host": "Copy Host / IP"
   },
   "sftp": {
     "title": "SFTP",

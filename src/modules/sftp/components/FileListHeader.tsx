@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { IconButton, Input, PopoverMenu } from "@/shared/ui";
+import { getEditableInput } from "@/shared/utils/editableTarget";
 import { splitLocalCrumbs, splitRemoteCrumbs } from "@/shared/utils/path";
 import type { LocalDriveDto } from "../types";
 
@@ -38,6 +39,7 @@ interface FileListHeaderProps {
   onRefreshDrives?: () => void;
   onNewFile?: () => void;
   onNewFolder: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const FileListHeader: React.FC<FileListHeaderProps> = ({
@@ -60,6 +62,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
   onRefreshDrives,
   onNewFile,
   onNewFolder,
+  onContextMenu,
 }) => {
   const { t } = useI18n();
   const [editingPath, setEditingPath] = useState(false);
@@ -101,9 +104,19 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
     if (next && next !== cwd) onNavigate(next);
   };
 
+  const handleBarContextMenu = (e: React.MouseEvent) => {
+    if (getEditableInput(e.target) || !onContextMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu(e);
+  };
+
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-1.5 border-b border-[#21262d] bg-[#11161d] px-2.5 py-1.5">
+      <div
+        onContextMenu={handleBarContextMenu}
+        className="flex shrink-0 flex-wrap items-center justify-between gap-1.5 border-b border-[#21262d] bg-[#11161d] px-2.5 py-1.5"
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           <span
             className={`inline-flex h-6 items-center rounded border px-2 text-[11px] font-medium whitespace-nowrap shrink-0 ${badgeCls}`}
@@ -213,7 +226,10 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
         {actions && <div className="flex items-center gap-1.5">{actions}</div>}
       </div>
 
-      <div className="flex h-[41px] shrink-0 min-w-0 items-center gap-2 border-b border-[#21262d] bg-[#0d1117] px-2.5">
+      <div
+        onContextMenu={handleBarContextMenu}
+        className="flex h-[41px] shrink-0 min-w-0 items-center gap-2 border-b border-[#21262d] bg-[#0d1117] px-2.5"
+      >
         {editingPath ? (
           <form noValidate onSubmit={submitPathEditor} className="flex h-7 min-w-0 flex-1 items-center">
             <Input

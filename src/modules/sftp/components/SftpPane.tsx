@@ -4,6 +4,7 @@ import { useI18n } from "@/shared/i18n";
 import type { SftpConflictPolicy, TerminalTabItem } from "@/shared/types/ipc";
 import { ReconnectBanner, useAlert, type ContextMenuEntry } from "@/shared/ui";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
+import { copyText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
 import { localParent, posixParent } from "@/shared/utils/path";
@@ -18,7 +19,11 @@ import { useSftpEvents } from "../hooks/useSftpEvents";
 import { useSftpFileDrag } from "../hooks/useSftpFileDrag";
 import { useSftpMouseNav } from "../hooks/useSftpMouseNav";
 import { useSftpTransfers } from "../hooks/useSftpTransfers";
-import { buildQueueMenu, buildToolbarMenu } from "../menus/sftpMenus";
+import {
+  buildQueueMenu,
+  buildSftpBannerMenu,
+  buildToolbarMenu,
+} from "../menus/sftpMenus";
 import type { SftpConnectionState } from "../types";
 import { SftpBrowserPanels } from "./SftpBrowserPanels";
 import { SftpOverlays } from "./SftpOverlays";
@@ -43,6 +48,10 @@ export interface SftpPaneProps {
   onSftpState?: (tabId: string, state: SftpConnectionState) => void;
   onToggleAutoReconnect?: (tabId: string, enabled: boolean) => void;
   onCloseSplit?: () => void;
+  onOpenSftpTab?: () => void;
+  onOpenSshTab?: () => void;
+  onOpenSettings?: () => void;
+  onCloseTab?: () => void;
 }
 
 export const SftpPane: React.FC<SftpPaneProps> = ({
@@ -58,6 +67,10 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   onModalChange,
   onSftpState,
   onCloseSplit,
+  onOpenSftpTab,
+  onOpenSshTab,
+  onOpenSettings,
+  onCloseTab,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -237,13 +250,47 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     }
   }, [canConnect, conn, local.cwdRef, tab.tabId]);
 
+  const handleCloseSurface = mode === "split" ? onCloseSplit : onCloseTab;
+
+  const refreshAllPanes = useCallback(() => {
+    if (remote.cwdRef.current || remote.homeRef.current) remote.refresh();
+    else if (conn.connState === "CONNECTED") void remote.loadDir("/");
+    if (showLocalRef.current) {
+      void conn.refreshLocalFs();
+    }
+  }, [conn, remote]);
+
+  const buildCurrentToolbarMenu = () =>
+    buildToolbarMenu({
+      t,
+      mode,
+      connState: conn.connState,
+      canConnect,
+      showLocal,
+      remoteCwd: remote.cwd,
+      onReconnect: reconnectSftp,
+      onRefresh: refreshAllPanes,
+      onToggleLocalPane: () => setShowLocal((v) => !v),
+      onCopyRemotePath: entryActions.handleCopyPath,
+      onOpenInTerminal,
+      onOpenSftpTab,
+      onOpenSshTab,
+      onOpenSettings,
+      onClose: handleCloseSurface,
+    });
+
   return (
     <div
       onContextMenu={(e) => {
-        if (getEditableInput(e.target)) return;
+        if (
+          getEditableInput(e.target) ||
+          (e.target as HTMLElement | null)?.closest?.("[data-modal-root='true']")
+        ) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
-        onShowMenu(e.clientX, e.clientY, []);
+        onShowMenu(e.clientX, e.clientY, buildCurrentToolbarMenu());
       }}
       className="relative flex h-full min-h-0 select-none flex-col bg-ct-panel text-[#c9d1d9]"
     >
@@ -259,15 +306,12 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
           if (getEditableInput(e.target)) return;
           e.preventDefault();
           e.stopPropagation();
-          onShowMenu(
-            e.clientX,
-            e.clientY,
-            buildToolbarMenu({ t, onReconnect: reconnectSftp })
-          );
+          onShowMenu(e.clientX, e.clientY, buildCurrentToolbarMenu());
         }}
       />
 
       <SftpBrowserPanels
+        mode={mode}
         containerRef={containerRef}
         remoteDropRef={remoteDropRef}
         activePaneRef={activePaneRef}
@@ -283,6 +327,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         fileDrag={fileDrag}
         onResetSplit={() => setSplitRatio(SFTP_PANE_SPLIT_DEFAULT)}
         onStartSplitDrag={startSplitDrag}
+        onToggleLocalPane={() => setShowLocal((v) => !v)}
+        onOpenInTerminal={onOpenInTerminal}
         onShowMenu={onShowMenu}
         onNamePrompt={entryActions.setNameModal}
         onOpenFile={entryActions.handleOpenFile}
@@ -294,6 +340,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         onUploadDialog={(dir) => void transfers.uploadViaDialog(dir)}
         onReloadLocal={() => void conn.refreshLocalFs()}
         onRefreshLocalDrives={() => void conn.refreshLocalDrives()}
+        onOpenSettings={onOpenSettings}
+        onClose={handleCloseSurface}
       />
 
       <TransferQueue
@@ -311,11 +359,21 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
             buildQueueMenu({
               job,
               hasFinished,
+              expanded: transfers.queueOpen,
+              jobsCount: transfers.jobs.length,
+              mode,
+              isConnecting: conn.connState === "CONNECTING",
+              canConnect,
               t,
               onPause: transfers.pauseTransfer,
               onResume: transfers.resumeTransfer,
               onCancel: transfers.cancelTransfer,
               onClearFinished: transfers.clearFinished,
+              onToggleExpand: () => transfers.setQueueOpen((v) => !v),
+              onCopyPath: entryActions.handleCopyPath,
+              onReconnect: reconnectSftp,
+              onOpenSettings,
+              onClose: handleCloseSurface,
             })
           )
         }
@@ -352,10 +410,21 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            const selectedText = window.getSelection()?.toString() ?? "";
             onShowMenu(
               e.clientX,
               e.clientY,
-              buildToolbarMenu({ t, onReconnect: reconnectSftp })
+              buildSftpBannerMenu({
+                t,
+                mode,
+                selectedText,
+                isConnecting: conn.connState === "CONNECTING",
+                onCopy: (text) => void copyText(text),
+                onReconnect: manualReconnectSftp,
+                onOpenSshTab,
+                onOpenSettings,
+                onClose: handleCloseSurface,
+              })
             );
           }}
         />

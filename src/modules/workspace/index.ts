@@ -10,15 +10,18 @@ export {
   useTabMenus,
   buildLaunchItems,
   buildSftpPanelItem,
+  buildTabBarContextItems,
   buildTabBarWindowMenu,
   buildTabContextItems,
   type BuildLaunchItemsOpts,
+  type BuildTabBarContextItemsOpts,
   type LocalTabLaunchOpts,
 } from "./menus/tabMenus";
 export { useGlobalContextMenu } from "./menus/globalMenus";
 export { ShellIcon } from "./components/ShellIcon";
 export {
   sftpToTabState,
+  isTabConnecting,
   isTabOffline,
   createLocalTab,
   DEFAULT_LOCAL_SHELL,

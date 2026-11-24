@@ -48,12 +48,15 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     isAppElevated: opts.isAppElevated,
     shellProfiles: opts.shellProfiles,
     defaultShellProfile: opts.defaultShellProfile,
+    allProfiles: opts.allProfiles,
     setContextMenu: opts.setContextMenu,
     onNewLocalTab: opts.onNewLocalTab,
     onFindInTab: opts.onFindInTab,
     onReconnectTab: opts.onReconnectTab,
     onToggleSftp: opts.onToggleSftp,
+    onOpenSftp: opts.onOpenSftp,
     onOpenSettings: opts.onOpenSettings,
+    onCloseTab: opts.onCloseTab,
   });
 
   const tabMenus = useTabMenus({
@@ -72,6 +75,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onOpenSftp: opts.onOpenSftp,
     onConnectHost: opts.onConnectHost,
     onDuplicateTab: opts.onDuplicateTab,
+    onOpenSettings: opts.onOpenSettings,
     onCloseTab: opts.onCloseTab,
     onCloseOtherTabs: opts.onCloseOtherTabs,
   });

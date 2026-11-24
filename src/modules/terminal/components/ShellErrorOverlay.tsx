@@ -57,7 +57,7 @@ export const ShellErrorOverlay: React.FC<ShellErrorOverlayProps> = ({
               {t("terminal.shell_err_title")}
             </h3>
             {tab.errorMessage && (
-              <p className="text-[11px] font-mono text-rose-300 break-words">
+              <p className="text-[11px] font-mono text-rose-300 break-words select-text">
                 {formatLocalizedError(tab.errorMessage, t)}
               </p>
             )}

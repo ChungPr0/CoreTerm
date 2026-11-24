@@ -7,16 +7,17 @@ import {
   RotateCw,
   Search,
   Server,
+  Settings as SettingsIcon,
   X,
   XCircle,
 } from "lucide-react";
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import { copyText } from "@/shared/utils/clipboard";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
-import { windowApi } from "../api/windowApi";
+import { windowApi, type WindowSysAction } from "../api/windowApi";
 import { startInteractiveWindowMove } from "../utils/interactiveWindowActions";
 import type { ShellProfile, TerminalTabItem } from "../types";
-import { isTabOffline } from "../utils/tabHelpers";
+import { isTabConnecting, isTabOffline } from "../utils/tabHelpers";
 import {
   buildLaunchItems,
   buildSftpPanelItem,
@@ -49,8 +50,35 @@ interface BuildTabContextItemsOpts {
   onOpenSftp: (host: HostProfileSummaryDto) => void;
   onConnectHost: (host: HostProfileSummaryDto) => void;
   onDuplicateTab: (tab: TerminalTabItem) => void;
+  onOpenSettings?: () => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
+}
+
+function buildOpenSshEntry(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  profile: HostProfileSummaryDto,
+  onConnectHost: (host: HostProfileSummaryDto) => void
+): ContextMenuEntry {
+  return {
+    id: "tab-ssh-open",
+    label: t("ctx.ssh_open_tab"),
+    icon: <Server className="h-3.5 w-3.5 text-emerald-400" />,
+    onSelect: () => onConnectHost(profile),
+  };
+}
+
+function buildOpenSftpEntry(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  profile: HostProfileSummaryDto,
+  onOpenSftp: (host: HostProfileSummaryDto) => void
+): ContextMenuEntry {
+  return {
+    id: "tab-sftp-separate",
+    label: t("ctx.sftp_open_tab"),
+    icon: <FolderSync className="h-3.5 w-3.5 text-emerald-400" />,
+    onSelect: () => onOpenSftp(profile),
+  };
 }
 
 export function buildTabContextItems({
@@ -69,117 +97,99 @@ export function buildTabContextItems({
   onOpenSftp,
   onConnectHost,
   onDuplicateTab,
+  onOpenSettings,
   onCloseTab,
   onCloseOtherTabs,
 }: BuildTabContextItemsOpts): ContextMenuEntry[] {
-  if (tab.tabKind === "editor") {
-    const editorItems: ContextMenuEntry[] = [
-      {
-        id: "tab-find",
-        label: t("ctx.find"),
-        icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-        shortcut: "Ctrl+F",
-        onSelect: () => onFindInTab(tab.tabId),
-      },
-    ];
+  const isEditor = tab.tabKind === "editor";
+  const isRemoteEditor = isEditor && tab.editorFile?.kind === "remote";
+  const isLocal = !isEditor && tab.hostId === "local";
+  const isRemoteSession = !isEditor && tab.hostId !== "local";
+  const connecting = isTabConnecting(tab);
+  const hostProfile =
+    isRemoteEditor || isRemoteSession
+      ? allProfiles.find((p) => p.id === tab.hostId)
+      : undefined;
+
+  const items: ContextMenuEntry[] = [];
+
+  if (isEditor) {
+    items.push({
+      id: "tab-find",
+      label: t("ctx.find"),
+      icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
+      shortcut: "Ctrl+F",
+      onSelect: () => onFindInTab(tab.tabId),
+    });
     if (tab.editorFile?.path) {
       const pathToCopy = tab.editorFile.path;
-      editorItems.push({
+      items.push({
         id: "tab-copy-path",
         label: t("ctx.sftp_copy_path"),
         icon: <Copy className="h-3.5 w-3.5" />,
         onSelect: () => void copyText(pathToCopy),
       });
     }
-    if (tab.editorFile?.kind === "remote") {
-      editorItems.push({
+    if (isRemoteEditor) {
+      items.push({
         id: "tab-reconnect",
         label: t("common.reconnect"),
         icon: <RotateCw className="h-3.5 w-3.5 text-sky-400" />,
+        disabled: connecting,
         onSelect: () => onReconnectTab(tab.tabId),
       });
-    }
-    editorItems.push(
-      { type: "separator", id: "sep-editor-close" },
-      {
-        id: "tab-close",
-        label: t("ctx.close_tab"),
-        icon: <X className="h-3.5 w-3.5" />,
-        shortcut: "Ctrl+Shift+W",
-        onSelect: () => onCloseTab(tab.tabId),
+      if (hostProfile) {
+        items.push(
+          buildOpenSshEntry(t, hostProfile, onConnectHost),
+          buildOpenSftpEntry(t, hostProfile, onOpenSftp)
+        );
       }
-    );
-    if (tabsCount > 1) {
-      editorItems.push({
-        id: "tab-close-others",
-        label: t("ctx.close_other_tabs"),
-        icon: <XCircle className="h-3.5 w-3.5" />,
-        onSelect: () => onCloseOtherTabs(tab.tabId),
-      });
     }
-    return editorItems;
-  }
-
-  const items: ContextMenuEntry[] = [
-    {
+  } else {
+    items.push({
       id: "tab-duplicate",
       label: t("ctx.duplicate_tab"),
       icon: <CopyPlus className="h-3.5 w-3.5" />,
       onSelect: () => onDuplicateTab(tab),
-    },
-  ];
-
-  // Allow inline rename only for local shell tabs; SSH tabs follow their saved Host Profile name.
-  if (tab.hostId === "local") {
-    items.push({
-      id: "tab-rename",
-      label: t("ctx.rename_tab"),
-      icon: <Edit3 className="h-3.5 w-3.5 text-sky-400" />,
-      onSelect: () => onRenameTab(tab.tabId),
     });
-  }
 
-  if (tab.tabKind !== "sftp") {
-    items.push({
-      id: "tab-find",
-      label: t("ctx.find"),
-      icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-      shortcut: "Ctrl+Shift+F",
-      onSelect: () => onFindInTab(tab.tabId),
-    });
-  }
-
-  if (tab.hostId !== "local" || isTabOffline(tab)) {
-    items.push({
-      id: "tab-reconnect",
-      label: t("common.reconnect"),
-      icon: <RotateCw className="h-3.5 w-3.5 text-sky-400" />,
-      onSelect: () => onReconnectTab(tab.tabId),
-    });
-  }
-
-  if (tab.hostId !== "local" && tab.tabKind !== "sftp") {
-    items.push(
-      buildSftpPanelItem(t, "tab-sftp-split", tab, onToggleSftp),
-      {
-        id: "tab-sftp-separate",
-        label: t("ctx.sftp_open_tab"),
-        icon: <FolderSync className="h-3.5 w-3.5 text-emerald-400" />,
-        onSelect: () => {
-          const profile = allProfiles.find((p) => p.id === tab.hostId);
-          if (profile) onOpenSftp(profile);
-        },
-      }
-    );
-  } else if (tab.hostId !== "local" && tab.tabKind === "sftp") {
-    const profile = allProfiles.find((p) => p.id === tab.hostId);
-    if (profile) {
+    // Allow inline rename only for local shell tabs; SSH tabs follow their saved Host Profile name.
+    if (isLocal) {
       items.push({
-        id: "tab-ssh-open",
-        label: t("ctx.ssh_open_tab"),
-        icon: <Server className="h-3.5 w-3.5 text-emerald-400" />,
-        onSelect: () => onConnectHost(profile),
+        id: "tab-rename",
+        label: t("ctx.rename_tab"),
+        icon: <Edit3 className="h-3.5 w-3.5 text-sky-400" />,
+        onSelect: () => onRenameTab(tab.tabId),
       });
+    }
+
+    if (tab.tabKind !== "sftp") {
+      items.push({
+        id: "tab-find",
+        label: t("ctx.find"),
+        icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
+        shortcut: "Ctrl+Shift+F",
+        onSelect: () => onFindInTab(tab.tabId),
+      });
+    }
+
+    if (!isLocal || isTabOffline(tab)) {
+      items.push({
+        id: "tab-reconnect",
+        label: t("common.reconnect"),
+        icon: <RotateCw className="h-3.5 w-3.5 text-sky-400" />,
+        disabled: connecting,
+        onSelect: () => onReconnectTab(tab.tabId),
+      });
+    }
+
+    if (isRemoteSession && tab.tabKind !== "sftp") {
+      items.push(buildSftpPanelItem(t, "tab-sftp-split", tab, onToggleSftp));
+      if (hostProfile) {
+        items.push(buildOpenSftpEntry(t, hostProfile, onOpenSftp));
+      }
+    } else if (isRemoteSession && tab.tabKind === "sftp" && hostProfile) {
+      items.push(buildOpenSshEntry(t, hostProfile, onConnectHost));
     }
   }
 
@@ -188,23 +198,33 @@ export function buildTabContextItems({
     isAppElevated,
     shellProfiles,
     defaultShellProfile,
-    contextShell: tab.hostId === "local" ? tab.shellProfile : undefined,
+    contextShell: isLocal ? tab.shellProfile : undefined,
     onNewLocalTab,
   });
 
-  items.push(
-    ...(launchItems.length > 0
-      ? [{ type: "separator" as const, id: "sep-tab-1" }, ...launchItems]
-      : []),
-    { type: "separator", id: "sep-tab-2" },
-    {
-      id: "tab-close",
-      label: t("ctx.close_tab"),
-      icon: <X className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+W",
-      onSelect: () => onCloseTab(tab.tabId),
-    }
-  );
+  if (launchItems.length > 0) {
+    items.push({ type: "separator", id: "sep-tab-1" }, ...launchItems);
+  }
+
+  items.push({ type: "separator", id: "sep-tab-2" });
+
+  if (onOpenSettings) {
+    items.push({
+      id: "tab-settings",
+      label: t("ctx.settings"),
+      icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
+      shortcut: "Ctrl+,",
+      onSelect: onOpenSettings,
+    });
+  }
+
+  items.push({
+    id: "tab-close",
+    label: t("ctx.close_tab"),
+    icon: <X className="h-3.5 w-3.5" />,
+    shortcut: "Ctrl+Shift+W",
+    onSelect: () => onCloseTab(tab.tabId),
+  });
 
   if (tabsCount > 1) {
     items.push({
@@ -215,6 +235,54 @@ export function buildTabContextItems({
     });
   }
 
+  return items;
+}
+
+export interface BuildTabBarContextItemsOpts {
+  t: (key: string, params?: Record<string, string | number>) => string;
+  isMaximized: boolean;
+  isAppElevated: boolean;
+  shellProfiles: ShellProfile[];
+  defaultShellProfile: ShellProfile | null;
+  onNewLocalTab: (opts?: LocalTabLaunchOpts) => void;
+  onOpenSettings?: () => void;
+  onWindowAction: (action: WindowSysAction) => void;
+}
+
+export function buildTabBarContextItems({
+  t,
+  isMaximized,
+  isAppElevated,
+  shellProfiles,
+  defaultShellProfile,
+  onNewLocalTab,
+  onOpenSettings,
+  onWindowAction,
+}: BuildTabBarContextItemsOpts): ContextMenuEntry[] {
+  const items: ContextMenuEntry[] = [];
+  const launchItems = buildLaunchItems({
+    t,
+    isAppElevated,
+    shellProfiles,
+    defaultShellProfile,
+    onNewLocalTab,
+  });
+  if (launchItems.length > 0) {
+    items.push(...launchItems);
+  }
+  if (onOpenSettings) {
+    items.push({
+      id: "tabbar-settings",
+      label: t("ctx.settings"),
+      icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
+      shortcut: "Ctrl+,",
+      onSelect: onOpenSettings,
+    });
+  }
+  if (items.length > 0) {
+    items.push({ type: "separator", id: "sep-tabbar-win" });
+  }
+  items.push(...buildTabBarWindowMenu(t, isMaximized, onWindowAction));
   return items;
 }
 
@@ -234,6 +302,7 @@ interface UseTabMenusOpts {
   onOpenSftp: (host: HostProfileSummaryDto) => void;
   onConnectHost: (host: HostProfileSummaryDto) => void;
   onDuplicateTab: (tab: TerminalTabItem) => void;
+  onOpenSettings?: () => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
 }
@@ -255,6 +324,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
     onOpenSftp,
     onConnectHost,
     onDuplicateTab,
+    onOpenSettings,
     onCloseTab,
     onCloseOtherTabs,
   } = opts;
@@ -280,6 +350,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
           onOpenSftp,
           onConnectHost,
           onDuplicateTab,
+          onOpenSettings,
           onCloseTab,
           onCloseOtherTabs,
         }),
@@ -295,6 +366,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
       onDuplicateTab,
       onFindInTab,
       onNewLocalTab,
+      onOpenSettings,
       onOpenSftp,
       onReconnectTab,
       onRenameTab,
@@ -317,17 +389,34 @@ export function useTabMenus(opts: UseTabMenusOpts) {
           setContextMenu({
             x,
             y,
-            items: buildTabBarWindowMenu(t, isMaximized, (action) => {
-              if (action === "move") {
-                void startInteractiveWindowMove();
-                return;
-              }
-              void windowApi.windowSysCommand(action).catch(() => {});
+            items: buildTabBarContextItems({
+              t,
+              isMaximized,
+              isAppElevated,
+              shellProfiles,
+              defaultShellProfile,
+              onNewLocalTab,
+              onOpenSettings,
+              onWindowAction: (action) => {
+                if (action === "move") {
+                  void startInteractiveWindowMove();
+                  return;
+                }
+                void windowApi.windowSysCommand(action).catch(() => {});
+              },
             }),
           });
         });
     },
-    [setContextMenu, t]
+    [
+      defaultShellProfile,
+      isAppElevated,
+      onNewLocalTab,
+      onOpenSettings,
+      setContextMenu,
+      shellProfiles,
+      t,
+    ]
   );
 
   return { openTabMenu, openTabBarMenu };
