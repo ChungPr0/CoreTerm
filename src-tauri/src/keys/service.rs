@@ -47,8 +47,6 @@ impl KeyService {
         }
     }
 
-    /// Returns true only when `path` resides directly inside canonicalized `self.keys_dir`
-    /// and (if present on disk) is a regular non-symlink file.
     fn is_direct_managed_key_file(&self, path: &Path) -> bool {
         let Ok(canon_keys_dir) = fs::canonicalize(&self.keys_dir) else {
             return false;
@@ -306,7 +304,6 @@ mod tests {
         assert!(svc.is_direct_managed_key_file(&priv_path));
         assert!(svc.is_direct_managed_key_file(&pub_path));
 
-        // Sibling files outside keys_dir (e.g. data/app.db) must never be considered managed keys.
         let db_file = tmp.path().join("data").join("app.db");
         assert!(!svc.is_direct_managed_key_file(&db_file));
         let nested_dir = svc.keys_dir.join("nested");
@@ -320,7 +317,6 @@ mod tests {
         assert!(!priv_path.exists());
         assert!(!pub_path.exists());
 
-        // Attempting to delete a key record pointing at a protected OS file must still be blocked.
         #[cfg(windows)]
         let protected_target = std::env::var("WINDIR")
             .map(|w| PathBuf::from(w).join("win.ini"))

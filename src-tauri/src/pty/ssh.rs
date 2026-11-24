@@ -136,8 +136,6 @@ pub(super) fn prepare_ssh_launch(
     })
 }
 
-/// Starts a session-scoped `SSH_ASKPASS` local IPC server that serves authentic OpenSSH
-/// credential, passphrase, 2FA, and host-key prompts without scraping ConPTY output.
 pub(super) fn spawn_ssh_askpass_server(ctx: SshAskpassContext) -> CoreResult<AskpassServerHandle> {
     let mut policy_state = AskpassPolicyState {
         auth_method: ctx.auth_method.clone(),

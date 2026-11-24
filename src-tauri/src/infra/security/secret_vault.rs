@@ -209,7 +209,6 @@ mod tests {
         );
         vault.delete_secret(&key_ref).expect("delete");
         assert!(vault.get_secret(&key_ref).expect("get after delete").is_none());
-        // Deleting missing entry is idempotent.
         vault.delete_secret(&key_ref).expect("delete missing");
 
         let failing_backend = Arc::new(MockKeyring {

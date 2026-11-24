@@ -99,8 +99,6 @@ fn canonicalize_deepest_existing(abs_input: &Path) -> PathBuf {
     lexically_normalize(abs_input)
 }
 
-/// Canonicalizes `path` if it exists; otherwise walks up ancestors to canonicalize the deepest
-/// existing parent and re-joins the remaining normalized path segments with `\\?\` stripped.
 fn resolve_target_or_parent(path: &Path) -> PathBuf {
     if let Ok(canon) = fs::canonicalize(path) {
         return strip_extended_prefix(&canon);
@@ -333,9 +331,6 @@ pub fn validate_local_write_path(path: &Path) -> CoreResult<()> {
     check_protected_system_and_app_dirs(path, &target, "Writing", false)
 }
 
-/// Guards the root local target directory of an SFTP download.
-/// Blocks drive roots, protected OS directories, and CoreTerm application data directories,
-/// while permitting downloads into the user's home/profile directory.
 pub fn validate_local_download_root(path: &Path) -> CoreResult<()> {
     if path.as_os_str().is_empty() {
         return Err(CoreError::Validation(

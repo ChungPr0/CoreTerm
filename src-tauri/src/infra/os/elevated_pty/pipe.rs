@@ -399,15 +399,13 @@ pub(super) fn verify_pipe_server_pid(pipe: HANDLE, expected_pid: u32) -> Result<
     Ok(())
 }
 
-/// Verifies the spawned worker process token is elevated when accessible.
-/// Medium-integrity callers cannot always open high-integrity process tokens (`ERROR_ACCESS_DENIED`),
-/// in which case the elevated worker also enforces `is_process_elevated()` on its own token.
 pub(super) fn verify_worker_process_elevation(proc_handle: HANDLE) -> Result<(), String> {
     unsafe {
         let mut token: HANDLE = std::ptr::null_mut();
         if OpenProcessToken(proc_handle, TOKEN_QUERY, &mut token) == 0 {
             let err = GetLastError();
             if err == ERROR_ACCESS_DENIED {
+                // Medium-integrity callers cannot open high-integrity tokens; the worker also enforces is_process_elevated().
                 return Ok(());
             }
             return Err(format!(

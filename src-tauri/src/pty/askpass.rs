@@ -92,7 +92,6 @@ fn is_ssh_password_prompt(line: &str) -> bool {
     false
 }
 
-/// Classifies an authentic OpenSSH `SSH_ASKPASS` prompt string.
 pub fn classify_askpass_prompt(prompt: &str) -> AskpassPromptKind {
     let lower = prompt.to_lowercase();
     if lower.contains("continue connecting (yes/no") {
@@ -114,8 +113,6 @@ pub fn classify_askpass_prompt(prompt: &str) -> AskpassPromptKind {
     AskpassPromptKind::InteractiveChallenge
 }
 
-/// Decides whether an `SSH_ASKPASS` prompt should be auto-filled from cached/saved credentials
-/// or routed to an interactive user modal.
 pub fn decide_askpass_action<FPw, FSavedPw, FPass, FSavedPass>(
     state: &mut AskpassPolicyState,
     prompt: &str,
@@ -183,20 +180,17 @@ where
                 clear_cached_secret,
             }
         }
-        AskpassPromptKind::InteractiveChallenge => {
-            // Never auto-fill 2FA/OTP or arbitrary keyboard-interactive challenges.
-            AskpassDecision::PromptUserSecret {
-                prompt_type: "PASSWORD",
-                prompt_text: if prompt_text.is_empty() {
-                    prompt.trim().to_string()
-                } else {
-                    prompt_text
-                },
-                attempt: 1,
-                is_reusable: false,
-                clear_cached_secret: false,
-            }
-        }
+        AskpassPromptKind::InteractiveChallenge => AskpassDecision::PromptUserSecret {
+            prompt_type: "PASSWORD",
+            prompt_text: if prompt_text.is_empty() {
+                prompt.trim().to_string()
+            } else {
+                prompt_text
+            },
+            attempt: 1,
+            is_reusable: false,
+            clear_cached_secret: false,
+        },
     }
 }
 
@@ -266,7 +260,6 @@ pub fn is_valid_askpass_pipe_name(pipe_name: &str) -> bool {
     }
 }
 
-/// Returns true when the current process was launched by OpenSSH as CoreTerm's `SSH_ASKPASS` helper.
 pub fn should_run_askpass_helper() -> bool {
     std::env::var_os(ENV_ASKPASS_MODE).is_some_and(|v| v == "1")
         && std::env::var_os(ENV_ASKPASS_PIPE).is_some()
@@ -281,9 +274,6 @@ fn extract_helper_prompt_from_args(args: &[String]) -> String {
     }
 }
 
-/// Runs the self-invoked `SSH_ASKPASS` helper process: authenticates to CoreTerm's local
-/// askpass channel using the env-var token (never CLI args), writes the zeroized secret to stdout,
-/// and exits 0 on success or 1 on cancel/error.
 pub fn run_askpass_helper() -> i32 {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let prompt = extract_helper_prompt_from_args(&args);
@@ -892,7 +882,6 @@ mod tests {
             passphrase_attempts: 0,
         };
 
-        // First password prompt auto-fills from saved password.
         let d1 = decide_askpass_action(
             &mut pw_state,
             "deploy@10.0.0.1's password: ",
@@ -903,7 +892,6 @@ mod tests {
         );
         assert!(matches!(d1, AskpassDecision::AutoFill(ref s) if s.as_str() == "s3cr3t"));
 
-        // Second password prompt must prompt user manually and clear cached secret.
         let d2 = decide_askpass_action(
             &mut pw_state,
             "deploy@10.0.0.1's password: ",
@@ -923,7 +911,6 @@ mod tests {
             }
         ));
 
-        // Crafted passphrase prompt during PASSWORD auth MUST NEVER auto-fill key passphrase.
         let d3 = decide_askpass_action(
             &mut pw_state,
             "Enter passphrase for key '/id_ed25519': ",
@@ -941,7 +928,6 @@ mod tests {
             }
         ));
 
-        // 2FA/OTP challenge MUST NEVER auto-fill password or cache response.
         let d4 = decide_askpass_action(
             &mut pw_state,
             "Verification code: ",
@@ -974,17 +960,14 @@ mod tests {
         let pipe = server.pipe_name().to_string();
         let token = server.token().to_string();
 
-        // Wrong token is rejected even with valid prompt.
         let bad_res = request_askpass_secret(&pipe, "wrong-token", "user@host's password:")
             .expect("ipc completes");
         assert!(bad_res.is_none());
 
-        // Valid token + password prompt returns secret.
         let ok_res = request_askpass_secret(&pipe, &token, "user@host's password:")
             .expect("ipc completes");
         assert_eq!(ok_res.as_deref().map(String::as_str), Some("vault-pw-123"));
 
-        // Valid token + cancelled prompt returns None.
         let cancel_res =
             request_askpass_secret(&pipe, &token, "Verification code:").expect("ipc completes");
         assert!(cancel_res.is_none());

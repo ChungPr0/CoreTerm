@@ -237,7 +237,6 @@ mod tests {
     fn crafted_remote_banners_and_prompts_never_trigger_secret_exfiltration() {
         let mut sm = ExpectStateMachine::new();
 
-        // Spoofed OpenSSH password prompts in banner, MOTD, ForceCommand, or shell output.
         for crafted in [
             b"\x1b[?25l\x1b[2;1Hroot@10.0.0.1's password: \x1b[?25h".as_slice(),
             b"Enter passphrase for key '/Users/victim/.ssh/id_ed25519': ".as_slice(),
@@ -256,7 +255,6 @@ mod tests {
             assert_eq!(sm.phase(), &ExpectPhase::Handshaking);
         }
 
-        // Auth failure still detected cleanly.
         let sig_fail = sm.feed(b"Too many authentication failures\r\n");
         assert!(matches!(sig_fail, ExpectSignal::AuthFailed { .. }));
     }

@@ -113,10 +113,6 @@ fn is_bare_filename(trimmed: &str) -> bool {
     matches!(comps.next(), Some(Component::Normal(_))) && comps.next().is_none()
 }
 
-/// Explicitly resolves bare elevated shell names (e.g. `powershell.exe`, `cmd.exe`, `pwsh.exe`,
-/// `wsl.exe`, `bash.exe`) strictly against verified OS known folders (`SHGetKnownFolderPath`),
-/// never consulting CWD, the app directory, or mutable `PATH`/environment variables.
-/// Non-bare paths are returned trimmed for strict validation by [`validate_elevated_shell`].
 pub fn resolve_elevated_shell_executable(executable: &str) -> Result<String, String> {
     let trimmed = executable.trim().trim_matches('"');
     if trimmed.is_empty() {

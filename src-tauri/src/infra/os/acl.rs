@@ -107,8 +107,6 @@ fn apply_owner_only_dacl(path: &Path, access_mask: u32, inheritance: u32) -> Cor
     }
 }
 
-/// Restricts private key file permissions to the current user only (`0o600` on Unix;
-/// protected owner-only DACL without inheritance on Windows).
 pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
     #[cfg(windows)]
     {
@@ -130,8 +128,6 @@ pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
     }
 }
 
-/// Restricts a private key directory (`keys/`) to the current user only (`0o700` on Unix;
-/// inheritable protected owner-only DACL on Windows so newly created key files inherit owner-only ACLs).
 pub fn restrict_private_key_dir_acl(path: &Path) -> CoreResult<()> {
     #[cfg(windows)]
     {

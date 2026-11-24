@@ -18,7 +18,6 @@ use windows_sys::Win32::UI::Shell::{
 #[cfg(windows)]
 use crate::core::path_guard::clean_display_path;
 
-/// Resolves a Windows Known Folder via `SHGetKnownFolderPath`, avoiding mutable environment variables.
 #[cfg(windows)]
 pub fn known_folder_path(folder_id: &GUID) -> Option<PathBuf> {
     unsafe {
@@ -43,7 +42,6 @@ pub fn known_folder_path(folder_id: &GUID) -> Option<PathBuf> {
     }
 }
 
-/// Resolves the Windows `System32` directory via `FOLDERID_System`, falling back to `SystemRoot\System32`.
 #[cfg(windows)]
 pub fn system32_dir() -> Option<PathBuf> {
     if let Some(dir) = known_folder_path(&FOLDERID_System) {
@@ -60,7 +58,6 @@ pub fn system32_dir() -> Option<PathBuf> {
     None
 }
 
-/// Resolves a binary inside Windows `System32` (e.g. `netstat.exe`, `tasklist.exe`).
 #[cfg(windows)]
 pub fn system32_binary(binary_name: &str) -> PathBuf {
     if let Some(sys32) = system32_dir() {
@@ -72,7 +69,6 @@ pub fn system32_binary(binary_name: &str) -> PathBuf {
     PathBuf::from(binary_name)
 }
 
-/// Returns canonicalized, `\\?\`-stripped trusted OS roots for elevated shell binaries.
 #[cfg(windows)]
 pub fn trusted_elevated_shell_roots() -> Vec<PathBuf> {
     let ids = [
@@ -94,7 +90,6 @@ pub fn trusted_elevated_shell_roots() -> Vec<PathBuf> {
     roots
 }
 
-/// Returns verified `Program Files` and `Program Files (x86)` directories via `SHGetKnownFolderPath`.
 #[cfg(windows)]
 pub fn known_program_files_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
@@ -108,7 +103,6 @@ pub fn known_program_files_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Returns verified `Windows` directory via `SHGetKnownFolderPath`.
 #[cfg(windows)]
 pub fn known_windows_dir() -> Option<PathBuf> {
     known_folder_path(&FOLDERID_Windows)

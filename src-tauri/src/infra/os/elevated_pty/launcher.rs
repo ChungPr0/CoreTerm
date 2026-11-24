@@ -180,14 +180,12 @@ pub fn spawn_elevated_pty(
     wait_connect_event(out_pending, Some(worker_proc.0), 20_000)?;
     wait_connect_event(in_pending, Some(worker_proc.0), 10_000)?;
 
-    // Authenticate peer process ID on both named pipes before exchanging any frames.
     verify_pipe_client_pid(pipe_out_handle.0, worker_pid)?;
     verify_pipe_client_pid(pipe_in_handle.0, worker_pid)?;
 
     let pipe_out = Arc::new(OverlappedPipe::from_handle(pipe_out_handle));
     let pipe_in = Arc::new(OverlappedPipe::from_handle(pipe_in_handle));
 
-    // Deliver challenge nonce over the PID-verified pipe (never via process command line).
     let mut challenge = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(&mut *challenge);
 
