@@ -71,9 +71,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $isTag = "${{ github.ref }}".StartsWith("refs/tags/")
+          $isTag = "$env:GITHUB_REF".StartsWith("refs/tags/")
           if ($isTag) {
-            $tagName = "${{ github.ref_name }}"
+            $tagName = $env:GITHUB_REF_NAME
             $isPre = $tagName.StartsWith("v0.") -or $tagName.Contains("-")
             "tag=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "name=CoreTerm $tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -87,7 +87,7 @@ jobs:
             "rolling=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
             $pkg = Get-Content package.json -Raw | ConvertFrom-Json
-            $shortSha = "${{ github.sha }}".Substring(0, 7)
+            $shortSha = $env:GITHUB_SHA.Substring(0, 7)
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -fa nightly -m "Rolling build from main ($shortSha)"

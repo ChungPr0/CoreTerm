@@ -5,9 +5,9 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::path_guard::validate_delete_path;
+use crate::core::path_guard::{clean_display_path, validate_delete_path};
 use crate::infra::db::{key_repo, SqliteDb};
-use crate::infra::os::restrict_private_key_acl;
+use crate::infra::os::restrict_private_key_dir_acl;
 use crate::infra::security::SecretVault;
 use crate::ipc::dto::{
     DeleteResultDto, GenerateSshKeyRequestDto, ImportSshKeyRequestDto, SshKeyDto,
@@ -26,12 +26,56 @@ impl KeyService {
     pub fn new(db: SqliteDb, vault: SecretVault, app_data_dir: &Path) -> CoreResult<Self> {
         let keys_dir = app_data_dir.join("keys");
         fs::create_dir_all(&keys_dir)?;
-        let _ = restrict_private_key_acl(&keys_dir);
+        let _ = restrict_private_key_dir_acl(&keys_dir);
         Ok(Self {
             db,
             vault,
             keys_dir,
         })
+    }
+
+    fn normalized_dir_eq(a: &Path, b: &Path) -> bool {
+        let sa = clean_display_path(a);
+        let sb = clean_display_path(b);
+        #[cfg(windows)]
+        {
+            sa.eq_ignore_ascii_case(&sb)
+        }
+        #[cfg(not(windows))]
+        {
+            sa == sb
+        }
+    }
+
+    fn is_direct_managed_key_file(&self, path: &Path) -> bool {
+        let Ok(canon_keys_dir) = fs::canonicalize(&self.keys_dir) else {
+            return false;
+        };
+        let Some(file_name) = path.file_name() else {
+            return false;
+        };
+        if file_name.is_empty() {
+            return false;
+        }
+
+        match fs::symlink_metadata(path) {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() || !meta.is_file() {
+                    return false;
+                }
+                let Ok(canon_path) = fs::canonicalize(path) else {
+                    return false;
+                };
+                canon_path
+                    .parent()
+                    .is_some_and(|p| Self::normalized_dir_eq(p, &canon_keys_dir))
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => path
+                .parent()
+                .and_then(|p| fs::canonicalize(p).ok())
+                .is_some_and(|canon_parent| Self::normalized_dir_eq(&canon_parent, &canon_keys_dir)),
+            Err(_) => false,
+        }
     }
 
     pub fn list(&self) -> CoreResult<Vec<SshKeyDto>> {
@@ -179,9 +223,14 @@ impl KeyService {
     pub fn delete(&self, key_id: &str, delete_file_from_disk: bool) -> CoreResult<DeleteResultDto> {
         let conn = self.db.lock_conn()?;
         let key_info = key_repo::get_delete_info(&conn, key_id)?;
+        let mut is_managed_key = false;
         if delete_file_from_disk {
             if let Some((ref priv_path, _)) = key_info {
-                validate_delete_path(Path::new(priv_path))?;
+                let target = Path::new(priv_path);
+                is_managed_key = self.is_direct_managed_key_file(target);
+                if !is_managed_key {
+                    validate_delete_path(target)?;
+                }
             }
         }
         let affected = key_repo::delete(&conn, key_id)?;
@@ -192,7 +241,16 @@ impl KeyService {
             }
             if delete_file_from_disk {
                 let _ = fs::remove_file(&priv_path);
-                let _ = fs::remove_file(format!("{priv_path}.pub"));
+                let pub_path = format!("{priv_path}.pub");
+                let pub_target = Path::new(&pub_path);
+                let allow_pub_delete = if is_managed_key {
+                    self.is_direct_managed_key_file(pub_target)
+                } else {
+                    validate_delete_path(pub_target).is_ok()
+                };
+                if allow_pub_delete {
+                    let _ = fs::remove_file(pub_target);
+                }
             }
         }
 
@@ -214,5 +272,83 @@ impl KeyService {
         self.vault.store_secret(&ref_id, secret)?;
         let conn = self.db.lock_conn()?;
         key_repo::set_saved_secret(&conn, key_id, &ref_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn deletes_managed_key_inside_keys_dir_and_rejects_outside_files() {
+        let tmp = tempdir().expect("tempdir");
+        let db = SqliteDb::init(tmp.path()).expect("init db");
+        let vault = SecretVault::new_in_memory();
+        let svc = KeyService::new(db, vault, tmp.path()).expect("key service");
+
+        let created = svc
+            .generate(GenerateSshKeyRequestDto {
+                name: "managed-ed25519".to_string(),
+                key_type: "ED25519".to_string(),
+                comment: Some("test@coreterm".to_string()),
+                passphrase: Some("pass123".to_string()),
+                set_default: false,
+            })
+            .expect("generate key");
+
+        let priv_path = PathBuf::from(&created.private_key_path);
+        let pub_path = PathBuf::from(format!("{}.pub", created.private_key_path));
+        assert!(priv_path.is_file());
+        assert!(pub_path.is_file());
+        assert!(svc.is_direct_managed_key_file(&priv_path));
+        assert!(svc.is_direct_managed_key_file(&pub_path));
+
+        let db_file = tmp.path().join("data").join("app.db");
+        assert!(!svc.is_direct_managed_key_file(&db_file));
+        let nested_dir = svc.keys_dir.join("nested");
+        fs::create_dir_all(&nested_dir).unwrap();
+        let nested_file = nested_dir.join("sub.key");
+        fs::write(&nested_file, b"sub").unwrap();
+        assert!(!svc.is_direct_managed_key_file(&nested_file));
+
+        let res = svc.delete(&created.id, true).expect("delete managed key");
+        assert!(res.deleted);
+        assert!(!priv_path.exists());
+        assert!(!pub_path.exists());
+
+        #[cfg(windows)]
+        let protected_target = std::env::var("WINDIR")
+            .map(|w| PathBuf::from(w).join("win.ini"))
+            .unwrap_or_else(|_| PathBuf::from(r"C:\Windows\win.ini"));
+        #[cfg(not(windows))]
+        let protected_target = PathBuf::from("/etc/hosts");
+
+        if protected_target.is_file() {
+            let mut conn = svc.db.lock_conn().expect("lock db");
+            let protected_str = protected_target.to_string_lossy().into_owned();
+            key_repo::insert(
+                &mut conn,
+                &key_repo::NewKeyRecord {
+                    id: "protected-key-ref",
+                    name: "protected-ref",
+                    key_type: "IMPORTED",
+                    private_key_path: &protected_str,
+                    public_key_content: None,
+                    fingerprint: "SHA256:protected-test",
+                    has_passphrase: false,
+                    secret_ref_id: None,
+                    set_default: false,
+                },
+            )
+            .expect("insert protected key ref");
+            drop(conn);
+
+            assert!(
+                svc.delete("protected-key-ref", true).is_err(),
+                "KeyService::delete must refuse deleting files outside keys_dir in protected dirs"
+            );
+            assert!(protected_target.is_file());
+        }
     }
 }

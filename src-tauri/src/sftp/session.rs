@@ -96,7 +96,6 @@ impl RemoteSftpClient {
         if config.options.compression {
             ssh_cfg.preferred = Preferred {
                 compression: Cow::Borrowed(&[
-                    russh::compression::ZLIB_LEGACY,
                     russh::compression::ZLIB,
                     russh::compression::NONE,
                 ]),

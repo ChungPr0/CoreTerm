@@ -12,7 +12,7 @@ use ssh_key::{Algorithm, HashAlg, LineEnding, PrivateKey};
 use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::infra::os::restrict_private_key_acl;
+use crate::infra::os::{restrict_private_key_acl, restrict_private_key_dir_acl};
 #[cfg(windows)]
 use crate::infra::os::CREATE_NO_WINDOW;
 
@@ -47,12 +47,9 @@ impl SshKeyEngine {
     fn resolve_ssh_keygen_binaries() -> Vec<PathBuf> {
         let mut bins = Vec::new();
         #[cfg(windows)]
-        if let Some(windir) = std::env::var_os("WINDIR") {
-            let sys_bin = Path::new(&windir)
-                .join("System32")
-                .join("OpenSSH")
-                .join("ssh-keygen.exe");
-            if sys_bin.exists() {
+        if let Some(sys32) = crate::infra::os::system32_dir() {
+            let sys_bin = sys32.join("OpenSSH").join("ssh-keygen.exe");
+            if sys_bin.is_file() {
                 bins.push(sys_bin);
             }
         }
@@ -81,7 +78,8 @@ impl SshKeyEngine {
 
             if let Ok(status) = cmd.status() {
                 if status.success() {
-                    if let Ok(bytes) = fs::read(priv_path) {
+                    if let Ok(raw_bytes) = fs::read(priv_path) {
+                        let bytes = Zeroizing::new(raw_bytes);
                         if let Ok(parsed) = PrivateKey::from_openssh(&bytes) {
                             return Some(parsed);
                         }
@@ -102,6 +100,7 @@ impl SshKeyEngine {
         passphrase: Option<&str>,
     ) -> CoreResult<GeneratedKeyMaterial> {
         fs::create_dir_all(keys_dir)?;
+        restrict_private_key_dir_acl(keys_dir)?;
 
         let (algorithm, normalized_type, ext) = match key_type {
             "ED25519" => (Algorithm::Ed25519, "ED25519", "id_ed25519"),
@@ -233,16 +232,18 @@ impl SshKeyEngine {
     ) -> CoreResult<InspectedKeyMaterial> {
         let final_path = if copy_to_managed_dir && source_path.exists() {
             fs::create_dir_all(keys_dir)?;
+            restrict_private_key_dir_acl(keys_dir)?;
             let dest = keys_dir.join(format!("{key_id}.imported_key"));
             fs::copy(source_path, &dest)?;
+            restrict_private_key_acl(&dest)?;
             dest
         } else {
-            source_path.to_path_buf()
+            let p = source_path.to_path_buf();
+            if p.exists() {
+                let _ = restrict_private_key_acl(&p);
+            }
+            p
         };
-
-        if final_path.exists() {
-            let _ = restrict_private_key_acl(&final_path);
-        }
 
         Ok(Self::inspect_key_file(&final_path, has_passphrase_hint))
     }

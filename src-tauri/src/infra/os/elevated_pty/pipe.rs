@@ -4,22 +4,25 @@ use std::os::windows::io::FromRawHandle;
 use std::sync::Arc;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_NO_DATA,
-    ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+    CloseHandle, GetLastError, LocalFree, ERROR_ACCESS_DENIED, ERROR_BROKEN_PIPE, ERROR_IO_PENDING,
+    ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
+    WAIT_OBJECT_0,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
-use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Security::{
+    GetTokenInformation, TokenElevation, SECURITY_ATTRIBUTES, TOKEN_ELEVATION, TOKEN_QUERY,
+};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE,
     FILE_FLAG_OVERLAPPED, OPEN_EXISTING, SECURITY_ANONYMOUS, SECURITY_SQOS_PRESENT,
 };
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
-    PIPE_TYPE_BYTE, PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId, GetNamedPipeServerProcessId,
+    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateEventW, WaitForMultipleObjects, WaitForSingleObject,
+    CreateEventW, OpenProcessToken, WaitForMultipleObjects, WaitForSingleObject,
 };
 
 use super::protocol::read_frame;
@@ -352,12 +355,94 @@ pub(super) fn open_client_pipe(name: &str, access: u32) -> Result<File, String> 
     unreachable!()
 }
 
+pub(super) fn get_pipe_client_pid(pipe: HANDLE) -> Result<u32, String> {
+    let mut pid: u32 = 0;
+    let ok = unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) };
+    if ok == 0 || pid == 0 {
+        return Err(format!(
+            "Failed to query named pipe client PID: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(pid)
+}
+
+pub(super) fn get_pipe_server_pid(pipe: HANDLE) -> Result<u32, String> {
+    let mut pid: u32 = 0;
+    let ok = unsafe { GetNamedPipeServerProcessId(pipe, &mut pid) };
+    if ok == 0 || pid == 0 {
+        return Err(format!(
+            "Failed to query named pipe server PID: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    Ok(pid)
+}
+
+pub(super) fn verify_pipe_client_pid(pipe: HANDLE, expected_pid: u32) -> Result<(), String> {
+    let actual_pid = get_pipe_client_pid(pipe)?;
+    if actual_pid != expected_pid {
+        return Err(format!(
+            "Elevated PTY pipe client PID mismatch (expected {expected_pid}, got {actual_pid})"
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn verify_pipe_server_pid(pipe: HANDLE, expected_pid: u32) -> Result<(), String> {
+    let actual_pid = get_pipe_server_pid(pipe)?;
+    if actual_pid != expected_pid {
+        return Err(format!(
+            "Elevated PTY pipe server PID mismatch (expected {expected_pid}, got {actual_pid})"
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn verify_worker_process_elevation(proc_handle: HANDLE) -> Result<(), String> {
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(proc_handle, TOKEN_QUERY, &mut token) == 0 {
+            let err = GetLastError();
+            if err == ERROR_ACCESS_DENIED {
+                // Medium-integrity callers cannot open high-integrity tokens; the worker also enforces is_process_elevated().
+                return Ok(());
+            }
+            return Err(format!(
+                "Failed to open elevated worker token: {}",
+                io::Error::from_raw_os_error(err as i32)
+            ));
+        }
+        let _token_guard = OwnedHandle(token);
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut ret_len = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            &mut elevation as *mut _ as *mut _,
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut ret_len,
+        );
+        if ok == 0 {
+            return Err(format!(
+                "Failed to query elevated worker token elevation: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        if elevation.TokenIsElevated == 0 {
+            return Err("Elevated PTY worker process is not running with an elevated token".to_string());
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::infra::os::elevated_pty::protocol::{
-        read_frame, write_frame, FRAME_DATA, FRAME_EXIT,
+        read_frame, write_frame, FRAME_DATA, FRAME_EXIT, FRAME_HANDSHAKE,
     };
+    use std::os::windows::io::AsRawHandle;
     use std::time::Duration;
     use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
     use windows_sys::Win32::Storage::FileSystem::{PIPE_ACCESS_INBOUND, PIPE_ACCESS_OUTBOUND};
@@ -371,10 +456,11 @@ mod tests {
     }
 
     #[test]
-    fn test_overlapped_named_pipe_connect_and_roundtrip() {
+    fn test_overlapped_named_pipe_connect_peer_pid_and_roundtrip() {
         let _ = crate::infra::os::is_process_elevated();
 
-        let id = format!("test_{}", std::process::id());
+        let self_pid = std::process::id();
+        let id = format!("test_{self_pid}");
         let pipe_in_name = format!(r"\\.\pipe\coreterm_{id}_in");
         let pipe_out_name = format!(r"\\.\pipe\coreterm_{id}_out");
 
@@ -391,7 +477,17 @@ mod tests {
             let mut out_file = open_client_pipe(&client_out_name, GENERIC_WRITE).unwrap();
             let mut in_file = open_client_pipe(&client_in_name, GENERIC_READ).unwrap();
 
-            write_frame(&mut out_file, FRAME_DATA, b"handshake-ok").unwrap();
+            verify_pipe_server_pid(out_file.as_raw_handle() as HANDLE, self_pid).unwrap();
+            verify_pipe_server_pid(in_file.as_raw_handle() as HANDLE, self_pid).unwrap();
+            assert!(
+                verify_pipe_server_pid(out_file.as_raw_handle() as HANDLE, self_pid.wrapping_add(1))
+                    .is_err()
+            );
+
+            let challenge = read_frame(&mut in_file).unwrap();
+            assert_eq!(challenge, Some((FRAME_HANDSHAKE, b"nonce-123".to_vec())));
+            write_frame(&mut out_file, FRAME_HANDSHAKE, b"nonce-123").unwrap();
+
             let incoming = read_frame(&mut in_file).unwrap();
             assert_eq!(incoming, Some((FRAME_DATA, b"ping".to_vec())));
             write_frame(&mut out_file, FRAME_EXIT, &[1, 0, 0, 0, 0]).unwrap();
@@ -400,12 +496,17 @@ mod tests {
         wait_connect_event(out_pending, None, 5_000).unwrap();
         wait_connect_event(in_pending, None, 5_000).unwrap();
 
+        verify_pipe_client_pid(pipe_out_handle.0, self_pid).unwrap();
+        verify_pipe_client_pid(pipe_in_handle.0, self_pid).unwrap();
+        assert!(verify_pipe_client_pid(pipe_out_handle.0, self_pid.wrapping_add(1)).is_err());
+
         let mut reader = PipeReader(Arc::new(OverlappedPipe::from_handle(pipe_out_handle)));
         let mut writer = PipeWriter(Arc::new(OverlappedPipe::from_handle(pipe_in_handle)));
 
+        write_frame(&mut writer, FRAME_HANDSHAKE, b"nonce-123").unwrap();
         assert_eq!(
             reader.read_next_frame().unwrap(),
-            Some((FRAME_DATA, b"handshake-ok".to_vec()))
+            Some((FRAME_HANDSHAKE, b"nonce-123".to_vec()))
         );
         write_frame(&mut writer, FRAME_DATA, b"ping").unwrap();
         assert_eq!(
@@ -414,5 +515,12 @@ mod tests {
         );
 
         client.join().unwrap();
+    }
+
+    #[test]
+    fn verify_worker_process_elevation_matches_current_token() {
+        let current = unsafe { windows_sys::Win32::System::Threading::GetCurrentProcess() };
+        let res = verify_worker_process_elevation(current);
+        assert_eq!(res.is_ok(), crate::infra::os::is_process_elevated());
     }
 }

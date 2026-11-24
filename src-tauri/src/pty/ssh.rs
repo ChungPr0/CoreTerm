@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
+use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
 use tauri::AppHandle;
@@ -10,11 +11,17 @@ use crate::hosts::HostService;
 use crate::infra::security::{TabSecretKind, TabSecretStore};
 use crate::ipc::dto::{PortForwardStatusDto, SessionHostKeyPromptEventDto};
 use crate::keys::KeyService;
+use crate::pty::askpass::{
+    decide_askpass_action, spawn_askpass_server, AskpassDecision, AskpassPolicyState,
+    AskpassServerHandle,
+};
 use crate::pty::expect::ExpectSignal;
 use crate::ssh::{ActiveTunnelRegistry, SshCommandCompiler};
 
 use super::events::{emit_auth_prompt, emit_host_key_prompt, emit_status};
-use super::types::PtySession;
+use super::types::{
+    AskpassSessionBridge, PendingAskpassHostKey, PendingAskpassSecret, PtySession,
+};
 
 pub(super) struct SshLaunchPlan {
     pub args: Vec<OsString>,
@@ -27,18 +34,30 @@ pub(super) struct SshLaunchPlan {
     pub host_pw_mode: String,
 }
 
+pub(super) struct SshAskpassContext {
+    pub app: AppHandle,
+    pub hosts: HostService,
+    pub keys: KeyService,
+    pub tab_secrets: TabSecretStore,
+    pub bridge: Arc<AskpassSessionBridge>,
+    pub tab_id: String,
+    pub host_id: String,
+    pub auth_method: String,
+    pub ssh_key_id: Option<String>,
+    pub target_host: String,
+    pub target_port: u16,
+    pub host_pw_mode: String,
+    pub active_forwards: Vec<PortForwardStatusDto>,
+}
+
 pub(super) struct SshExpectContext<'a> {
     pub app: &'a AppHandle,
-    pub hosts: &'a HostService,
-    pub keys: &'a KeyService,
     pub tab_secrets: &'a TabSecretStore,
     pub session: &'a Arc<PtySession>,
     pub tab_id: &'a str,
     pub host_id: &'a str,
-    pub auth_method: &'a str,
     pub target_host: &'a str,
     pub target_port: u16,
-    pub host_pw_mode: &'a str,
     pub active_forwards: &'a [PortForwardStatusDto],
 }
 
@@ -117,41 +136,125 @@ pub(super) fn prepare_ssh_launch(
     })
 }
 
-fn try_auto_fill_or_prompt(
-    ctx: &SshExpectContext<'_>,
-    prompt_type: &str,
-    prompt_text: String,
-    attempt: u8,
-    secret_opt: Option<Zeroizing<String>>,
-) {
-    let mut auto_filled = false;
-    if let Some(secret) = secret_opt {
-        let line = Zeroizing::new(format!("{}\r\n", secret.as_str()));
-        if ctx.session.write_bytes(line.as_bytes()).is_ok() {
-            auto_filled = true;
-        }
-    }
-    if !auto_filled {
-        emit_status(
-            ctx.app,
-            ctx.tab_id,
-            ctx.host_id,
-            "HANDSHAKING",
-            ctx.active_forwards.to_vec(),
-            None,
+pub(super) fn spawn_ssh_askpass_server(ctx: SshAskpassContext) -> CoreResult<AskpassServerHandle> {
+    let mut policy_state = AskpassPolicyState {
+        auth_method: ctx.auth_method.clone(),
+        host_pw_mode: ctx.host_pw_mode.clone(),
+        password_attempts: 0,
+        passphrase_attempts: 0,
+    };
+
+    spawn_askpass_server(move |prompt| {
+        let decision = decide_askpass_action(
+            &mut policy_state,
+            prompt,
+            || {
+                ctx.tab_secrets
+                    .get(&ctx.tab_id, &ctx.host_id, TabSecretKind::Password)
+            },
+            || ctx.hosts.get_secret(&ctx.host_id).ok().flatten(),
+            || {
+                ctx.tab_secrets
+                    .get(&ctx.tab_id, &ctx.host_id, TabSecretKind::KeyPassphrase)
+            },
+            || {
+                ctx.ssh_key_id
+                    .as_ref()
+                    .and_then(|key_id| ctx.keys.get_secret(key_id).ok().flatten())
+            },
         );
-        if let Ok(mut pending) = ctx.session.pending_prompt_type.lock() {
-            *pending = Some(prompt_type.to_string());
+
+        match decision {
+            AskpassDecision::AutoFill(secret) => Some(secret),
+            AskpassDecision::PromptHostKey {
+                algorithm,
+                fingerprint,
+                reason,
+            } => {
+                let (tx, rx) = sync_channel(1);
+                if let Ok(mut guard) = ctx.bridge.pending_host_key.lock() {
+                    if let Some(prev) = guard.take() {
+                        let _ = prev.tx.send(None);
+                    }
+                    *guard = Some(PendingAskpassHostKey { tx });
+                } else {
+                    return None;
+                }
+
+                emit_status(
+                    &ctx.app,
+                    &ctx.tab_id,
+                    &ctx.host_id,
+                    "HANDSHAKING",
+                    ctx.active_forwards.clone(),
+                    None,
+                );
+                emit_host_key_prompt(
+                    &ctx.app,
+                    SessionHostKeyPromptEventDto {
+                        tab_id: ctx.tab_id.clone(),
+                        host_id: ctx.host_id.clone(),
+                        host: ctx.target_host.clone(),
+                        port: ctx.target_port,
+                        algorithm,
+                        fingerprint,
+                        reason,
+                    },
+                );
+
+                rx.recv()
+                    .ok()
+                    .flatten()
+                    .map(Zeroizing::new)
+            }
+            AskpassDecision::PromptUserSecret {
+                prompt_type,
+                prompt_text,
+                attempt,
+                is_reusable,
+                clear_cached_secret,
+            } => {
+                if clear_cached_secret {
+                    ctx.bridge.clear_staged_secret();
+                    let kind = TabSecretKind::from_prompt_type(prompt_type);
+                    ctx.tab_secrets.remove(&ctx.tab_id, &ctx.host_id, kind);
+                }
+
+                let (tx, rx) = sync_channel(1);
+                if let Ok(mut guard) = ctx.bridge.pending_secret.lock() {
+                    if let Some(prev) = guard.take() {
+                        let _ = prev.tx.send(None);
+                    }
+                    *guard = Some(PendingAskpassSecret {
+                        prompt_type: prompt_type.to_string(),
+                        is_reusable,
+                        tx,
+                    });
+                } else {
+                    return None;
+                }
+
+                emit_status(
+                    &ctx.app,
+                    &ctx.tab_id,
+                    &ctx.host_id,
+                    "HANDSHAKING",
+                    ctx.active_forwards.clone(),
+                    None,
+                );
+                emit_auth_prompt(
+                    &ctx.app,
+                    &ctx.tab_id,
+                    &ctx.host_id,
+                    prompt_type,
+                    prompt_text,
+                    attempt,
+                );
+
+                rx.recv().ok().flatten()
+            }
         }
-        emit_auth_prompt(
-            ctx.app,
-            ctx.tab_id,
-            ctx.host_id,
-            prompt_type,
-            prompt_text,
-            attempt,
-        );
-    }
+    })
 }
 
 pub(super) fn handle_expect_signal(
@@ -162,59 +265,6 @@ pub(super) fn handle_expect_signal(
 ) {
     match signal {
         ExpectSignal::None => {}
-        ExpectSignal::PasswordPrompt {
-            prompt_text,
-            attempt,
-        } => {
-            if ctx.auth_method != "PASSWORD" {
-                return;
-            }
-            if attempt > 1 {
-                ctx.session.clear_staged_secret();
-                ctx.tab_secrets
-                    .remove(ctx.tab_id, ctx.host_id, TabSecretKind::Password);
-            }
-            let secret = if attempt == 1 {
-                ctx.tab_secrets
-                    .get(ctx.tab_id, ctx.host_id, TabSecretKind::Password)
-                    .or_else(|| {
-                        if ctx.host_pw_mode == "SAVED" {
-                            ctx.hosts.get_secret(ctx.host_id).ok().flatten()
-                        } else {
-                            None
-                        }
-                    })
-            } else {
-                None
-            };
-            try_auto_fill_or_prompt(ctx, "PASSWORD", prompt_text, attempt, secret);
-        }
-        ExpectSignal::PassphrasePrompt {
-            prompt_text,
-            attempt,
-        } => {
-            if ctx.auth_method != "SSH_KEY" {
-                return;
-            }
-            if attempt > 1 {
-                ctx.session.clear_staged_secret();
-                ctx.tab_secrets
-                    .remove(ctx.tab_id, ctx.host_id, TabSecretKind::KeyPassphrase);
-            }
-            let secret = if attempt == 1 {
-                ctx.tab_secrets
-                    .get(ctx.tab_id, ctx.host_id, TabSecretKind::KeyPassphrase)
-                    .or_else(|| {
-                        ctx.session
-                            .ssh_key_id
-                            .as_ref()
-                            .and_then(|key_id| ctx.keys.get_secret(key_id).ok().flatten())
-                    })
-            } else {
-                None
-            };
-            try_auto_fill_or_prompt(ctx, "KEY_PASSPHRASE", prompt_text, attempt, secret);
-        }
         ExpectSignal::HostKeyPrompt {
             algorithm,
             fingerprint,
@@ -242,6 +292,7 @@ pub(super) fn handle_expect_signal(
             );
         }
         ExpectSignal::AuthFailed { reason } => {
+            ctx.session.shutdown_askpass();
             ctx.session.clear_staged_secret();
             ctx.tab_secrets.clear_tab(ctx.tab_id);
             *auth_failed_reason = Some(reason.clone());
@@ -255,6 +306,7 @@ pub(super) fn handle_expect_signal(
             );
         }
         ExpectSignal::ConnectFailed { reason } => {
+            ctx.session.shutdown_askpass();
             *connect_failed_reason = Some(reason.clone());
             emit_status(
                 ctx.app,
@@ -266,6 +318,7 @@ pub(super) fn handle_expect_signal(
             );
         }
         ExpectSignal::Connected => {
+            ctx.session.shutdown_askpass();
             if let Some((kind, secret)) = ctx.session.take_staged_secret() {
                 ctx.tab_secrets.set(ctx.tab_id, ctx.host_id, kind, secret);
             }

@@ -1,10 +1,17 @@
 use crate::core::path_guard::clean_display_path_str;
 use crate::infra::os::elevated_pty::{run_elevated_worker, ELEVATED_PTY_FLAG};
+use crate::pty::askpass::{run_askpass_helper, should_run_askpass_helper, ASKPASS_FLAG};
 
-/// Runs elevated ConPTY named-pipe relay or CLI helper flags before GUI bootstrap.
+/// Runs elevated ConPTY named-pipe relay, SSH askpass helper, or CLI helper flags before GUI bootstrap.
 pub fn maybe_run_cli_helpers() -> Option<i32> {
+    if should_run_askpass_helper() {
+        return Some(run_askpass_helper());
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(first) = args.first() {
+        if first == ASKPASS_FLAG {
+            return Some(run_askpass_helper());
+        }
         if first == ELEVATED_PTY_FLAG {
             return Some(run_elevated_worker(&args[1..]));
         }

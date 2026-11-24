@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -14,10 +15,64 @@ use crate::infra::os::elevated_pty;
 use crate::infra::security::TabSecretKind;
 use zeroize::Zeroizing;
 
+use super::askpass::AskpassServerHandle;
+
 pub(super) const READ_BUF_SIZE: usize = 16 * 1024;
 pub(super) const MAX_BATCH_SIZE: usize = 32 * 1024;
 pub(super) const BATCH_WINDOW_MS: u64 = 10;
 pub(super) const PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
+
+pub(super) struct PendingAskpassSecret {
+    pub prompt_type: String,
+    pub is_reusable: bool,
+    pub tx: SyncSender<Option<Zeroizing<String>>>,
+}
+
+pub(super) struct PendingAskpassHostKey {
+    pub tx: SyncSender<Option<String>>,
+}
+
+#[derive(Default)]
+pub(super) struct AskpassSessionBridge {
+    pub pending_secret: Mutex<Option<PendingAskpassSecret>>,
+    pub pending_host_key: Mutex<Option<PendingAskpassHostKey>>,
+    pub staged_secret: Mutex<Option<(TabSecretKind, Zeroizing<String>)>>,
+}
+
+impl AskpassSessionBridge {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel_pending(&self) {
+        if let Ok(mut guard) = self.pending_secret.lock() {
+            if let Some(pending) = guard.take() {
+                let _ = pending.tx.send(None);
+            }
+        }
+        if let Ok(mut guard) = self.pending_host_key.lock() {
+            if let Some(pending) = guard.take() {
+                let _ = pending.tx.send(None);
+            }
+        }
+    }
+
+    pub fn stage_secret(&self, kind: TabSecretKind, secret: Zeroizing<String>) {
+        if let Ok(mut guard) = self.staged_secret.lock() {
+            *guard = Some((kind, secret));
+        }
+    }
+
+    pub fn take_staged_secret(&self) -> Option<(TabSecretKind, Zeroizing<String>)> {
+        self.staged_secret.lock().ok().and_then(|mut g| g.take())
+    }
+
+    pub fn clear_staged_secret(&self) {
+        if let Ok(mut guard) = self.staged_secret.lock() {
+            *guard = None;
+        }
+    }
+}
 
 pub(super) enum PrewarmSink {
     Buffering(Vec<u8>),
@@ -77,25 +132,71 @@ pub struct PtySession {
     pub ssh_key_id: Option<String>,
     pub is_admin: bool,
     pub(super) backend: PtyBackend,
-    pub(super) pending_prompt_type: Mutex<Option<String>>,
-    pub(super) staged_secret: Mutex<Option<(TabSecretKind, Zeroizing<String>)>>,
+    pub(super) askpass_bridge: Option<Arc<AskpassSessionBridge>>,
+    pub(super) askpass_server: Mutex<Option<AskpassServerHandle>>,
     pub(super) manual_disconnect: AtomicBool,
 }
 
 impl PtySession {
+    pub(super) fn set_askpass_server(&self, handle: AskpassServerHandle) {
+        if let Ok(mut guard) = self.askpass_server.lock() {
+            *guard = Some(handle);
+        }
+    }
+
+    pub(super) fn cancel_pending_askpass(&self) {
+        if let Some(ref bridge) = self.askpass_bridge {
+            bridge.cancel_pending();
+        }
+    }
+
+    pub(super) fn shutdown_askpass(&self) {
+        self.cancel_pending_askpass();
+        if let Ok(mut guard) = self.askpass_server.lock() {
+            if let Some(handle) = guard.take() {
+                handle.shutdown();
+            }
+        }
+    }
+
+    pub(super) fn deliver_askpass_secret(
+        &self,
+        secret: Zeroizing<String>,
+    ) -> Option<(String, bool)> {
+        let bridge = self.askpass_bridge.as_ref()?;
+        let pending = bridge.pending_secret.lock().ok()?.take()?;
+        let info = (pending.prompt_type, pending.is_reusable);
+        let _ = pending.tx.send(Some(secret));
+        Some(info)
+    }
+
+    pub(super) fn deliver_askpass_host_key(&self, reply: Option<String>) -> bool {
+        let Some(ref bridge) = self.askpass_bridge else {
+            return false;
+        };
+        let Ok(mut guard) = bridge.pending_host_key.lock() else {
+            return false;
+        };
+        let Some(pending) = guard.take() else {
+            return false;
+        };
+        let _ = pending.tx.send(reply);
+        true
+    }
+
     pub(super) fn stage_secret(&self, kind: TabSecretKind, secret: Zeroizing<String>) {
-        if let Ok(mut guard) = self.staged_secret.lock() {
-            *guard = Some((kind, secret));
+        if let Some(ref bridge) = self.askpass_bridge {
+            bridge.stage_secret(kind, secret);
         }
     }
 
     pub(super) fn take_staged_secret(&self) -> Option<(TabSecretKind, Zeroizing<String>)> {
-        self.staged_secret.lock().ok().and_then(|mut g| g.take())
+        self.askpass_bridge.as_ref()?.take_staged_secret()
     }
 
     pub(super) fn clear_staged_secret(&self) {
-        if let Ok(mut guard) = self.staged_secret.lock() {
-            *guard = None;
+        if let Some(ref bridge) = self.askpass_bridge {
+            bridge.clear_staged_secret();
         }
     }
 
@@ -183,6 +284,7 @@ impl PtySession {
     }
 
     pub(super) fn terminate(&self) {
+        self.shutdown_askpass();
         match &self.backend {
             PtyBackend::Direct { killer, .. } => {
                 if let Ok(mut k) = killer.lock() {

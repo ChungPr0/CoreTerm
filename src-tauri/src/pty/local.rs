@@ -69,8 +69,8 @@ impl PtySessionManager {
                     pipe_writer: Mutex::new(pipe_writer),
                     pipe_out,
                 },
-                pending_prompt_type: Mutex::new(None),
-                staged_secret: Mutex::new(None),
+                askpass_bridge: None,
+                askpass_server: Mutex::new(None),
                 manual_disconnect: AtomicBool::new(false),
             });
 

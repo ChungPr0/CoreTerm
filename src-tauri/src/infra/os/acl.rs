@@ -7,21 +7,24 @@ use std::os::windows::ffi::OsStrExt;
 
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, GENERIC_READ, GENERIC_WRITE, HANDLE, HLOCAL},
+    Foundation::{
+        CloseHandle, LocalFree, ERROR_SUCCESS, GENERIC_ALL, GENERIC_READ, GENERIC_WRITE, HANDLE,
+        HLOCAL,
+    },
     Security::{
         Authorization::{
-            SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
-            SE_FILE_OBJECT, SET_ACCESS, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
+            SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, SE_FILE_OBJECT, SET_ACCESS,
+            TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
         },
-        GetTokenInformation, TokenUser, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE,
-        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
+        GetTokenInformation, TokenUser, ACL, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION,
+        NO_INHERITANCE, OBJECT_INHERIT_ACE, PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY,
+        TOKEN_USER,
     },
     System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
 
-/// Restricts NTFS file permissions to the current user and disables ACL inheritance.
-pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
-    #[cfg(windows)]
+#[cfg(windows)]
+fn apply_owner_only_dacl(path: &Path, access_mask: u32, inheritance: u32) -> CoreResult<()> {
     unsafe {
         let mut token: HANDLE = std::ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
@@ -32,7 +35,9 @@ pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
         let _ = GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut return_len);
         if return_len == 0 {
             let _ = CloseHandle(token);
-            return Err(CoreError::Os("GetTokenInformation size query failed".to_string()));
+            return Err(CoreError::Os(
+                "GetTokenInformation size query failed".to_string(),
+            ));
         }
 
         let mut token_user_buf = vec![0u8; return_len as usize];
@@ -52,9 +57,9 @@ pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
         let user_sid = token_user.User.Sid;
 
         let ea = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: GENERIC_READ | GENERIC_WRITE,
+            grfAccessPermissions: access_mask,
             grfAccessMode: SET_ACCESS,
-            grfInheritance: NO_INHERITANCE,
+            grfInheritance: inheritance,
             Trustee: TRUSTEE_W {
                 pMultipleTrustee: std::ptr::null_mut(),
                 MultipleTrusteeOperation: 0,
@@ -100,11 +105,43 @@ pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
 
         Ok(())
     }
+}
+
+pub fn restrict_private_key_acl(path: &Path) -> CoreResult<()> {
+    #[cfg(windows)]
+    {
+        apply_owner_only_dacl(path, GENERIC_READ | GENERIC_WRITE, NO_INHERITANCE)
+    }
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(path, perms)?;
+        Ok(())
+    }
+
+    #[cfg(all(not(windows), not(unix)))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+pub fn restrict_private_key_dir_acl(path: &Path) -> CoreResult<()> {
+    #[cfg(windows)]
+    {
+        apply_owner_only_dacl(
+            path,
+            GENERIC_ALL,
+            OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+        )
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o700);
         std::fs::set_permissions(path, perms)?;
         Ok(())
     }
@@ -134,6 +171,26 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let meta = std::fs::metadata(&key_file).expect("metadata");
             assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn test_restrict_private_key_dir_acl_allows_owner_file_operations() {
+        let dir = tempdir().expect("tempdir");
+        let keys_dir = dir.path().join("keys");
+        std::fs::create_dir_all(&keys_dir).expect("mkdir");
+        restrict_private_key_dir_acl(&keys_dir).expect("restrict dir acl");
+
+        let child_key = keys_dir.join("child.id_ed25519");
+        std::fs::write(&child_key, b"key material").expect("write inside restricted dir");
+        assert_eq!(std::fs::read(&child_key).expect("read"), b"key material");
+        std::fs::remove_file(&child_key).expect("remove inside restricted dir");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(&keys_dir).expect("metadata");
+            assert_eq!(meta.permissions().mode() & 0o777, 0o700);
         }
     }
 }

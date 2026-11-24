@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use crate::core::error::{CoreError, CoreResult};
 pub use crate::core::local_path_guard::{
-    clean_display_path, clean_display_path_str, validate_delete_path, validate_local_write_path,
+    clean_display_path, clean_display_path_str, validate_delete_path, validate_local_download_root,
+    validate_local_write_path,
 };
 
 const WIN_RESERVED: &[&str] = &[

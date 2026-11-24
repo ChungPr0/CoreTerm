@@ -5,6 +5,7 @@ pub const FRAME_RESIZE: u8 = 2;
 pub const FRAME_EXIT: u8 = 3;
 pub const FRAME_ERROR: u8 = 4;
 pub const FRAME_CLOSE: u8 = 5;
+pub const FRAME_HANDSHAKE: u8 = 6;
 
 const MAX_FRAME_LEN: usize = 16 * 1024 * 1024;
 

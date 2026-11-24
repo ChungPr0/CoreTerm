@@ -5,12 +5,14 @@ use std::time::Duration;
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
+use zeroize::Zeroizing;
+
 use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::JobObjectSupervisor;
 use crate::ipc::dto::ShellProfile;
 
-use super::types::{ExitStatusSlot, PtyBackend, PtySession};
+use super::types::{AskpassSessionBridge, ExitStatusSlot, PtyBackend, PtySession};
 
 pub(super) struct PtySpawnConfig<'a> {
     pub profile: &'a ShellProfile,
@@ -21,6 +23,8 @@ pub(super) struct PtySpawnConfig<'a> {
     pub cols: u16,
     pub rows: u16,
     pub cwd: Option<&'a str>,
+    pub extra_env: &'a [(String, Zeroizing<String>)],
+    pub askpass_bridge: Option<Arc<AskpassSessionBridge>>,
 }
 
 pub(super) struct SpawnedPty {
@@ -29,7 +33,11 @@ pub(super) struct SpawnedPty {
     pub pid: Option<u32>,
 }
 
-pub(super) fn build_pty_command(profile: &ShellProfile, cwd: Option<&str>) -> CommandBuilder {
+pub(super) fn build_pty_command(
+    profile: &ShellProfile,
+    cwd: Option<&str>,
+    extra_env: &[(String, Zeroizing<String>)],
+) -> CommandBuilder {
     let mut cmd = CommandBuilder::new(&profile.executable);
     for arg in &profile.args {
         cmd.arg(arg);
@@ -39,6 +47,9 @@ pub(super) fn build_pty_command(profile: &ShellProfile, cwd: Option<&str>) -> Co
     }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    for (k, v) in extra_env {
+        cmd.env(k, v.as_str());
+    }
     cmd
 }
 
@@ -57,7 +68,7 @@ pub(super) fn spawn_pty(
         })
         .map_err(|e| CoreError::Pty(format!("Failed to open Windows ConPTY: {e}")))?;
 
-    let cmd = build_pty_command(cfg.profile, cfg.cwd);
+    let cmd = build_pty_command(cfg.profile, cfg.cwd, cfg.extra_env);
     let mut child = pair
         .slave
         .spawn_command(cmd)
@@ -102,8 +113,8 @@ pub(super) fn spawn_pty(
             killer: Mutex::new(killer),
             exit_slot: Arc::clone(&exit_slot),
         },
-        pending_prompt_type: Mutex::new(None),
-        staged_secret: Mutex::new(None),
+        askpass_bridge: cfg.askpass_bridge,
+        askpass_server: Mutex::new(None),
         manual_disconnect: AtomicBool::new(false),
     });
 
@@ -161,6 +172,8 @@ mod tests {
                 cols: 80,
                 rows: 24,
                 cwd: None,
+                extra_env: &[],
+                askpass_bridge: None,
             },
             &supervisor,
         )

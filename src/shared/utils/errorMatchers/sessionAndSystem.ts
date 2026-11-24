@@ -45,7 +45,7 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     params: (m) => ({ path: m[1] }),
   },
   {
-    pattern: /^Deleting the user profile root directory is strictly prohibited$/i,
+    pattern: /^(?:Deleting|Writing) the user profile root directory is strictly prohibited$/i,
     key: "errors.local_delete_user_root",
   },
   {
@@ -54,17 +54,17 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     params: (m) => ({ path: m[1] }),
   },
   {
-    pattern: /^Modifying drive or root path is strictly prohibited:\s*'(.+?)'$/i,
+    pattern: /^(?:Modifying|Writing) drive or root path is strictly prohibited:\s*'(.+?)'$/i,
     key: "errors.local_modify_root",
     params: (m) => ({ path: m[1] }),
   },
   {
-    pattern: /^Modifying protected system path is prohibited:\s*'(.+?)'$/i,
+    pattern: /^(?:Modifying|Writing) protected system path is prohibited:\s*'(.+?)'$/i,
     key: "errors.local_modify_protected",
     params: (m) => ({ path: m[1] }),
   },
   {
-    pattern: /^Modifying application data directory is prohibited:\s*'(.+?)'$/i,
+    pattern: /^(?:Modifying|Writing) application data directory is prohibited:\s*'(.+?)'$/i,
     key: "errors.local_modify_app_data",
     params: (m) => ({ path: m[1] }),
   },
