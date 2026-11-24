@@ -28,6 +28,7 @@ interface FileListProps {
   loading: boolean;
   selected: string[];
   showPerms?: boolean;
+  showHiddenFiles?: boolean;
   filter: string;
   drives?: LocalDriveDto[];
   actions?: React.ReactNode;
@@ -41,6 +42,7 @@ interface FileListProps {
   onSelect: (paths: string[]) => void;
   onNavigate: (path: string) => void;
   onOpenFile?: (item: FileItem) => void;
+  onDoubleClickFile?: (item: FileItem) => void;
   onBack?: () => void;
   onForward?: () => void;
   onActivatePane?: () => void;
@@ -70,6 +72,7 @@ export const FileList: React.FC<FileListProps> = ({
   loading,
   selected,
   showPerms = false,
+  showHiddenFiles = true,
   filter,
   drives,
   actions,
@@ -83,6 +86,7 @@ export const FileList: React.FC<FileListProps> = ({
   onSelect,
   onNavigate,
   onOpenFile,
+  onDoubleClickFile,
   onBack,
   onForward,
   onActivatePane,
@@ -110,8 +114,8 @@ export const FileList: React.FC<FileListProps> = ({
   );
 
   const visibleItems = useMemo(
-    () => sortAndFilterItems(items, filter, sortKey, sortDir),
-    [items, filter, sortKey, sortDir]
+    () => sortAndFilterItems(items, filter, sortKey, sortDir, showHiddenFiles),
+    [items, filter, sortKey, sortDir, showHiddenFiles]
   );
 
   const { selectedSet, handleRowClick, handleContainerKeyDown } = useFileSelection({
@@ -265,7 +269,7 @@ export const FileList: React.FC<FileListProps> = ({
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     if (item.isDir) onNavigate(item.path);
-                    else onOpenFile?.(item);
+                    else (onDoubleClickFile ?? onOpenFile)?.(item);
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();

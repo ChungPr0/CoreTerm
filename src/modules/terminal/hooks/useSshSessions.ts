@@ -80,6 +80,7 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     newLocalTab: controller.newLocalTab,
     connectHost: prompts.connectWithConflictCheck,
     openSftpTab: controller.openSftpTab,
+    openSettingsTab: controller.openSettingsTab,
     closeTabById: controller.closeTabById,
     forceCloseTabById: controller.forceCloseTabById,
     abortAuthTab: controller.abortAuthPromptTab,

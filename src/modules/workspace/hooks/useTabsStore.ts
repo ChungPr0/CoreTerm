@@ -5,12 +5,17 @@ import type {
   EditorTabMeta,
   PortForwardStatusDto,
   SessionState,
+  SettingsCategoryId,
   SftpConnectionState,
   ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
 import type { HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
+import {
+  hydrateSnapshotTabs,
+  type SavedSessionSnapshot,
+} from "../utils/sessionStorage";
 import { DEFAULT_LOCAL_SHELL, createLocalTab, sftpToTabState } from "../utils/tabHelpers";
 import {
   applySetTabShell,
@@ -18,6 +23,7 @@ import {
   applyToggleSftpSplit,
   applyUpdateSessionAck,
   buildNewEditorTab,
+  buildSettingsTab,
   findExistingEditorTab,
   type EditorReconnectConfig,
 } from "./tabsStoreHelpers";
@@ -42,6 +48,8 @@ interface TabsStoreState {
     hostId: string,
     reconnectConfig?: EditorReconnectConfig
   ) => string;
+  openSettingsTab: (section?: SettingsCategoryId) => string;
+  setSettingsSection: (tabId: string, section: SettingsCategoryId) => void;
   setEditorDirty: (tabId: string, dirty: boolean) => void;
   requestEditorClose: (tabId: string) => void;
   bumpSftpRefresh: (hostId: string) => void;
@@ -77,6 +85,14 @@ interface TabsStoreState {
     hostLabel: string,
     opts?: { replaceInitialLocal?: boolean; onDisposeTab?: (tabId: string) => void }
   ) => void;
+  restoreSessionTabs: (
+    snapshot: SavedSessionSnapshot,
+    opts?: {
+      validHostIds?: Set<string>;
+      isAppElevated?: boolean;
+      onDisposeTab?: (tabId: string) => void;
+    }
+  ) => boolean;
 }
 
 const initialSettings = loadSettings();
@@ -100,7 +116,14 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
   startRenamingTab: (tabId) =>
     set((s) => {
       const target = s.tabs.find((t) => t.tabId === tabId);
-      if (!target || target.hostId !== LOCAL_HOST_ID || target.tabKind === "editor") return s;
+      if (
+        !target ||
+        target.hostId !== LOCAL_HOST_ID ||
+        target.tabKind === "editor" ||
+        target.tabKind === "settings"
+      ) {
+        return s;
+      }
       return { renamingTabId: tabId, activeTabId: tabId };
     }),
 
@@ -110,7 +133,13 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     set((s) => {
       const nextTitle = rawTitle.trim();
       const target = s.tabs.find((t) => t.tabId === tabId);
-      if (!target || target.hostId !== LOCAL_HOST_ID || target.tabKind === "editor" || !nextTitle) {
+      if (
+        !target ||
+        target.hostId !== LOCAL_HOST_ID ||
+        target.tabKind === "editor" ||
+        target.tabKind === "settings" ||
+        !nextTitle
+      ) {
         return s.renamingTabId === tabId ? { renamingTabId: null } : s;
       }
       return {
@@ -157,6 +186,42 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     }));
     return tabId;
   },
+
+  openSettingsTab: (section) => {
+    const existing = get().tabs.find((t) => t.tabKind === "settings");
+    if (existing) {
+      set((s) => ({
+        activeTabId: existing.tabId,
+        renamingTabId: null,
+        ...(section
+          ? {
+              tabs: s.tabs.map((t) =>
+                t.tabId === existing.tabId ? { ...t, settingsSection: section } : t
+              ),
+            }
+          : {}),
+      }));
+      return existing.tabId;
+    }
+
+    const tabId = crypto.randomUUID();
+    const newTab = buildSettingsTab(tabId, section);
+    set((s) => ({
+      tabs: [...s.tabs, newTab],
+      activeTabId: tabId,
+      renamingTabId: null,
+    }));
+    return tabId;
+  },
+
+  setSettingsSection: (tabId, section) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.tabId === tabId && t.tabKind === "settings"
+          ? { ...t, settingsSection: section }
+          : t
+      ),
+    })),
 
   setEditorDirty: (tabId, dirty) =>
     set((s) => ({
@@ -430,7 +495,9 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     lastOpenDirTime = now;
 
     const currentSettings = loadSettings();
-    const existingLocal = get().tabs.find((t) => t.hostId === LOCAL_HOST_ID);
+    const existingLocal = get().tabs.find(
+      (t) => t.hostId === LOCAL_HOST_ID && (!t.tabKind || t.tabKind === "terminal")
+    );
     const defaultShell =
       currentSettings.defaultShellProfile ??
       existingLocal?.shellProfile ??
@@ -469,7 +536,8 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       currentTabs.length === 1 &&
       currentTabs[0].hostId === LOCAL_HOST_ID &&
       currentTabs[0].tabKind !== "editor" &&
-      currentTabs[0].tabKind !== "sftp";
+      currentTabs[0].tabKind !== "sftp" &&
+      currentTabs[0].tabKind !== "settings";
 
     if (canReplaceInitial) {
       const initialTabId = currentTabs[0].tabId;
@@ -500,5 +568,27 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     for (const filePath of validFiles) {
       get().openLocalFileInTab(filePath, hostLabel);
     }
+  },
+
+  restoreSessionTabs: (snapshot, opts) => {
+    const hydrated = hydrateSnapshotTabs(snapshot, {
+      validHostIds: opts?.validHostIds,
+      isAppElevated: opts?.isAppElevated,
+    });
+    if (!hydrated) return false;
+
+    const prevIds = get().tabs.map((t) => t.tabId);
+    set({
+      tabs: hydrated.tabs,
+      activeTabId: hydrated.activeTabId,
+      openedSftpTabs: hydrated.openedSftpTabs,
+      sftpModalByTab: {},
+      editorCloseSeqByTab: {},
+      renamingTabId: null,
+    });
+    for (const oldId of prevIds) {
+      opts?.onDisposeTab?.(oldId);
+    }
+    return true;
   },
 }));

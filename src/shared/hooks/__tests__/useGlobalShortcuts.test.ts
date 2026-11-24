@@ -34,6 +34,7 @@ function makeOpts(overrides: Partial<UseGlobalShortcutsOpts> = {}) {
     onToggleSftpSplit: vi.fn(),
     onFindInTerminal: vi.fn(),
     onOpenSettings: vi.fn(),
+    onToggleFullscreen: vi.fn(),
     onCloseContextMenu: vi.fn(),
     onDismissSidebar: vi.fn(),
     ...overrides,
@@ -158,6 +159,23 @@ describe("handleGlobalKeyDown", () => {
       expect(preventDefault).not.toHaveBeenCalled();
       expect(stopPropagation).not.toHaveBeenCalled();
     }
+  });
+
+  it("handles F11 fullscreen toggle unless a modal is open", () => {
+    const opts = makeOpts();
+    const { event, preventDefault, stopPropagation } = makeKeyEvent({ key: "F11" });
+    handleGlobalKeyDown(event, opts);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(opts.onCloseContextMenu).toHaveBeenCalledTimes(1);
+    expect(opts.onToggleFullscreen).toHaveBeenCalledTimes(1);
+
+    const modalOpts = makeOpts({ hasAnyModal: true });
+    const modalEv = makeKeyEvent({ key: "F11" });
+    handleGlobalKeyDown(modalEv.event, modalOpts);
+    expect(modalEv.preventDefault).toHaveBeenCalledTimes(1);
+    expect(modalEv.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(modalOpts.onToggleFullscreen).not.toHaveBeenCalled();
   });
 
   it("ignores Alt-modified or Ctrl+Meta chorded events", () => {

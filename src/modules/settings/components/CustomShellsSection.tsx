@@ -1,30 +1,36 @@
 import React, { useEffect, useState } from "react";
-import { FolderOpen, Pencil, Plus, Save, Terminal as TerminalIcon, Trash2 } from "lucide-react";
+import { FolderOpen, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
 import { Button, IconButton, Input, ShellIcon, useAlert } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
+import { sessionApi } from "@/modules/terminal/api/sessionApi";
 import {
   formatShellArgs,
   makeCustomShell,
   parseShellArgs,
-  sessionApi,
   shellNameFromPath,
-} from "@/modules/terminal";
+} from "@/modules/terminal/hooks/useShellsStore";
 
 interface CustomShellsSectionProps {
   customShells: ShellProfile[];
+  effectiveDefaultShellId?: string;
+  onSelectDefault?: (shell: ShellProfile) => void;
   onChange: (next: ShellProfile[]) => void;
   onFirstAdd?: (profile: ShellProfile) => void;
   onRequestDelete?: (shell: ShellProfile) => void;
   onEditorDirtyChange?: (dirty: boolean) => void;
+  fullHeight?: boolean;
 }
 
 export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
   customShells,
+  effectiveDefaultShellId,
+  onSelectDefault,
   onChange,
   onFirstAdd,
   onRequestDelete,
   onEditorDirtyChange,
+  fullHeight = false,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -163,15 +169,11 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
   };
 
   return (
-    <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5 min-w-0">
-          <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
-            <TerminalIcon className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-            <span>{t("settings.custom_shells")}</span>
-          </div>
-          <p className="text-[11px] text-slate-500">{t("settings.custom_shells_hint")}</p>
-        </div>
+    <div className="rounded-xl border border-slate-800/90 bg-slate-950/65">
+      <div className="px-4 py-2 rounded-t-xl border-b border-slate-800/80 bg-slate-900/40 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          {t("settings.custom_shells")}
+        </span>
 
         {!isEditorOpen && (
           <Button
@@ -179,7 +181,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
             size="xs"
             onClick={openAdd}
             className="shrink-0"
-            leftIcon={<Plus className="w-3 h-3 text-sky-400" />}
+            leftIcon={<Plus className="w-3 h-3" />}
           >
             {t("settings.shell_add")}
           </Button>
@@ -187,14 +189,20 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
       </div>
 
       {customShells.length === 0 && !isEditorOpen && (
-        <div className="px-3 py-2 rounded border border-dashed border-slate-800/80 text-[11px] text-slate-500 text-center">
-          {t("settings.custom_shells_empty")}
+        <div className="px-4 py-4 text-center text-[11px] text-slate-500 space-y-0.5">
+          <div>{t("settings.custom_shells_empty")}</div>
+          <div>{t("settings.custom_shells_hint")}</div>
         </div>
       )}
 
       {customShells.length > 0 && (
-        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
+        <div
+          className={`divide-y divide-slate-800/70 ${
+            fullHeight ? "" : "max-h-36 overflow-y-auto"
+          }`}
+        >
           {customShells.map((shell) => {
+            const isDefault = shell.id === effectiveDefaultShellId;
             const argsPreview = formatShellArgs(shell.args);
             const detail = argsPreview
               ? `${shell.executable} ${argsPreview}`
@@ -202,21 +210,39 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
             return (
               <div
                 key={shell.id}
-                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md bg-slate-900/90 border border-slate-800/90"
+                className="flex h-[52px] items-center justify-between gap-3 px-4"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <ShellIcon profile={shell} />
                   <div className="min-w-0">
-                    <div className="font-medium text-slate-200 truncate">{shell.name}</div>
+                    <div className="flex h-5 items-center gap-2">
+                      <span className="text-xs font-medium text-slate-200 truncate">
+                        {shell.name}
+                      </span>
+                      {isDefault && (
+                        <span className="shrink-0 px-1.5 py-0.5 leading-none rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold">
+                          {t("vault.default")}
+                        </span>
+                      )}
+                    </div>
                     <div
                       title={detail}
-                      className="text-[10px] font-mono text-slate-500 truncate"
+                      className="h-4 leading-4 text-[11px] font-mono text-slate-500 truncate"
                     >
                       {detail}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!isDefault && onSelectDefault && (
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => onSelectDefault(shell)}
+                    >
+                      {t("settings.set_as_default")}
+                    </Button>
+                  )}
                   <IconButton
                     size="sm"
                     tone="sky"
@@ -248,7 +274,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
       {isEditorOpen && (
         <div
           onKeyDown={handleEditorKeyDown}
-          className="p-2.5 rounded-lg bg-slate-900/95 border border-slate-700/80 space-y-2"
+          className="p-4 rounded-b-xl bg-slate-900/40 border-t border-slate-800/80 space-y-2.5"
         >
           <div className="text-[11px] font-semibold text-slate-200">
             {editingId ? t("settings.shell_edit") : t("settings.shell_add")}

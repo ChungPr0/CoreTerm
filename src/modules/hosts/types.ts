@@ -1,8 +1,8 @@
-import type { ForwardType } from "@/shared/types/ipc";
+import type { ForwardType, StrictHostKeyChecking } from "@/shared/types/ipc";
 
+export type { StrictHostKeyChecking };
 export type AuthMethod = "SSH_KEY" | "PASSWORD";
 export type PasswordMode = "SAVED" | "PROMPT_EVERY_TIME" | "NONE";
-export type StrictHostKeyChecking = "ACCEPT_NEW" | "YES" | "NO";
 
 export interface HostProfileSummaryDto {
   id: string;

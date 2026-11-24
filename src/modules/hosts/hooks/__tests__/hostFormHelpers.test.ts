@@ -303,4 +303,32 @@ describe("hostFormHelpers", () => {
     fields.forwards[1].is_enabled = false;
     expect(validateAndBuildHostPayload(fields).ok).toBe(true);
   });
+
+  it("applies custom SSH defaults for new hosts while keeping existing host values untouched", () => {
+    const withDefaults = createHostFormFields(null, "Prod", {
+      username: "ubuntu",
+      port: 2202,
+      serverAliveInterval: 30,
+      strictHostKeyChecking: "YES",
+      compression: true,
+      forwardAgent: true,
+      autoReconnect: true,
+      reconnectIntervalSec: 10,
+    });
+    expect(withDefaults.username).toBe("ubuntu");
+    expect(withDefaults.port).toBe(2202);
+    expect(withDefaults.serverAliveInterval).toBe(30);
+    expect(withDefaults.strictHostKeyChecking).toBe("YES");
+    expect(withDefaults.compression).toBe(true);
+    expect(withDefaults.forwardAgent).toBe(true);
+    expect(withDefaults.autoReconnect).toBe(true);
+    expect(withDefaults.reconnectIntervalSec).toBe(10);
+
+    const existing = createHostFormFields(SAMPLE_HOST, "Ignored", {
+      username: "ubuntu",
+      port: 2202,
+    });
+    expect(existing.username).toBe("deploy");
+    expect(existing.port).toBe(2222);
+  });
 });

@@ -12,6 +12,7 @@ export interface UseGlobalShortcutsOpts {
   onToggleSftpSplit: () => void;
   onFindInTerminal: () => void;
   onOpenSettings: () => void;
+  onToggleFullscreen?: () => void;
   onCloseContextMenu: () => void;
   onDismissSidebar: () => void;
 }
@@ -20,6 +21,15 @@ export function handleGlobalKeyDown(
   e: KeyboardEvent,
   cur: UseGlobalShortcutsOpts
 ): void {
+  if (e.key === "F11" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.repeat && !cur.hasAnyModal) {
+      cur.onCloseContextMenu();
+      cur.onToggleFullscreen?.();
+    }
+    return;
+  }
   if (e.ctrlKey === e.metaKey || e.altKey) return;
   const key = e.key.toLowerCase();
 

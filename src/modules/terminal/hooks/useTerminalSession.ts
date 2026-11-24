@@ -9,6 +9,7 @@ import { DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import {
   bindScrollbackSync,
   bindTerminalShortcuts,
@@ -78,6 +79,7 @@ export function useTerminalSession({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const webglAddonRef = useRef<{ dispose: () => void } | null>(null);
   const isActiveRef = useRef<boolean>(isActive);
   const suppressAutoFocusRef = useRef<boolean>(suppressAutoFocus);
   const connectedRef = useRef<boolean>(false);
@@ -85,6 +87,37 @@ export function useTerminalSession({
   const lastDimsRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
   const launchDimsRef = useRef({ cols: launchCols, rows: launchRows });
   const tabMetaRef = useRef({ isAdmin: tab.isAdmin, shellProfile: tab.shellProfile });
+
+  const terminalFontSize = useSettingsStore((s) => s.settings.terminalFontSize);
+  const terminalFontFamily = useSettingsStore((s) => s.settings.terminalFontFamily);
+  const terminalLineHeight = useSettingsStore((s) => s.settings.terminalLineHeight);
+  const terminalCursorStyle = useSettingsStore((s) => s.settings.terminalCursorStyle);
+  const terminalCursorBlink = useSettingsStore((s) => s.settings.terminalCursorBlink);
+  const terminalScrollback = useSettingsStore((s) => s.settings.terminalScrollback);
+  const terminalCopyOnSelect = useSettingsStore((s) => s.settings.terminalCopyOnSelect);
+  const terminalWebglRenderer = useSettingsStore((s) => s.settings.terminalWebglRenderer);
+  const defaultImeMode = useSettingsStore((s) => s.settings.defaultImeMode);
+
+  const appearanceRef = useRef({
+    fontSize: terminalFontSize,
+    fontFamily: terminalFontFamily,
+    lineHeight: terminalLineHeight,
+    cursorStyle: terminalCursorStyle,
+    cursorBlink: terminalCursorBlink,
+    scrollback: terminalScrollback,
+  });
+  appearanceRef.current = {
+    fontSize: terminalFontSize,
+    fontFamily: terminalFontFamily,
+    lineHeight: terminalLineHeight,
+    cursorStyle: terminalCursorStyle,
+    cursorBlink: terminalCursorBlink,
+    scrollback: terminalScrollback,
+  };
+  const copyOnSelectRef = useRef(terminalCopyOnSelect);
+  copyOnSelectRef.current = terminalCopyOnSelect;
+  const webglEnabledRef = useRef(terminalWebglRenderer);
+  webglEnabledRef.current = terminalWebglRenderer;
 
   isActiveRef.current = isActive;
   suppressAutoFocusRef.current = suppressAutoFocus;
@@ -138,7 +171,7 @@ export function useTerminalSession({
     const container = containerRef.current;
     if (!container) return;
 
-    const term = createTerminalInstance(launchCols, launchRows);
+    const term = createTerminalInstance(launchCols, launchRows, appearanceRef.current);
 
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon({ highlightLimit: 1000 });
@@ -148,6 +181,7 @@ export function useTerminalSession({
     terminalRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    webglAddonRef.current = null;
     connectedRef.current = false;
     readyRef.current = false;
 
@@ -159,6 +193,12 @@ export function useTerminalSession({
       () => cancelled,
       () => suppressAutoFocusRef.current
     );
+
+    const onSelectionDisposable = term.onSelectionChange(() => {
+      if (!copyOnSelectRef.current) return;
+      const sel = term.getSelection();
+      if (sel) void copyText(sel);
+    });
 
     const textEncoder = new TextEncoder();
     const onDataDisposable = term.onData((data) => {
@@ -194,9 +234,17 @@ export function useTerminalSession({
     const connectTimer = setTimeout(() => {
       void (async () => {
         if (isCancelled()) return;
-        await loadWebgl(term, isCancelled, () => {
-          if (!isCancelled()) fitNow(true);
-        });
+        if (webglEnabledRef.current) {
+          const addon = await loadWebgl(term, isCancelled, () => {
+            webglAddonRef.current = null;
+            if (!isCancelled()) fitNow(true);
+          });
+          if (isCancelled()) {
+            addon?.dispose();
+            return;
+          }
+          webglAddonRef.current = addon;
+        }
         if (isCancelled()) return;
 
         const metrics = measureTermMetrics(term, container);
@@ -264,8 +312,11 @@ export function useTerminalSession({
       if (fitRafId !== null) cancelAnimationFrame(fitRafId);
       if (debounceTimer) clearTimeout(debounceTimer);
       resizeObserver.disconnect();
+      onSelectionDisposable.dispose();
       onDataDisposable.dispose();
       onBinaryDisposable.dispose();
+      webglAddonRef.current?.dispose();
+      webglAddonRef.current = null;
       term.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -273,6 +324,70 @@ export function useTerminalSession({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.tabId, tab.hostId]);
+
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term) return;
+    term.options.fontSize = terminalFontSize;
+    term.options.fontFamily = terminalFontFamily;
+    term.options.lineHeight = terminalLineHeight;
+    term.options.cursorStyle = terminalCursorStyle;
+    term.options.cursorBlink = terminalCursorBlink;
+    term.options.scrollback = terminalScrollback;
+    fitNow(true);
+  }, [
+    terminalFontSize,
+    terminalFontFamily,
+    terminalLineHeight,
+    terminalCursorStyle,
+    terminalCursorBlink,
+    terminalScrollback,
+    fitNow,
+  ]);
+
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term || !readyRef.current) return;
+    let cancelled = false;
+    if (terminalWebglRenderer && !webglAddonRef.current) {
+      void loadWebgl(
+        term,
+        () => cancelled || terminalRef.current !== term,
+        () => {
+          webglAddonRef.current = null;
+          if (!cancelled && terminalRef.current === term) fitNow(true);
+        }
+      ).then((addon) => {
+        if (!addon) return;
+        if (cancelled || terminalRef.current !== term || !webglEnabledRef.current) {
+          addon.dispose();
+          return;
+        }
+        webglAddonRef.current = addon;
+        fitNow(true);
+      });
+    } else if (!terminalWebglRenderer && webglAddonRef.current) {
+      try {
+        webglAddonRef.current.dispose();
+      } catch {
+        // Ignore disposal edge case
+      }
+      webglAddonRef.current = null;
+      fitNow(true);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [terminalWebglRenderer, fitNow]);
+
+  useEffect(() => {
+    const textarea = containerRef.current?.querySelector<HTMLTextAreaElement>(
+      "textarea.xterm-helper-textarea"
+    );
+    if (!textarea) return;
+    textarea.lang = defaultImeMode === "alphanumeric" ? "en" : "";
+    textarea.spellcheck = false;
+  }, [defaultImeMode, tab.tabId]);
 
   useEffect(() => {
     if (tab.reconnectToken === 0) return;

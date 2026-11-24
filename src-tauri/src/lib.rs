@@ -38,11 +38,12 @@ use crate::ipc::commands::{
     sftp_create_dir, sftp_create_file, sftp_delete, sftp_disconnect, sftp_download, sftp_list_dir,
     sftp_list_transfers, sftp_pause_transfer, sftp_read_file, sftp_rename, sftp_resolve_conflict,
     sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, sftp_write_file,
+    startup_get_status, startup_set_enabled, startup_sync_prefs, window_apply_ime_mode,
     window_close, window_get_position, window_get_size, window_is_maximized, window_minimize,
-    window_present, window_set_launch_size, window_set_position, window_set_size,
-    window_sys_command, window_toggle_maximize, AppState,
+    window_present, window_set_always_on_top, window_set_launch_size, window_set_position,
+    window_set_size, window_sys_command, window_toggle_fullscreen, window_toggle_maximize, AppState,
 };
-use crate::ipc::events::{EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE};
+use crate::ipc::events::{EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE, EVENT_OPEN_NEW_TAB};
 use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
@@ -59,19 +60,50 @@ pub fn run() {
     let job_supervisor =
         JobObjectSupervisor::new().expect("Failed to initialize Windows Job Object Supervisor");
 
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+    let force_new_window = std::env::args().skip(1).any(|arg| arg == "--new-window");
+    let early_prefs = crate::infra::os::startup_prefs::read_startup_prefs_early();
+    let attach_instance = !force_new_window && early_prefs.new_instance_behavior != "new_window";
+
+    let mut builder = tauri::Builder::default();
+    if attach_instance {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let live_prefs = app
+                .path()
+                .app_data_dir()
+                .ok()
+                .map(|dir| crate::infra::os::startup_prefs::read_startup_prefs_from_dir(&dir))
+                .unwrap_or_default();
+            if live_prefs.new_instance_behavior == "new_window" {
+                if let Ok(exe) = std::env::current_exe() {
+                    let mut cmd = std::process::Command::new(exe);
+                    cmd.arg("--new-window");
+                    for arg in argv.into_iter().skip(1) {
+                        cmd.arg(arg);
+                    }
+                    if !cwd.is_empty() {
+                        cmd.current_dir(&cwd);
+                    }
+                    let _ = cmd.spawn();
+                }
+                return;
+            }
+
             if let Some(main_win) = app.get_webview_window("main") {
                 let _ = main_win.show();
                 let _ = main_win.unminimize();
                 let _ = main_win.set_focus();
             }
             let base_dir = std::path::Path::new(&cwd);
-            for target in argv
+            let targets: Vec<LaunchTarget> = argv
                 .into_iter()
                 .skip(1)
                 .filter_map(|arg| parse_clean_launch_target_with_base(&arg, Some(base_dir)))
-            {
+                .collect();
+            if targets.is_empty() {
+                let _ = app.emit(EVENT_OPEN_NEW_TAB, ());
+                return;
+            }
+            for target in targets {
                 match target {
                     LaunchTarget::Directory(dir) => {
                         let _ = app.emit(EVENT_OPEN_DIRECTORY, dir);
@@ -81,7 +113,10 @@ pub fn run() {
                     }
                 }
             }
-        }))
+        }));
+    }
+
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let app_data_dir = app
@@ -142,6 +177,7 @@ pub fn run() {
             }
 
             crate::infra::os::context_menu::sync_context_menu_if_enabled(&app_data_dir);
+            crate::infra::os::startup::sync_startup_if_enabled();
 
             app.manage(AppState {
                 hosts,
@@ -220,10 +256,16 @@ pub fn run() {
             app_get_launch_files,
             context_menu_get_status,
             context_menu_set_enabled,
+            startup_get_status,
+            startup_set_enabled,
+            startup_sync_prefs,
             clipboard_read_text,
             clipboard_write_text,
             window_set_launch_size,
             window_present,
+            window_set_always_on_top,
+            window_toggle_fullscreen,
+            window_apply_ime_mode,
             window_is_maximized,
             window_get_position,
             window_set_position,

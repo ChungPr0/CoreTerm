@@ -11,3 +11,4 @@ export const EVENT_SFTP_TRANSFER_CONFLICT = "sftp:transfer_conflict";
 
 export const EVENT_OPEN_DIRECTORY = "open-directory";
 export const EVENT_OPEN_FILE = "open-file";
+export const EVENT_OPEN_NEW_TAB = "open-new-tab";

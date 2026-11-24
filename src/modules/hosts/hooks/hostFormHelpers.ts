@@ -40,9 +40,21 @@ export function isAutoReconnectAllowed(
   return authMethod === "SSH_KEY" || (authMethod === "PASSWORD" && passwordMode === "SAVED");
 }
 
+export interface SshFormDefaults {
+  username?: string;
+  port?: number;
+  serverAliveInterval?: number;
+  strictHostKeyChecking?: StrictHostKeyChecking;
+  compression?: boolean;
+  forwardAgent?: boolean;
+  autoReconnect?: boolean;
+  reconnectIntervalSec?: number;
+}
+
 export function createHostFormFields(
   editingHost: HostFullConfigDto | null,
-  initialGroupName?: string
+  initialGroupName?: string,
+  sshDefaults?: SshFormDefaults
 ): HostFormFields {
   if (editingHost) {
     return {
@@ -80,8 +92,8 @@ export function createHostFormFields(
   return {
     alias: "",
     host: "",
-    port: 22,
-    username: "root",
+    port: sshDefaults?.port ?? 22,
+    username: sshDefaults?.username?.trim() || "root",
     groupName: initialGroupName?.trim() || DEFAULT_HOST_GROUP,
     tagsInput: "",
     authMethod: "PASSWORD",
@@ -89,13 +101,13 @@ export function createHostFormFields(
     password: "",
     selectedKeyId: "",
     privateKeyPath: "",
-    serverAliveInterval: 60,
-    strictHostKeyChecking: "ACCEPT_NEW",
-    compression: false,
-    forwardAgent: false,
+    serverAliveInterval: sshDefaults?.serverAliveInterval ?? 60,
+    strictHostKeyChecking: sshDefaults?.strictHostKeyChecking ?? "ACCEPT_NEW",
+    compression: sshDefaults?.compression ?? false,
+    forwardAgent: sshDefaults?.forwardAgent ?? false,
     startupCommand: "",
-    autoReconnect: false,
-    reconnectIntervalSec: 2,
+    autoReconnect: sshDefaults?.autoReconnect ?? false,
+    reconnectIntervalSec: sshDefaults?.reconnectIntervalSec ?? 2,
     forwards: [],
   };
 }

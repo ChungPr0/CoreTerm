@@ -2,6 +2,15 @@ export type SftpConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME" | "RESU
 export type ForwardType = "LOCAL" | "REMOTE" | "DYNAMIC";
 export type ConflictStrategy = "AUTO_SHARE_OR_SKIP" | "OVERRIDE_PORT" | "ABORT";
 export type ShellKind = "powershell" | "pwsh" | "cmd" | "git-bash" | "wsl" | "custom";
+export type StrictHostKeyChecking = "ACCEPT_NEW" | "YES" | "NO";
+export type SettingsCategoryId =
+  | "general"
+  | "startup"
+  | "terminal"
+  | "shells"
+  | "ssh"
+  | "sftp"
+  | "editor";
 
 export interface ShellProfile {
   id: string;
@@ -84,7 +93,8 @@ export interface TerminalTabItem {
   reconnectIntervalSec?: number;
   isAdmin?: boolean;
   initialCwd?: string;
-  tabKind?: "terminal" | "sftp" | "editor";
+  tabKind?: "terminal" | "sftp" | "editor" | "settings";
+  settingsSection?: SettingsCategoryId;
   sftpOpen?: boolean;
   sftpSplitRatio?: number;
   sftpState?: SftpConnectionState;

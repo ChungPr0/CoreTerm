@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DraftPortForward, HostFullConfigDto, UpdateHostRequestDto } from "../types";
 import { hostsApi } from "../api/hostsApi";
 import { keysApi, type SshKeyDto } from "@/modules/keys";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import { useI18n } from "@/shared/i18n";
 import { useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
@@ -10,7 +11,22 @@ import {
   createHostFormFields,
   validateAndBuildHostPayload,
   type HostFormFields,
+  type SshFormDefaults,
 } from "./hostFormHelpers";
+
+function readSshDefaults(): SshFormDefaults {
+  const s = useSettingsStore.getState().settings;
+  return {
+    username: s.sshDefaultUsername,
+    port: s.sshDefaultPort,
+    serverAliveInterval: s.sshDefaultKeepAlive,
+    strictHostKeyChecking: s.sshDefaultStrictHostKey,
+    compression: s.sshDefaultCompression,
+    forwardAgent: s.sshDefaultForwardAgent,
+    autoReconnect: s.sshDefaultAutoReconnect,
+    reconnectIntervalSec: s.sshDefaultReconnectIntervalSec,
+  };
+}
 
 interface UseHostFormArgs {
   isOpen: boolean;
@@ -33,7 +49,7 @@ export function useHostForm({
   const alert = useAlert();
 
   const [fields, setFields] = useState<HostFormFields>(() =>
-    createHostFormFields(null, initialGroupName)
+    createHostFormFields(null, initialGroupName, readSshDefaults())
   );
   const [pendingDeleteRuleIdx, setPendingDeleteRuleIdx] = useState<number | null>(null);
   const [savedKeys, setSavedKeys] = useState<SshKeyDto[]>([]);
@@ -88,7 +104,13 @@ export function useHostForm({
     if (!isOpen) return;
     setPendingDeleteRuleIdx(null);
     setIsGroupMenuOpen(false);
-    setFields(createHostFormFields(editingHost, initialGroupName));
+    setFields(
+      createHostFormFields(
+        editingHost,
+        initialGroupName,
+        editingHost ? undefined : readSshDefaults()
+      )
+    );
 
     if (editingHost) return;
 

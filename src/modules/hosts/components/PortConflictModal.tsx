@@ -31,7 +31,7 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
       cancelLabel={t("conflict.abort")}
       onConfirm={onSkipAndConnect}
     >
-      <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+      <div className="space-y-2 max-h-60 overflow-y-auto">
         {conflicts.map((c) => {
           const processLabel = `${c.conflicting_process_name ?? t("conflict.process")}${
             c.conflicting_pid ? ` (PID ${c.conflicting_pid})` : ""

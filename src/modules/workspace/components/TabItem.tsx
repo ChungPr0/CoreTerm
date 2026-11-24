@@ -4,6 +4,7 @@ import {
   FolderSync,
   RotateCw,
   Server,
+  Settings,
   X,
 } from "lucide-react";
 import type { SessionState, TerminalTabItem } from "@/shared/types/ipc";
@@ -86,8 +87,10 @@ export const TabItem: React.FC<TabItemProps> = ({
 }) => {
   const { t } = useI18n();
   const isEditor = tab.tabKind === "editor";
+  const isSettings = tab.tabKind === "settings";
   const isRemoteEditor = isEditor && tab.editorFile?.kind === "remote";
-  const isLocal = !isEditor && tab.hostId === "local";
+  const isLocal = !isEditor && !isSettings && tab.hostId === "local";
+  const displayTitle = isSettings ? t("settings.title") : tab.title;
   const [renameDraft, setRenameDraft] = useState(tab.title);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const escCancelledRef = useRef(false);
@@ -114,17 +117,19 @@ export const TabItem: React.FC<TabItemProps> = ({
     tab.state === "ERROR" ||
     tab.state === "AUTH_FAILED";
 
-  const titleText = isEditor
-    ? isRemoteEditor
-      ? `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title} — ${status.label}`
-      : `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title}`
-    : isLocal
-      ? tab.isAdmin
-        ? `${tab.title} (${t("app.admin_badge")})`
-        : tab.title
-      : tab.tabKind === "sftp"
-        ? `SFTP: ${tab.title} (${tab.hostSubtitle}) — ${status.label}`
-        : `${tab.title} (${tab.hostSubtitle}) — ${status.label}`;
+  const titleText = isSettings
+    ? t("settings.title")
+    : isEditor
+      ? isRemoteEditor
+        ? `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title} — ${status.label}`
+        : `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title}`
+      : isLocal
+        ? tab.isAdmin
+          ? `${tab.title} (${t("app.admin_badge")})`
+          : tab.title
+        : tab.tabKind === "sftp"
+          ? `SFTP: ${tab.title} (${tab.hostSubtitle}) — ${status.label}`
+          : `${tab.title} (${tab.hostSubtitle}) — ${status.label}`;
 
   return (
     <div
@@ -167,7 +172,9 @@ export const TabItem: React.FC<TabItemProps> = ({
       )}
 
       <span className="relative inline-flex h-4 w-4 items-center justify-center shrink-0">
-        {isEditor ? (
+        {isSettings ? (
+          <Settings className="w-3.5 h-3.5 text-sky-400" />
+        ) : isEditor ? (
           <FileText className="w-3.5 h-3.5 text-slate-300" />
         ) : isLocal ? (
           <ShellIcon
@@ -179,7 +186,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         ) : (
           <Server className="w-3.5 h-3.5 text-emerald-400" />
         )}
-        {((!isLocal && !isEditor) || isRemoteEditor) && (
+        {((!isLocal && !isEditor && !isSettings) || isRemoteEditor) && (
           <span
             title={status.label}
             className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-[1.5px] ${
@@ -218,7 +225,7 @@ export const TabItem: React.FC<TabItemProps> = ({
           className="flex-1 min-w-0 h-5 px-1.5 rounded bg-slate-950 border border-sky-500/80 text-xs font-medium text-slate-100 outline-none select-text"
         />
       ) : (
-        <span className="truncate font-medium flex-1 min-w-0">{tab.title}</span>
+        <span className="truncate font-medium flex-1 min-w-0">{displayTitle}</span>
       )}
 
       {isEditor && tab.editorFile?.dirty && (
@@ -228,7 +235,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         />
       )}
 
-      {!isEditor && tab.isAdmin && !isCompact && (
+      {!isEditor && !isSettings && tab.isAdmin && !isCompact && (
         <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[9px] font-semibold leading-none text-amber-300 shrink-0">
           {t("app.admin_badge")}
         </span>
@@ -240,7 +247,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         </span>
       )}
 
-      {!isLocal && !isEditor && tab.tabKind !== "sftp" && onToggleSftp && (
+      {!isLocal && !isEditor && !isSettings && tab.tabKind !== "sftp" && onToggleSftp && (
         <IconButton
           size="xs"
           tone="sky"
@@ -256,7 +263,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         />
       )}
 
-      {((!isLocal && !isEditor) || isRemoteEditor) && (
+      {((!isLocal && !isEditor && !isSettings) || isRemoteEditor) && (
         <IconButton
           size="xs"
           tone={isOffline ? "rose" : "default"}

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { selectAll } from "@codemirror/commands";
 import { RefreshCw } from "lucide-react";
 import {
-  EDITOR_FONT_SIZE_DEFAULT,
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
   TOAST_COPY_MS,
@@ -11,6 +10,7 @@ import { useI18n } from "@/shared/i18n";
 import { FindBar, ReconnectBanner, useAlert } from "@/shared/ui";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import {
   shouldPreventRightClickSelectionCollapse,
   useCodeMirrorView,
@@ -51,12 +51,35 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   const { t } = useI18n();
   const alert = useAlert();
 
+  const editorFontSize = useSettingsStore((s) => s.settings.editorFontSize);
+  const editorWordWrap = useSettingsStore((s) => s.settings.editorWordWrap);
+  const editorLineNumbers = useSettingsStore((s) => s.settings.editorLineNumbers);
+  const editorHighlightActiveLine = useSettingsStore(
+    (s) => s.settings.editorHighlightActiveLine
+  );
+  const editorTabSize = useSettingsStore((s) => s.settings.editorTabSize);
+
   const [fileReadonly, setFileReadonly] = useState(false);
   const [userReadonly, setUserReadonly] = useState(false);
-  const [wordWrap, setWordWrap] = useState(false);
-  const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
+  const [wordWrap, setWordWrap] = useState(editorWordWrap);
+  const [fontSize, setFontSize] = useState(editorFontSize);
   const [isDirty, setIsDirty] = useState(false);
   const [gotoOpen, setGotoOpen] = useState(false);
+
+  const prevDefaultFontRef = useRef(editorFontSize);
+  const prevDefaultWrapRef = useRef(editorWordWrap);
+  useEffect(() => {
+    if (prevDefaultFontRef.current !== editorFontSize) {
+      prevDefaultFontRef.current = editorFontSize;
+      setFontSize(editorFontSize);
+    }
+  }, [editorFontSize]);
+  useEffect(() => {
+    if (prevDefaultWrapRef.current !== editorWordWrap) {
+      prevDefaultWrapRef.current = editorWordWrap;
+      setWordWrap(editorWordWrap);
+    }
+  }, [editorWordWrap]);
 
   const effectiveReadonly = fileReadonly || userReadonly;
   const isDirtyRef = useRef(false);
@@ -89,6 +112,9 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     wordWrap,
     effectiveReadonly,
     fontSize,
+    showLineNumbers: editorLineNumbers,
+    showActiveLine: editorHighlightActiveLine,
+    tabSize: editorTabSize,
     savedDocRef: savedDocInitRef,
     savedEolRef: savedEolInitRef,
     eolRef: eolInitRef,
@@ -427,7 +453,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         if (key === "0") {
           e.preventDefault();
           e.stopPropagation();
-          setFontSize(EDITOR_FONT_SIZE_DEFAULT);
+          setFontSize(editorFontSize);
           return;
         }
       }
@@ -443,6 +469,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [
     adjustFontSize,
+    editorFontSize,
     gotoOpen,
     hasBlockingModal,
     hasLoadErrorModal,
@@ -451,7 +478,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     session.confirmDiscard,
   ]);
 
-  const zoomPercent = Math.round((fontSize / EDITOR_FONT_SIZE_DEFAULT) * 100);
+  const zoomPercent = Math.round((fontSize / editorFontSize) * 100);
   const handleStatusBarContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (shouldBypassEditorMenu(e.target)) return;
@@ -474,7 +501,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
           onToggleEol: session.toggleEol,
           onZoomIn: () => adjustFontSize(1),
           onZoomOut: () => adjustFontSize(-1),
-          onZoomReset: () => setFontSize(EDITOR_FONT_SIZE_DEFAULT),
+          onZoomReset: () => setFontSize(editorFontSize),
           onToggleWordWrap: () => setWordWrap((v) => !v),
           onToggleReadonly: () => setUserReadonly((v) => !v),
           onCopyPath: handleCopyPath,
@@ -486,6 +513,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     [
       adjustFontSize,
       cm.viewRef,
+      editorFontSize,
       editorReady,
       effectiveReadonly,
       fileReadonly,

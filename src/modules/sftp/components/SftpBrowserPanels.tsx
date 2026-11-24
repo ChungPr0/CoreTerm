@@ -1,5 +1,6 @@
 import React from "react";
 import { Download, FolderPlus, Upload } from "lucide-react";
+import type { SftpDoubleClickAction } from "@/modules/settings";
 import { useI18n } from "@/shared/i18n";
 import { Button, type ContextMenuEntry } from "@/shared/ui";
 import type { DirectoryBrowser } from "../hooks/useDirectoryBrowser";
@@ -20,6 +21,8 @@ interface SftpBrowserPanelsProps {
   activePaneRef: React.MutableRefObject<"local" | "remote">;
   showLocal: boolean;
   splitRatio: number;
+  showHiddenFiles?: boolean;
+  doubleClickFileAction?: SftpDoubleClickAction;
   connState: SftpConnectionState;
   connected: boolean;
   nativeDragActive: boolean;
@@ -54,6 +57,8 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
   activePaneRef,
   showLocal,
   splitRatio,
+  showHiddenFiles = true,
+  doubleClickFileAction = "edit",
   connState,
   connected,
   nativeDragActive,
@@ -104,6 +109,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
     items: browser.items,
     loading: browser.loading,
     selected: browser.selected,
+    showHiddenFiles,
     filter: browser.filter,
     canGoBack: browser.canGoBack,
     canGoForward: browser.canGoForward,
@@ -116,6 +122,15 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
     onSelect: browser.setSelected,
     onNavigate: (p: string) => void browser.loadDir(p),
     onOpenFile: (item: FileItem) => onOpenFile(kind, item),
+    onDoubleClickFile: (item: FileItem) => {
+      if (doubleClickFileAction === "transfer") {
+        if (!connected) return;
+        if (kind === "local") onRequestUpload([item.path]);
+        else onRequestDownload([item.path]);
+        return;
+      }
+      onOpenFile(kind, item);
+    },
     onUp: browser.goUp,
     onHome: browser.goHome,
     onRefresh: browser.refresh,

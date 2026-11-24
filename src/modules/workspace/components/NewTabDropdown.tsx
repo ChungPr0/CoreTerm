@@ -11,7 +11,7 @@ import {
 import { PopoverMenu } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
-import type { ShellProfile } from "@/shared/types/ipc";
+import type { SettingsCategoryId, ShellProfile } from "@/shared/types/ipc";
 import { ShellIcon } from "./ShellIcon";
 
 interface NewTabDropdownProps {
@@ -26,7 +26,7 @@ interface NewTabDropdownProps {
   onConnectProfile: (host: HostProfileSummaryDto) => void;
   onCreateNewHost: () => void;
   onOpenPalette: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: SettingsCategoryId) => void;
 }
 
 export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
@@ -108,7 +108,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
             setIsOpen(false);
             setShowPlusTip(false);
             if (!defaultShellProfile) {
-              onOpenSettings();
+              onOpenSettings("shells");
               return;
             }
             onNewTab({
@@ -185,7 +185,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
           )}
         </div>
 
-        <div className="max-h-56 overflow-y-auto space-y-0.5 px-1.5">
+        <div className="max-h-56 overflow-y-auto space-y-0.5 pl-1.5 pr-[1px]">
           {displayShells.length === 0 ? (
             <div className="px-2 py-2 space-y-1.5 text-[11px]">
               <div className="text-slate-400">{t("app.no_shells")}</div>
@@ -193,7 +193,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
-                  onOpenSettings();
+                  onOpenSettings("shells");
                 }}
                 className="w-full px-2 py-1.5 rounded-lg flex items-center gap-2 text-left text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 transition-colors font-medium"
               >
@@ -241,7 +241,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
             <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               {t("ctx.saved_hosts")}
             </div>
-            <div className="max-h-48 overflow-y-auto space-y-0.5 px-1.5">
+            <div className="max-h-48 overflow-y-auto space-y-0.5 pl-1.5 pr-[1px]">
               {profiles.slice(0, 12).map((p) => (
                 <button
                   key={p.id}

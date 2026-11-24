@@ -67,7 +67,10 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
         isOpen={isOpen && existingGroups.length > 0}
         onClose={() => onOpenChange(false)}
         anchorRef={comboRef}
-        className="absolute left-0 right-0 top-full mt-1 z-30 rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 max-h-48 overflow-y-auto select-none"
+        portal
+        matchAnchorWidth
+        maxHeightPx={192}
+        className="z-[90] rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 overflow-y-auto select-none"
       >
         {existingGroups.map((g) => {
           const isSelected = g.trim().toLowerCase() === value.trim().toLowerCase();
@@ -80,7 +83,7 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
                 onChange(g);
                 onOpenChange(false);
               }}
-              className={`w-full px-3 py-1.5 flex items-center justify-between gap-2 text-left transition-colors ${
+              className={`w-full pl-3 pr-[7px] py-1.5 flex items-center justify-between gap-2 text-left transition-colors ${
                 isSelected
                   ? "bg-sky-500/15 text-sky-300 font-medium"
                   : "text-slate-200 hover:bg-slate-800"

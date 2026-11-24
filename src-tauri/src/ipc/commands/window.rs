@@ -45,6 +45,33 @@ pub async fn context_menu_set_enabled(app: tauri::AppHandle, enabled: bool) -> A
 }
 
 #[tauri::command]
+pub async fn startup_get_status() -> AppResult<bool> {
+    Ok(os::startup::is_startup_registered())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn startup_set_enabled(enabled: bool) -> AppResult<bool> {
+    if enabled {
+        os::startup::register_startup().map_err(AppError::Internal)?;
+    } else {
+        os::startup::unregister_startup().map_err(AppError::Internal)?;
+    }
+    Ok(os::startup::is_startup_registered())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn startup_sync_prefs(
+    app: tauri::AppHandle,
+    new_instance_behavior: String,
+) -> AppResult<()> {
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        os::startup_prefs::write_startup_prefs(&app_data_dir, &new_instance_behavior)
+            .map_err(AppError::Internal)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn app_get_launch_dir(state: State<'_, AppState>) -> AppResult<Option<String>> {
     Ok(state.launch_dir.clone())
 }
@@ -114,19 +141,47 @@ pub async fn window_present(
     rows: Option<u16>,
     width: Option<f64>,
     height: Option<f64>,
+    launch_mode: Option<String>,
+    center_on_launch: Option<bool>,
+    always_on_top: Option<bool>,
 ) -> AppResult<()> {
     if cols.is_some() || rows.is_some() || width.is_some() || height.is_some() {
         apply_launch_size(
-        &window,
-        cols.unwrap_or(DEFAULT_TERM_COLS),
-        rows.unwrap_or(DEFAULT_TERM_ROWS),
-        width,
-        height,
-    );
+            &window,
+            cols.unwrap_or(DEFAULT_TERM_COLS),
+            rows.unwrap_or(DEFAULT_TERM_ROWS),
+            width,
+            height,
+        );
     }
-    if !window.is_visible().unwrap_or(false) {
-        let _ = window.show();
-        let _ = window.set_focus();
+    if center_on_launch.unwrap_or(false) && !window.is_maximized().unwrap_or(false) {
+        let _ = window.center();
+    }
+    if let Some(on_top) = always_on_top {
+        let _ = window.set_always_on_top(on_top);
+    }
+
+    match launch_mode.as_deref() {
+        Some("maximized") => {
+            if !window.is_visible().unwrap_or(false) {
+                let _ = window.show();
+            }
+            let _ = window.maximize();
+            let _ = window.set_focus();
+        }
+        Some("fullscreen") => {
+            if !window.is_visible().unwrap_or(false) {
+                let _ = window.show();
+            }
+            let _ = window.set_fullscreen(true);
+            let _ = window.set_focus();
+        }
+        _ => {
+            if !window.is_visible().unwrap_or(false) {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
     }
     Ok(())
 }
@@ -139,11 +194,40 @@ pub async fn window_minimize(window: tauri::WebviewWindow) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn window_toggle_maximize(window: tauri::WebviewWindow) -> AppResult<()> {
+    if window.is_fullscreen().unwrap_or(false) {
+        let _ = window.set_fullscreen(false);
+        return Ok(());
+    }
     if window.is_maximized().unwrap_or(false) {
         let _ = window.unmaximize();
     } else {
         let _ = window.maximize();
     }
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_set_always_on_top(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+) -> AppResult<()> {
+    let _ = window.set_always_on_top(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn window_toggle_fullscreen(window: tauri::WebviewWindow) -> AppResult<bool> {
+    let next = !window.is_fullscreen().unwrap_or(false);
+    let _ = window.set_fullscreen(next);
+    Ok(next)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_apply_ime_mode(
+    window: tauri::WebviewWindow,
+    mode: String,
+) -> AppResult<()> {
+    os::window::apply_ime_mode(&window, &mode);
     Ok(())
 }
 

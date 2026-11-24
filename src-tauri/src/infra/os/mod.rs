@@ -5,6 +5,8 @@ pub mod elevated_pty;
 pub mod elevation;
 pub mod job_object;
 pub mod known_folders;
+pub mod startup;
+pub mod startup_prefs;
 pub mod window;
 
 #[cfg(windows)]

@@ -16,9 +16,15 @@ import {
   indentMore,
   insertTab,
 } from "@codemirror/commands";
-import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
+import {
+  bracketMatching,
+  foldGutter,
+  foldKeymap,
+  indentOnInput,
+  indentUnit,
+} from "@codemirror/language";
 import { highlightSelectionMatches, search } from "@codemirror/search";
-import { EDITOR_FONT_SIZE_DEFAULT } from "@/shared/defaults";
+import { EDITOR_FONT_SIZE_DEFAULT, EDITOR_TAB_SIZE_DEFAULT } from "@/shared/defaults";
 import type { EditorCursorPos, EditorLineEnding } from "../types";
 import { getEditorLanguageById } from "../utils/editorLanguage";
 import { coreTermSyntaxHighlighting, createCoreTermEditorTheme } from "../utils/editorTheme";
@@ -34,6 +40,9 @@ interface UseCodeMirrorViewOpts {
   wordWrap: boolean;
   effectiveReadonly: boolean;
   fontSize: number;
+  showLineNumbers?: boolean;
+  showActiveLine?: boolean;
+  tabSize?: number;
   savedDocRef: React.MutableRefObject<string>;
   savedEolRef: React.MutableRefObject<EditorLineEnding>;
   eolRef: React.MutableRefObject<EditorLineEnding>;
@@ -50,6 +59,9 @@ export function useCodeMirrorView({
   wordWrap,
   effectiveReadonly,
   fontSize,
+  showLineNumbers = true,
+  showActiveLine = true,
+  tabSize = EDITOR_TAB_SIZE_DEFAULT,
   savedDocRef,
   savedEolRef,
   eolRef,
@@ -67,14 +79,23 @@ export function useCodeMirrorView({
   const wrapCompartmentRef = useRef(new Compartment());
   const readonlyCompartmentRef = useRef(new Compartment());
   const themeCompartmentRef = useRef(new Compartment());
+  const lineNumbersCompartmentRef = useRef(new Compartment());
+  const activeLineCompartmentRef = useRef(new Compartment());
+  const tabSizeCompartmentRef = useRef(new Compartment());
   const langSeqRef = useRef(0);
 
   const wordWrapRef = useRef(wordWrap);
   const fontSizeRef = useRef(fontSize || EDITOR_FONT_SIZE_DEFAULT);
   const effectiveReadonlyRef = useRef(effectiveReadonly);
+  const showLineNumbersRef = useRef(showLineNumbers);
+  const showActiveLineRef = useRef(showActiveLine);
+  const tabSizeRef = useRef(tabSize);
   wordWrapRef.current = wordWrap;
   fontSizeRef.current = fontSize;
   effectiveReadonlyRef.current = effectiveReadonly;
+  showLineNumbersRef.current = showLineNumbers;
+  showActiveLineRef.current = showActiveLine;
+  tabSizeRef.current = tabSize;
 
   const [langId, setLangId] = useState("plain");
   const [totalLines, setTotalLines] = useState<number>(1);
@@ -131,9 +152,12 @@ export function useCodeMirrorView({
       const state = EditorState.create({
         doc: initialLfDoc,
         extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightActiveLine(),
+          lineNumbersCompartmentRef.current.of(
+            showLineNumbersRef.current ? lineNumbers() : []
+          ),
+          activeLineCompartmentRef.current.of(
+            showActiveLineRef.current ? [highlightActiveLine(), highlightActiveLineGutter()] : []
+          ),
           history(),
           foldGutter(),
           drawSelection(),
@@ -143,6 +167,10 @@ export function useCodeMirrorView({
           search(),
           coreTermSyntaxHighlighting,
           themeCompartmentRef.current.of(createCoreTermEditorTheme(fontSizeRef.current)),
+          tabSizeCompartmentRef.current.of([
+            EditorState.tabSize.of(tabSizeRef.current),
+            indentUnit.of(" ".repeat(tabSizeRef.current)),
+          ]),
           langCompartmentRef.current.of([]),
           wrapCompartmentRef.current.of(wordWrapRef.current ? EditorView.lineWrapping : []),
           readonlyCompartmentRef.current.of(EditorState.readOnly.of(isReadonly)),
@@ -284,6 +312,34 @@ export function useCodeMirrorView({
       effects: themeCompartmentRef.current.reconfigure(createCoreTermEditorTheme(fontSize)),
     });
   }, [fontSize]);
+
+  useEffect(() => {
+    if (!viewRef.current) return;
+    viewRef.current.dispatch({
+      effects: lineNumbersCompartmentRef.current.reconfigure(
+        showLineNumbers ? lineNumbers() : []
+      ),
+    });
+  }, [showLineNumbers]);
+
+  useEffect(() => {
+    if (!viewRef.current) return;
+    viewRef.current.dispatch({
+      effects: activeLineCompartmentRef.current.reconfigure(
+        showActiveLine ? [highlightActiveLine(), highlightActiveLineGutter()] : []
+      ),
+    });
+  }, [showActiveLine]);
+
+  useEffect(() => {
+    if (!viewRef.current) return;
+    viewRef.current.dispatch({
+      effects: tabSizeCompartmentRef.current.reconfigure([
+        EditorState.tabSize.of(tabSize),
+        indentUnit.of(" ".repeat(tabSize)),
+      ]),
+    });
+  }, [tabSize]);
 
   return {
     editorHostRef,

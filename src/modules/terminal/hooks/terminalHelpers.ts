@@ -4,6 +4,10 @@ import { Channel } from "@/shared/api/tauriClient";
 import {
   clampLaunchCols,
   clampLaunchRows,
+  TERM_FONT_FAMILY_DEFAULT,
+  TERM_FONT_SIZE_DEFAULT,
+  TERM_LINE_HEIGHT_DEFAULT,
+  TERM_SCROLLBACK_DEFAULT,
   THEME_SELECTION_BG,
 } from "@/shared/defaults";
 import { copyText, readText } from "@/shared/utils/clipboard";
@@ -67,16 +71,29 @@ let lastMetrics: TermMetrics = {
   chromeH: DEFAULT_CHROME_H,
 };
 
-export function createTerminalInstance(cols: number, rows: number): Terminal {
+export interface TerminalAppearanceOpts {
+  fontSize: number;
+  fontFamily: string;
+  lineHeight: number;
+  cursorStyle: "block" | "bar" | "underline";
+  cursorBlink: boolean;
+  scrollback: number;
+}
+
+export function createTerminalInstance(
+  cols: number,
+  rows: number,
+  appearance?: Partial<TerminalAppearanceOpts>
+): Terminal {
   return new Terminal({
     cols,
     rows,
-    cursorBlink: true,
-    cursorStyle: "block",
-    fontFamily: '"Cascadia Mono", "JetBrains Mono", Consolas, monospace',
-    fontSize: 16,
-    lineHeight: 1.0,
-    scrollback: 10000,
+    cursorBlink: appearance?.cursorBlink ?? true,
+    cursorStyle: appearance?.cursorStyle ?? "block",
+    fontFamily: appearance?.fontFamily ?? TERM_FONT_FAMILY_DEFAULT,
+    fontSize: appearance?.fontSize ?? TERM_FONT_SIZE_DEFAULT,
+    lineHeight: appearance?.lineHeight ?? TERM_LINE_HEIGHT_DEFAULT,
+    scrollback: appearance?.scrollback ?? TERM_SCROLLBACK_DEFAULT,
     allowProposedApi: true,
     convertEol: false,
     theme: XTERM_THEME,
@@ -176,25 +193,26 @@ export async function loadWebgl(
   term: Terminal,
   isCancelled: () => boolean,
   onContextLost?: () => void
-): Promise<void> {
+): Promise<{ dispose: () => void } | null> {
   if (typeof document !== "undefined" && document.fonts?.ready) {
     await Promise.race([
       document.fonts.ready.catch(() => undefined),
       new Promise<void>((r) => setTimeout(r, 100)),
     ]);
   }
-  if (isCancelled()) return;
+  if (isCancelled()) return null;
   try {
     const { WebglAddon } = await import("@xterm/addon-webgl");
-    if (isCancelled()) return;
+    if (isCancelled()) return null;
     const addon = new WebglAddon();
     addon.onContextLoss(() => {
       addon.dispose();
       onContextLost?.();
     });
     term.loadAddon(addon);
+    return addon;
   } catch {
-    // Fallback to default renderer
+    return null;
   }
 }
 
@@ -207,6 +225,9 @@ export function bindTerminalShortcuts(
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
     const key = e.key.toLowerCase();
+    if (e.key === "F11" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      return false;
+    }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && key === "f") {
       return false;
     }

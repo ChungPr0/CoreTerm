@@ -212,6 +212,11 @@ describe("formatError utils", () => {
         "Local path not found",
       ],
       [
+        "Cannot register debug executable to Windows startup because it requires the Vite dev server (localhost:1420).",
+        "Không thể đăng ký khởi động cho bản debug",
+        "Cannot register startup for debug builds",
+      ],
+      [
         "The system cannot find the file specified. (os error 2)",
         "Tệp tin hoặc thư mục không tồn tại",
         "File or directory not found",

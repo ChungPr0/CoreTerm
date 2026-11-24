@@ -102,9 +102,10 @@ export function buildTabContextItems({
   onCloseOtherTabs,
 }: BuildTabContextItemsOpts): ContextMenuEntry[] {
   const isEditor = tab.tabKind === "editor";
+  const isSettings = tab.tabKind === "settings";
   const isRemoteEditor = isEditor && tab.editorFile?.kind === "remote";
-  const isLocal = !isEditor && tab.hostId === "local";
-  const isRemoteSession = !isEditor && tab.hostId !== "local";
+  const isLocal = !isEditor && !isSettings && tab.hostId === "local";
+  const isRemoteSession = !isEditor && !isSettings && tab.hostId !== "local";
   const connecting = isTabConnecting(tab);
   const hostProfile =
     isRemoteEditor || isRemoteSession
@@ -113,7 +114,15 @@ export function buildTabContextItems({
 
   const items: ContextMenuEntry[] = [];
 
-  if (isEditor) {
+  if (isSettings) {
+    items.push({
+      id: "tab-find",
+      label: t("ctx.find"),
+      icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
+      shortcut: "Ctrl+F",
+      onSelect: () => onFindInTab(tab.tabId),
+    });
+  } else if (isEditor) {
     items.push({
       id: "tab-find",
       label: t("ctx.find"),
@@ -208,7 +217,7 @@ export function buildTabContextItems({
 
   items.push({ type: "separator", id: "sep-tab-2" });
 
-  if (onOpenSettings) {
+  if (onOpenSettings && !isSettings) {
     items.push({
       id: "tab-settings",
       label: t("ctx.settings"),

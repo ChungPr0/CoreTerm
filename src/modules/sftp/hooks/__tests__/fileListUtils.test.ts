@@ -61,6 +61,23 @@ describe("fileListUtils", () => {
     ]);
   });
 
+  it("hides dotfiles when showHiddenFiles is false", () => {
+    const list = [
+      item({ name: ".env", path: "/.env" }),
+      item({ name: ".ssh", path: "/.ssh", isDir: true }),
+      item({ name: "notes.md", path: "/notes.md" }),
+    ];
+
+    expect(sortAndFilterItems(list, "", "name", "asc", true).map((i) => i.name)).toEqual([
+      ".ssh",
+      ".env",
+      "notes.md",
+    ]);
+    expect(sortAndFilterItems(list, "", "name", "asc", false).map((i) => i.name)).toEqual([
+      "notes.md",
+    ]);
+  });
+
   it("fits column widths cleanly to container total", () => {
     const fitted = fitColumns({ name: 200, size: 100, mtime: 100, perms: 0 }, 800);
     expect(fitted.name + fitted.size + fitted.mtime + fitted.perms).toBe(800);

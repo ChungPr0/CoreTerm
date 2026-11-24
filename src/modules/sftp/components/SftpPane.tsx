@@ -8,6 +8,7 @@ import { copyText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
 import { localParent, posixParent } from "@/shared/utils/path";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import { useTabsStore } from "@/modules/workspace";
 import { localFsApi } from "../api/localFsApi";
 import { sftpApi } from "../api/sftpApi";
@@ -75,8 +76,27 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
   const { t } = useI18n();
   const alert = useAlert();
 
-  const [showLocal, setShowLocal] = useState(mode === "full");
+  const sftpShowHiddenFiles = useSettingsStore((s) => s.settings.sftpShowHiddenFiles);
+  const sftpShowLocalInSplit = useSettingsStore((s) => s.settings.sftpShowLocalInSplit);
+  const sftpConfirmBeforeTransfer = useSettingsStore(
+    (s) => s.settings.sftpConfirmBeforeTransfer
+  );
+  const sftpDoubleClickFileAction = useSettingsStore(
+    (s) => s.settings.sftpDoubleClickFileAction
+  );
+
+  const [showLocal, setShowLocal] = useState(mode === "full" || sftpShowLocalInSplit);
+  const prevSplitLocalDefaultRef = useRef(sftpShowLocalInSplit);
   const [splitRatio, setSplitRatio] = useState(SFTP_PANE_SPLIT_DEFAULT);
+
+  useEffect(() => {
+    if (prevSplitLocalDefaultRef.current !== sftpShowLocalInSplit) {
+      prevSplitLocalDefaultRef.current = sftpShowLocalInSplit;
+      if (mode === "split") {
+        setShowLocal(sftpShowLocalInSplit);
+      }
+    }
+  }, [mode, sftpShowLocalInSplit]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const remoteDropRef = useRef<HTMLDivElement>(null);
@@ -121,6 +141,7 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
     connStateRef,
     showLocalRef,
     conflictPolicy,
+    confirmBeforeTransfer: sftpConfirmBeforeTransfer,
     remoteBrowser: remote,
     localBrowser: local,
     onError: notifyError,
@@ -317,6 +338,8 @@ export const SftpPane: React.FC<SftpPaneProps> = ({
         activePaneRef={activePaneRef}
         showLocal={showLocal}
         splitRatio={splitRatio}
+        showHiddenFiles={sftpShowHiddenFiles}
+        doubleClickFileAction={sftpDoubleClickFileAction}
         connState={conn.connState}
         connected={conn.connState === "CONNECTED"}
         nativeDragActive={nativeDragActive}

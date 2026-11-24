@@ -1,6 +1,7 @@
 import { LOCAL_HOST_ID, SFTP_SPLIT_RATIO_DEFAULT } from "@/shared/defaults";
 import type {
   EditorTabMeta,
+  SettingsCategoryId,
   ShellProfile,
   TerminalTabItem,
 } from "@/shared/types/ipc";
@@ -55,6 +56,26 @@ export function buildNewEditorTab(
   };
 }
 
+export function buildSettingsTab(
+  tabId: string,
+  section?: SettingsCategoryId
+): TerminalTabItem {
+  return {
+    tabId,
+    hostId: LOCAL_HOST_ID,
+    title: "Settings",
+    hostSubtitle: "CoreTerm",
+    state: "ONLINE",
+    errorMessage: null,
+    reconnectToken: 0,
+    canAutoReconnect: false,
+    autoReconnect: false,
+    reconnectIntervalSec: 2,
+    tabKind: "settings",
+    ...(section ? { settingsSection: section } : {}),
+  };
+}
+
 export function applyToggleSftpSplit(
   tabs: TerminalTabItem[],
   openedSftpTabs: Record<string, boolean>,
@@ -65,7 +86,8 @@ export function applyToggleSftpSplit(
     !target ||
     target.hostId === LOCAL_HOST_ID ||
     target.tabKind === "sftp" ||
-    target.tabKind === "editor"
+    target.tabKind === "editor" ||
+    target.tabKind === "settings"
   ) {
     return null;
   }

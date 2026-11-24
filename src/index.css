@@ -77,8 +77,13 @@ body,
 
 .xterm .xterm-viewport {
   overflow-y: auto !important;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.24) transparent;
+}
+
+/* Reserve 5px scrollbar gutter permanently to prevent horizontal layout shift */
+.overflow-y-auto:not(.no-scrollbar):not(.xterm-viewport),
+.overflow-auto:not(.no-scrollbar):not(.xterm-viewport),
+.cm-scroller {
+  scrollbar-gutter: stable;
 }
 
 /* Hide scrollbar completely when terminal has no scrollback lines yet */

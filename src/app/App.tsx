@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import type { SettingsCategoryId } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { useGlobalShortcuts } from "@/shared/hooks/useGlobalShortcuts";
 import { useAlert, useContextMenu } from "@/shared/ui";
@@ -9,18 +10,22 @@ import {
   TerminalViewport,
   useSshSessions,
 } from "@/modules/terminal";
-import { TabBar } from "@/modules/workspace";
+import { TabBar, windowApi } from "@/modules/workspace";
 import { APP_PRELOADERS, AppModals } from "./AppModals";
 import { useAppBootstrap } from "./useAppBootstrap";
 import { useAppMenus } from "./useAppMenus";
 import { useShellActions } from "./useShellActions";
 
 const loadContextMenu = () => import("@/shared/ui/ContextMenu");
+const loadSettingsTabPane = () => import("@/modules/settings/components/SettingsTabPane");
 const ContextMenu = lazy(() => loadContextMenu().then((m) => ({ default: m.ContextMenu })));
 const FileEditorPane = lazy(() =>
   import("@/modules/editor").then((m) => ({ default: m.FileEditorPane }))
 );
-const PRELOADERS = [...APP_PRELOADERS, loadContextMenu];
+const SettingsTabPane = lazy(() =>
+  loadSettingsTabPane().then((m) => ({ default: m.SettingsTabPane }))
+);
+const PRELOADERS = [...APP_PRELOADERS, loadContextMenu, loadSettingsTabPane];
 
 export const App: React.FC = () => {
   const { t } = useI18n();
@@ -31,7 +36,6 @@ export const App: React.FC = () => {
   const [focusToken, setFocusToken] = useState(0);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [keysVersion, setKeysVersion] = useState(0);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState<DeletePromptState | null>(null);
   const [findSignal, setFindSignal] = useState<{ tabId: string; seq: number } | null>(null);
@@ -57,6 +61,10 @@ export const App: React.FC = () => {
   const handleOpenFileFromExternal = useCallback(() => {
     dismissExternalOverlaysRef.current();
   }, []);
+  const handleOpenNewTabFromExternalRef = useRef<() => void>(() => {});
+  const handleOpenNewTabFromExternal = useCallback(() => {
+    handleOpenNewTabFromExternalRef.current();
+  }, []);
 
   const {
     settings,
@@ -66,13 +74,13 @@ export const App: React.FC = () => {
     hasNativeBorder,
     addCustomShell,
     presentWindow,
-    saveAndApplySettings,
   } = useAppBootstrap({
     preloaders: PRELOADERS,
     localHostLabel: t("sftp.local_pane"),
     onFocusTerminal: focusTerminal,
     onOpenDirectory: handleOpenDirectoryFromExternal,
     onOpenFile: handleOpenFileFromExternal,
+    onOpenNewTab: handleOpenNewTabFromExternal,
   });
 
   const defaultShellProfile = useMemo(() => {
@@ -86,7 +94,6 @@ export const App: React.FC = () => {
 
   dismissExternalOverlaysRef.current = () => {
     setIsSidebarOpen(false);
-    setIsSettingsOpen(false);
     setIsPaletteOpen(false);
     setIsVaultOpen(false);
     setDeletePrompt(null);
@@ -106,10 +113,25 @@ export const App: React.FC = () => {
     onHostUpdated: () => void hosts.loadProfiles(),
   });
 
+  handleOpenNewTabFromExternalRef.current = () => {
+    dismissExternalOverlaysRef.current();
+    sessions.newLocalTab();
+    focusTerminal();
+  };
+
+  const openSettings = useCallback(
+    (section?: SettingsCategoryId) => {
+      setIsSidebarOpen(false);
+      setIsPaletteOpen(false);
+      closeMenu();
+      sessions.openSettingsTab(section);
+    },
+    [closeMenu, sessions]
+  );
+
   const hasTopLevelModal =
     hosts.isHostModalOpen ||
     isVaultOpen ||
-    isSettingsOpen ||
     hosts.isGroupModalOpen ||
     !!sessions.authPrompt ||
     !!sessions.hostKeyPrompt ||
@@ -120,7 +142,6 @@ export const App: React.FC = () => {
   const hasBlockingModal =
     hosts.isHostModalOpen ||
     isVaultOpen ||
-    isSettingsOpen ||
     hosts.isGroupModalOpen ||
     !!sessions.authPrompt ||
     !!sessions.hostKeyPrompt ||
@@ -160,7 +181,8 @@ export const App: React.FC = () => {
       !activeTab ||
       activeTab.hostId === "local" ||
       activeTab.tabKind === "sftp" ||
-      activeTab.tabKind === "editor"
+      activeTab.tabKind === "editor" ||
+      activeTab.tabKind === "settings"
     ) {
       return;
     }
@@ -178,7 +200,10 @@ export const App: React.FC = () => {
     onToggleSidebar: toggleSidebar,
     onToggleSftpSplit: toggleActiveSftpSplit,
     onFindInTerminal: () => triggerFindInTab(),
-    onOpenSettings: () => setIsSettingsOpen(true),
+    onOpenSettings: () => openSettings(),
+    onToggleFullscreen: () => {
+      windowApi.windowToggleFullscreen().catch(() => {});
+    },
     onCloseContextMenu: closeMenu,
     onDismissSidebar: dismissSidebar,
   });
@@ -221,7 +246,7 @@ export const App: React.FC = () => {
     onOpenGroupModal: () => hosts.setIsGroupModalOpen(true),
     onDeleteGroup: hosts.requestDeleteGroup,
     onOpenVault: () => setIsVaultOpen(true),
-    onOpenSettings: () => setIsSettingsOpen(true),
+    onOpenSettings: () => openSettings(),
     onOpenPalette: () => setIsPaletteOpen(true),
     onDismissSidebar: dismissSidebar,
   });
@@ -272,7 +297,7 @@ export const App: React.FC = () => {
         onConnectProfile={sessions.connectHost}
         onCreateNewHost={() => hosts.openNewHost("Default")}
         onOpenPalette={() => setIsPaletteOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={openSettings}
         onContextMenuTab={menus.openTabMenu}
         onContextMenuTabBar={menus.openTabBarMenu}
       />
@@ -288,6 +313,27 @@ export const App: React.FC = () => {
             sessions.authPrompt?.tab_id === tab.tabId ||
             sessions.hostKeyPrompt?.tab_id === tab.tabId ||
             sessions.portConflicts.length > 0;
+
+          if (tab.tabKind === "settings") {
+            return (
+              <div
+                key={tab.tabId}
+                style={{ display: isTabActive ? "flex" : "none" }}
+                className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0c0f14]"
+              >
+                <Suspense fallback={null}>
+                  <SettingsTabPane
+                    tab={tab}
+                    isActive={isTabActive}
+                    shellProfiles={shellProfiles}
+                    findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
+                    onOpenVault={() => setIsVaultOpen(true)}
+                    onModalChange={sessions.handleSftpModalChange}
+                  />
+                </Suspense>
+              </div>
+            );
+          }
 
           if (tab.tabKind === "editor" && tab.editorFile) {
             return (
@@ -313,7 +359,7 @@ export const App: React.FC = () => {
                     onSaved={() => {
                       sessions.bumpSftpRefresh(tab.hostId);
                     }}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
+                    onOpenSettings={() => openSettings()}
                     onOpenSshTab={
                       hostProfile ? () => void sessions.connectHost(hostProfile) : undefined
                     }
@@ -344,7 +390,7 @@ export const App: React.FC = () => {
                 onSwitchShell={sessions.switchTabShell}
                 onPickShell={pickShellForTab}
                 onRescan={rescanShells}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={() => openSettings("shells")}
                 onOpenSsh={() => setIsSidebarOpen(true)}
                 onToggleAutoReconnect={sessions.toggleAutoReconnect}
                 onSessionAck={sessions.handleSessionAck}
@@ -380,7 +426,7 @@ export const App: React.FC = () => {
               onOpenSshTab={
                 hostProfile ? () => void sessions.connectHost(hostProfile) : undefined
               }
-              onOpenSettings={() => setIsSettingsOpen(true)}
+              onOpenSettings={() => openSettings()}
               onCloseTab={sessions.closeTabById}
             />
           );
@@ -401,7 +447,7 @@ export const App: React.FC = () => {
           onOpenSftp={sessions.openSftpTab}
           onCreateNew={() => hosts.openNewHost("Default")}
           onOpenVault={() => setIsVaultOpen(true)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenSettings={() => openSettings()}
           onEditHost={hosts.editHost}
           onDuplicateHost={hosts.duplicateHost}
           onDeleteHost={hosts.requestDeleteHost}
@@ -433,12 +479,8 @@ export const App: React.FC = () => {
           keysVersion={keysVersion}
           onOpenVault={() => setIsVaultOpen(true)}
           onCloseVault={() => setIsVaultOpen(false)}
-          isSettingsOpen={isSettingsOpen}
           isAppElevated={isAppElevated}
-          settings={settings}
           shellProfiles={shellProfiles}
-          onCloseSettings={() => setIsSettingsOpen(false)}
-          onSaveSettings={saveAndApplySettings}
           isPaletteOpen={isPaletteOpen}
           onClosePalette={() => setIsPaletteOpen(false)}
           onSelectHost={sessions.connectHost}
@@ -449,6 +491,7 @@ export const App: React.FC = () => {
             })
           }
           onOpenSftpTab={sessions.openSftpTab}
+          onOpenSettings={() => openSettings()}
           authPrompt={sessions.authPrompt}
           authPromptSource={sessions.authPromptSource}
           hostKeyPrompt={sessions.hostKeyPrompt}

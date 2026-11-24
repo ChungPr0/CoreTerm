@@ -6,6 +6,7 @@ import {
   Lock,
   Search,
   Server,
+  Settings,
   X,
 } from "lucide-react";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
@@ -23,11 +24,13 @@ interface CommandPaletteProps {
   onSelectHost: (host: HostProfileSummaryDto) => void;
   onSelectShell?: (profile: ShellProfile, asAdmin?: boolean) => void;
   onOpenSftp?: (host: HostProfileSummaryDto) => void;
+  onOpenSettings?: () => void;
 }
 
 type PaletteItem =
   | { kind: "shell"; key: string; shell: ShellProfile }
-  | { kind: "host"; key: string; host: HostProfileSummaryDto };
+  | { kind: "host"; key: string; host: HostProfileSummaryDto }
+  | { kind: "settings"; key: string };
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
@@ -38,6 +41,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectHost,
   onSelectShell,
   onOpenSftp,
+  onOpenSettings,
 }) => {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -71,8 +75,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       })
       .map((host) => ({ kind: "host", key: `host:${host.id}`, host }));
 
-    return [...matchedShells, ...matchedHosts];
-  }, [profiles, shellProfiles, onSelectShell, query]);
+    const settingsTitle = t("settings.title").toLowerCase();
+    const matchSettings =
+      Boolean(onOpenSettings) &&
+      (!q ||
+        settingsTitle.includes(q) ||
+        "settings".includes(q) ||
+        "cài đặt".includes(q) ||
+        "preferences".includes(q) ||
+        "config".includes(q));
+    const matchedSettings: PaletteItem[] = matchSettings
+      ? [{ kind: "settings", key: "app:settings" }]
+      : [];
+
+    return [...matchedShells, ...matchedHosts, ...matchedSettings];
+  }, [profiles, shellProfiles, onSelectShell, onOpenSettings, query, t]);
 
   useEffect(() => {
     if (isOpen) {
@@ -88,6 +105,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const activateItem = (item: PaletteItem, forceAdmin = false) => {
     if (item.kind === "shell") {
       onSelectShell?.(item.shell, isAppElevated || forceAdmin);
+    } else if (item.kind === "settings") {
+      onOpenSettings?.();
     } else {
       onSelectHost(item.host);
     }
@@ -142,7 +161,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           />
         </div>
 
-        <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
+        <div className="max-h-72 overflow-y-auto py-1.5 pl-1.5 pr-[1px] space-y-1">
           {items.length === 0 ? (
             <div className="py-8 text-center text-slate-500 flex flex-col items-center gap-1.5">
               <Server className="w-6 h-6 text-slate-700" />
@@ -181,6 +200,39 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <div className="text-[11px] text-slate-500 font-mono truncate">
                           {shell.executable}
                           {shell.args.length > 0 ? ` ${shell.args.join(" ")}` : ""}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[10px] text-sky-400 shrink-0">
+                      <span>{t("palette.open")}</span>
+                      <CornerDownLeft className="w-3 h-3" />
+                    </div>
+                  </div>
+                );
+              }
+
+              if (item.kind === "settings") {
+                return (
+                  <div
+                    key={item.key}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onClick={() => activateItem(item)}
+                    className={rowClass}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-sky-500/15 text-sky-400 shrink-0">
+                        <Settings className="w-3 h-3" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold truncate">{t("settings.title")}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 font-mono">
+                            Ctrl+,
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {t("palette.settings_desc")}
                         </div>
                       </div>
                     </div>

@@ -65,7 +65,7 @@ export const HostGroupList: React.FC<HostGroupListProps> = ({
   const { t } = useI18n();
 
   return (
-    <div ref={listScrollRef} className="flex-1 overflow-y-auto p-1">
+    <div ref={listScrollRef} className="flex-1 overflow-y-auto py-1 pl-1.5 pr-[1px]">
       {groupedProfiles.length === 0 ? (
         <div className="text-center py-10 px-4">
           <Server className="w-8 h-8 text-slate-700 mx-auto mb-2" />

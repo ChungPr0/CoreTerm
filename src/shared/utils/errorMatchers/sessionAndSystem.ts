@@ -91,4 +91,12 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     pattern: /^Context menu registration is only supported on Windows$/i,
     key: "errors.context_menu_windows_only",
   },
+  {
+    pattern: /^Cannot register debug executable to Windows startup/i,
+    key: "errors.startup_debug_blocked",
+  },
+  {
+    pattern: /^Windows startup registration is only supported on Windows$/i,
+    key: "errors.startup_windows_only",
+  },
 ];

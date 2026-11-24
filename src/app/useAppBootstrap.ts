@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE } from "@/shared/api/ipcEvents";
-import { listenEvent } from "@/shared/api/tauriClient";
-import { useSettingsStore, type AppSettingsValues } from "@/modules/settings";
+import {
+  EVENT_OPEN_DIRECTORY,
+  EVENT_OPEN_FILE,
+  EVENT_OPEN_NEW_TAB,
+} from "@/shared/api/ipcEvents";
+import { invoke, listenEvent } from "@/shared/api/tauriClient";
+import { useSettingsStore } from "@/modules/settings";
 import {
   calcWinSize,
   mergeShells,
@@ -10,6 +14,10 @@ import {
   type LaunchWinSize,
 } from "@/modules/terminal";
 import { useTabsStore, windowApi } from "@/modules/workspace";
+import {
+  loadSessionSnapshot,
+  saveSessionSnapshot,
+} from "@/modules/workspace/utils/sessionStorage";
 
 interface UseAppBootstrapOpts {
   preloaders: Array<() => Promise<unknown>>;
@@ -17,6 +25,7 @@ interface UseAppBootstrapOpts {
   onFocusTerminal: () => void;
   onOpenDirectory?: () => void;
   onOpenFile?: () => void;
+  onOpenNewTab?: () => void;
 }
 
 export function useAppBootstrap({
@@ -25,9 +34,9 @@ export function useAppBootstrap({
   onFocusTerminal,
   onOpenDirectory,
   onOpenFile,
+  onOpenNewTab,
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
-  const updateSettings = useSettingsStore((s) => s.updateSettings);
   const addCustomShell = useSettingsStore((s) => s.addCustomShell);
   const detectedShells = useShellsStore((s) => s.shells);
   const isShellsLoaded = useShellsStore((s) => s.isLoaded);
@@ -46,6 +55,8 @@ export function useAppBootstrap({
   onOpenDirectoryRef.current = onOpenDirectory;
   const onOpenFileRef = useRef(onOpenFile);
   onOpenFileRef.current = onOpenFile;
+  const onOpenNewTabRef = useRef(onOpenNewTab);
+  onOpenNewTabRef.current = onOpenNewTab;
   const onFocusTerminalRef = useRef(onFocusTerminal);
   onFocusTerminalRef.current = onFocusTerminal;
   const presentedRef = useRef(false);
@@ -59,8 +70,9 @@ export function useAppBootstrap({
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;
       }
-      const cols = size?.cols ?? settingsRef.current.launchCols;
-      const rows = size?.rows ?? settingsRef.current.launchRows;
+      const curSettings = settingsRef.current;
+      const cols = size?.cols ?? curSettings.launchCols;
+      const rows = size?.rows ?? curSettings.launchRows;
       const fallback = calcWinSize(cols, rows);
       try {
         await windowApi.windowPresent({
@@ -68,10 +80,20 @@ export function useAppBootstrap({
           rows,
           width: size?.width ?? fallback.width,
           height: size?.height ?? fallback.height,
+          launchMode: curSettings.launchMode,
+          centerOnLaunch: curSettings.centerOnLaunch,
+          alwaysOnTop: curSettings.alwaysOnTop,
         });
+        if (curSettings.defaultImeMode === "alphanumeric") {
+          windowApi.windowApplyImeMode("alphanumeric").catch(() => {});
+        }
         const { tabs, activeTabId } = useTabsStore.getState();
         const activeTab = tabs.find((item) => item.tabId === activeTabId);
-        if (activeTab?.tabKind !== "editor" && activeTab?.tabKind !== "sftp") {
+        if (
+          activeTab?.tabKind !== "editor" &&
+          activeTab?.tabKind !== "sftp" &&
+          activeTab?.tabKind !== "settings"
+        ) {
           onFocusTerminal();
         }
       } catch {
@@ -83,7 +105,22 @@ export function useAppBootstrap({
   );
 
   useEffect(() => {
+    windowApi.windowSetAlwaysOnTop(settings.alwaysOnTop).catch(() => {});
+  }, [settings.alwaysOnTop]);
+
+  useEffect(() => {
+    windowApi.startupSyncPrefs(settings.newInstanceBehavior).catch(() => {});
+  }, [settings.newInstanceBehavior]);
+
+  useEffect(() => {
+    if (settings.defaultImeMode === "alphanumeric") {
+      windowApi.windowApplyImeMode("alphanumeric").catch(() => {});
+    }
+  }, [settings.defaultImeMode]);
+
+  useEffect(() => {
     let cancelled = false;
+    let snapshotTrackingReady = false;
     fallbackTimerRef.current = window.setTimeout(() => {
       if (!cancelled) void presentWindow();
     }, 900);
@@ -94,19 +131,21 @@ export function useAppBootstrap({
 
     void useShellsStore.getState().detectShells();
 
-    windowApi
+    const elevatedPromise = windowApi
       .appGetStatus()
       .then((status) => {
         setIsAppElevated(status.is_elevated);
         setHasNativeBorder(status.has_native_border);
         if (status.is_elevated) useTabsStore.getState().markLocalTabsAdmin();
+        return status.is_elevated;
       })
-      .catch(() => {});
+      .catch(() => false);
 
     Promise.all([
       sessionApi.appGetLaunchDir().catch(() => null),
       sessionApi.appGetLaunchFiles().catch(() => [] as string[]),
-    ]).then(([dir, files]) => {
+      elevatedPromise,
+    ]).then(async ([dir, files, elevated]) => {
       if (cancelled) return;
       if (dir) useTabsStore.getState().setLaunchDir(dir);
       if (files.length > 0) {
@@ -117,12 +156,55 @@ export function useAppBootstrap({
           },
         });
         void presentWindow();
+      } else if (!dir && settingsRef.current.startupBehavior === "restore_session") {
+        const snapshot = loadSessionSnapshot();
+        if (snapshot && snapshot.tabs.length > 0) {
+          const profiles = await invoke<Array<{ id: string }>>("host_list", {}).catch(
+            () => null
+          );
+          if (cancelled) return;
+          const validHostIds = profiles
+            ? new Set(profiles.map((p) => p.id))
+            : undefined;
+          const restored = useTabsStore.getState().restoreSessionTabs(snapshot, {
+            validHostIds,
+            isAppElevated: elevated,
+            onDisposeTab: (tabId) => {
+              sessionApi.sessionDisconnect(tabId).catch(() => {});
+            },
+          });
+          if (restored) {
+            const { tabs, activeTabId } = useTabsStore.getState();
+            const active = tabs.find((item) => item.tabId === activeTabId);
+            if (
+              active?.tabKind === "editor" ||
+              active?.tabKind === "sftp"
+            ) {
+              void presentWindow();
+            }
+          }
+        }
+      }
+
+      if (cancelled) return;
+      snapshotTrackingReady = true;
+      const curState = useTabsStore.getState();
+      if (curState.tabs.some((t) => t.tabKind !== "settings")) {
+        saveSessionSnapshot(curState.tabs, curState.activeTabId);
+      }
+    });
+
+    const unsubscribeSnapshot = useTabsStore.subscribe((state) => {
+      if (!snapshotTrackingReady) return;
+      if (state.tabs.some((t) => t.tabKind !== "settings")) {
+        saveSessionSnapshot(state.tabs, state.activeTabId);
       }
     });
 
     let active = true;
     let unlistenOpenDir: (() => void) | undefined;
     let unlistenOpenFile: (() => void) | undefined;
+    let unlistenOpenNewTab: (() => void) | undefined;
     listenEvent<string>(EVENT_OPEN_DIRECTORY, (dir) => {
       if (dir) {
         onOpenDirectoryRef.current?.();
@@ -154,11 +236,25 @@ export function useAppBootstrap({
       })
       .catch(() => {});
 
+    listenEvent(EVENT_OPEN_NEW_TAB, () => {
+      onOpenNewTabRef.current?.();
+    })
+      .then((fn) => {
+        if (!active) {
+          fn();
+        } else {
+          unlistenOpenNewTab = fn;
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
       cancelled = true;
+      unsubscribeSnapshot();
       if (unlistenOpenDir) unlistenOpenDir();
       if (unlistenOpenFile) unlistenOpenFile();
+      if (unlistenOpenNewTab) unlistenOpenNewTab();
       if (fallbackTimerRef.current !== null) {
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;
@@ -168,13 +264,6 @@ export function useAppBootstrap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const saveAndApplySettings = useCallback(
-    (next: AppSettingsValues) => {
-      updateSettings(next);
-    },
-    [updateSettings]
-  );
-
   return {
     settings,
     shellProfiles,
@@ -183,6 +272,5 @@ export function useAppBootstrap({
     hasNativeBorder,
     addCustomShell,
     presentWindow,
-    saveAndApplySettings,
   };
 }

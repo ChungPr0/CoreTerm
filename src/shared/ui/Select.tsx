@@ -183,7 +183,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
           isOpen={isOpen && parsedOptions.length > 0}
           onClose={() => setIsOpen(false)}
           anchorRef={containerRef}
-          className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 max-h-56 overflow-y-auto select-none min-w-full"
+          portal
+          matchAnchorWidth
+          maxHeightPx={224}
+          className="z-[90] rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 overflow-y-auto select-none"
         >
           {parsedOptions.map((opt) => {
             const isSelected = String(opt.value) === String(value);
@@ -194,7 +197,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
                 disabled={opt.disabled}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(opt.value)}
-                className={`w-full px-3 py-1.5 flex items-center justify-between gap-2 text-left text-xs transition-colors ${
+                className={`w-full pl-3 pr-[7px] py-1.5 flex items-center justify-between gap-2 text-left text-xs transition-colors ${
                   opt.disabled
                     ? "opacity-40 cursor-not-allowed"
                     : isSelected

@@ -44,7 +44,7 @@ export const KeyVaultModal: React.FC<KeyVaultModalProps> = ({
           </Button>
         </div>
 
-        <div className="p-5 space-y-4 overflow-y-auto text-xs">
+        <div className="py-5 pl-5 pr-[15px] space-y-4 overflow-y-auto text-xs">
           <KeyGenerateImportForm
             mode={vault.mode}
             onModeChange={vault.setMode}

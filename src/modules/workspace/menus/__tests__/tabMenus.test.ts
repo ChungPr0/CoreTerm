@@ -348,6 +348,47 @@ describe("buildTabContextItems", () => {
     }).find((i) => i.id === "tab-reconnect");
     expect(onlineRec && onlineRec.type !== "separator" && onlineRec.disabled).toBe(false);
   });
+
+  it("builds focused context menu for singleton settings tab without duplicate, rename, or redundant settings entry", () => {
+    const onFindInTab = vi.fn();
+    const items = buildTabContextItems({
+      t,
+      tabsCount: 2,
+      allProfiles: [HOST_PROFILE],
+      isAppElevated: false,
+      shellProfiles: [PS],
+      defaultShellProfile: PS,
+      onNewLocalTab: vi.fn(),
+      onRenameTab: vi.fn(),
+      onFindInTab,
+      onReconnectTab: vi.fn(),
+      onToggleSftp: vi.fn(),
+      onOpenSftp: vi.fn(),
+      onConnectHost: vi.fn(),
+      onDuplicateTab: vi.fn(),
+      onOpenSettings: vi.fn(),
+      onCloseTab: vi.fn(),
+      onCloseOtherTabs: vi.fn(),
+      tab: baseTab({ tabId: "settings-1", hostId: "local", tabKind: "settings", title: "Settings" }),
+    });
+
+    const ids = items.map((i) => i.id);
+    expect(ids).toContain("tab-find");
+    expect(ids).toContain("new-tab");
+    expect(ids).toContain("tab-close");
+    expect(ids).toContain("tab-close-others");
+    expect(ids).not.toContain("tab-duplicate");
+    expect(ids).not.toContain("tab-rename");
+    expect(ids).not.toContain("tab-reconnect");
+    expect(ids).not.toContain("tab-settings");
+
+    const findItem = items.find((i) => i.id === "tab-find");
+    if (findItem && findItem.type !== "separator") {
+      expect(findItem.shortcut).toBe("Ctrl+F");
+      findItem.onSelect?.();
+    }
+    expect(onFindInTab).toHaveBeenCalledWith("settings-1");
+  });
 });
 
 describe("buildTabBarWindowMenu and buildTabBarContextItems", () => {

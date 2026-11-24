@@ -16,4 +16,5 @@
   DeleteRegKey HKCU "Software\Classes\Directory\shell\CoreTerm"
   DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\CoreTerm"
   DeleteRegKey HKCU "Software\Classes\*\shell\CoreTerm"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CoreTerm"
 !macroend

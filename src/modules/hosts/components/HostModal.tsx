@@ -69,7 +69,7 @@ export const HostModal: React.FC<HostModalProps> = ({
           </Button>
         </div>
 
-        <form noValidate onSubmit={form.handleSubmit} className="p-5 space-y-4 overflow-y-auto text-xs">
+        <form noValidate onSubmit={form.handleSubmit} className="py-5 pl-5 pr-[15px] space-y-4 overflow-y-auto text-xs">
           <div className="grid grid-cols-3 gap-3">
             <Input
               ref={form.aliasInputRef}

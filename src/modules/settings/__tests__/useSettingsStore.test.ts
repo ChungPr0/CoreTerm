@@ -203,57 +203,137 @@ describe("useSettingsStore", () => {
     ]);
   });
 
-  it("detects unsaved settings changes accurately via hasSettingsChanges", async () => {
-    const { hasSettingsChanges } = await import("../settingsDiff");
-    const baseShell = {
-      id: "custom:nu",
-      kind: "custom",
-      name: "Nushell",
-      executable: "D:\\Tools\\nu.exe",
-      args: ["--login"],
+  it("hydrates legacy partial settings, clamps bounds, and supports patch & category/global resets", async () => {
+    const storeMap = new Map<string, string>();
+    const storageMock = {
+      getItem: (k: string) => storeMap.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        storeMap.set(k, v);
+      },
+      removeItem: (k: string) => {
+        storeMap.delete(k);
+      },
     };
-    const saved = {
-      launchCols: 100,
-      launchRows: 30,
-      sftpConflictPolicy: "ASK" as const,
-      defaultShellId: "powershell",
-      customShells: [baseShell],
-    };
-    const unchangedDraft = {
-      cols: 100,
-      rows: 30,
-      sftpConflictPolicy: "ASK" as const,
-      effectiveDefaultShellId: "powershell",
-      initialEffectiveDefaultShellId: "powershell",
-      customShells: [{ ...baseShell, args: ["--login"] }],
-      contextMenuDraft: false,
-      contextMenuOriginal: false,
-      hasDirtyShellEditor: false,
-    };
-
-    expect(hasSettingsChanges(saved, unchangedDraft)).toBe(false);
-    expect(hasSettingsChanges(saved, { ...unchangedDraft, cols: 120 })).toBe(true);
-    expect(hasSettingsChanges(saved, { ...unchangedDraft, rows: 40 })).toBe(true);
-    expect(
-      hasSettingsChanges(saved, { ...unchangedDraft, sftpConflictPolicy: "OVERWRITE" })
-    ).toBe(true);
-    expect(
-      hasSettingsChanges(saved, { ...unchangedDraft, effectiveDefaultShellId: "custom:nu" })
-    ).toBe(true);
-    expect(
-      hasSettingsChanges(saved, { ...unchangedDraft, contextMenuDraft: true })
-    ).toBe(true);
-    expect(
-      hasSettingsChanges(saved, { ...unchangedDraft, hasDirtyShellEditor: true })
-    ).toBe(true);
-    expect(
-      hasSettingsChanges(saved, {
-        ...unchangedDraft,
-        customShells: [{ ...baseShell, args: ["--login", "-i"] }],
+    // Simulate legacy v0.5.3 JSON without new Terminal/SSH/SFTP/Editor fields
+    storeMap.set(
+      "coreterm_settings",
+      JSON.stringify({
+        launchCols: 110,
+        launchRows: 32,
+        sftpConflictPolicy: "SKIP",
+        defaultShellId: "cmd",
       })
-    ).toBe(true);
-    expect(
-      hasSettingsChanges(saved, { ...unchangedDraft, customShells: [] })
-    ).toBe(true);
+    );
+    vi.stubGlobal("localStorage", storageMock);
+    vi.resetModules();
+
+    const { useSettingsStore } = await import("../useSettingsStore");
+    const { DEFAULT_SETTINGS, sanitizeSettings } = await import("../settingsStorage");
+    const hydrated = useSettingsStore.getState().settings;
+    expect(hydrated.launchCols).toBe(110);
+    expect(hydrated.launchRows).toBe(32);
+    expect(hydrated.sftpConflictPolicy).toBe("SKIP");
+    expect(hydrated.defaultShellId).toBe("cmd");
+    expect(hydrated.terminalFontSize).toBe(DEFAULT_SETTINGS.terminalFontSize);
+    expect(hydrated.sshDefaultPort).toBe(22);
+    expect(hydrated.sftpShowHiddenFiles).toBe(true);
+    expect(hydrated.editorTabSize).toBe(2);
+
+    // Sanitizes invalid bounds across all new categories
+    const clamped = sanitizeSettings({
+      terminalFontFamily: "Arbitrary Custom Font",
+      terminalFontSize: 99,
+      terminalLineHeight: 0.2,
+      terminalCursorStyle: "unknown",
+      terminalScrollback: 999999,
+      sshDefaultUsername: "-baduser",
+      sshDefaultPort: 90000,
+      sshDefaultKeepAlive: -5,
+      sshDefaultReconnectIntervalSec: 500,
+      editorFontSize: 3,
+      editorTabSize: 7,
+      closeLastTabBehavior: "bad",
+      defaultImeMode: "unknown",
+      startupBehavior: "unknown",
+      newInstanceBehavior: "unknown",
+      launchMode: "unknown",
+      centerOnLaunch: "yes",
+      alwaysOnTop: 123,
+      sftpDoubleClickFileAction: "bad",
+    });
+    expect(clamped.terminalFontFamily).toBe(DEFAULT_SETTINGS.terminalFontFamily);
+    expect(clamped.terminalFontSize).toBe(24);
+    expect(clamped.terminalLineHeight).toBe(1.0);
+    expect(clamped.terminalCursorStyle).toBe("block");
+    expect(clamped.terminalScrollback).toBe(50000);
+    expect(clamped.sshDefaultUsername).toBe("root");
+    expect(clamped.sshDefaultPort).toBe(65535);
+    expect(clamped.sshDefaultKeepAlive).toBe(60);
+    expect(clamped.sshDefaultReconnectIntervalSec).toBe(60);
+    expect(clamped.editorFontSize).toBe(10);
+    expect(clamped.editorTabSize).toBe(2);
+    expect(clamped.closeLastTabBehavior).toBe("exit");
+    expect(clamped.defaultImeMode).toBe("default");
+    expect(clamped.startupBehavior).toBe("default_profile");
+    expect(clamped.newInstanceBehavior).toBe("attach");
+    expect(clamped.launchMode).toBe("default");
+    expect(clamped.centerOnLaunch).toBe(false);
+    expect(clamped.alwaysOnTop).toBe(false);
+    expect(clamped.sftpDoubleClickFileAction).toBe("edit");
+
+    // patchSettings persists incremental updates immediately
+    useSettingsStore.getState().patchSettings({
+      closeLastTabBehavior: "new_local",
+      launchCols: 140,
+      defaultImeMode: "alphanumeric",
+      startupBehavior: "restore_session",
+      newInstanceBehavior: "new_window",
+      launchMode: "maximized",
+      centerOnLaunch: true,
+      alwaysOnTop: true,
+      terminalFontSize: 18,
+      terminalCopyOnSelect: true,
+      sshDefaultPort: 2222,
+      sftpShowHiddenFiles: false,
+      editorTabSize: 4,
+    });
+    expect(useSettingsStore.getState().settings.closeLastTabBehavior).toBe("new_local");
+    expect(useSettingsStore.getState().settings.defaultImeMode).toBe("alphanumeric");
+    expect(useSettingsStore.getState().settings.startupBehavior).toBe("restore_session");
+    expect(useSettingsStore.getState().settings.newInstanceBehavior).toBe("new_window");
+    expect(useSettingsStore.getState().settings.launchMode).toBe("maximized");
+    expect(useSettingsStore.getState().settings.centerOnLaunch).toBe(true);
+    expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(true);
+    expect(useSettingsStore.getState().settings.terminalFontSize).toBe(18);
+    expect(useSettingsStore.getState().settings.terminalCopyOnSelect).toBe(true);
+    expect(useSettingsStore.getState().settings.sshDefaultPort).toBe(2222);
+
+    // resetCategorySettings resets only the target section
+    useSettingsStore.getState().resetCategorySettings("general");
+    expect(useSettingsStore.getState().settings.closeLastTabBehavior).toBe("exit");
+    expect(useSettingsStore.getState().settings.launchCols).toBe(140);
+    expect(useSettingsStore.getState().settings.defaultImeMode).toBe("alphanumeric");
+
+    useSettingsStore.getState().resetCategorySettings("startup");
+    expect(useSettingsStore.getState().settings.launchCols).toBe(DEFAULT_SETTINGS.launchCols);
+    expect(useSettingsStore.getState().settings.defaultImeMode).toBe("default");
+    expect(useSettingsStore.getState().settings.startupBehavior).toBe("default_profile");
+    expect(useSettingsStore.getState().settings.newInstanceBehavior).toBe("attach");
+    expect(useSettingsStore.getState().settings.launchMode).toBe("default");
+    expect(useSettingsStore.getState().settings.centerOnLaunch).toBe(false);
+    expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(false);
+    expect(useSettingsStore.getState().settings.terminalFontSize).toBe(18);
+
+    useSettingsStore.getState().resetCategorySettings("terminal");
+    expect(useSettingsStore.getState().settings.terminalFontSize).toBe(
+      DEFAULT_SETTINGS.terminalFontSize
+    );
+    expect(useSettingsStore.getState().settings.terminalCopyOnSelect).toBe(false);
+    expect(useSettingsStore.getState().settings.sshDefaultPort).toBe(2222);
+    expect(useSettingsStore.getState().settings.sftpShowHiddenFiles).toBe(false);
+
+    // resetAllSettings restores factory defaults
+    useSettingsStore.getState().resetAllSettings();
+    expect(useSettingsStore.getState().settings).toEqual(DEFAULT_SETTINGS);
   });
 });

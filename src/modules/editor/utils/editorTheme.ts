@@ -23,6 +23,7 @@ export function createCoreTermEditorTheme(fontSizePx: number): Extension {
       },
       ".cm-scroller": {
         overflow: "auto",
+        scrollbarGutter: "stable",
         lineHeight: "1.55",
         fontFamily: "inherit",
       },

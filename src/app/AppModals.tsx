@@ -1,6 +1,5 @@
 import React, { Suspense, lazy, useState } from "react";
 import type { ShellProfile } from "@/shared/types/ipc";
-import type { AppSettingsValues } from "@/modules/settings";
 import type { DeletePromptState, HostFullConfigDto } from "@/modules/hosts";
 import type { HostProfileSummaryDto, PortProbeResultDto } from "@/modules/hosts";
 import type { SftpAuthPromptEventDto, SftpHostKeyPromptEventDto } from "@/modules/sftp";
@@ -11,7 +10,6 @@ import { formatLocalizedError } from "@/shared/utils/formatError";
 
 const loadHostModal = () => import("@/modules/hosts/components/HostModal");
 const loadKeyVaultModal = () => import("@/modules/keys/components/KeyVaultModal");
-const loadSettingsModal = () => import("@/modules/settings/components/SettingsModal");
 const loadAuthPromptModal = () => import("@/modules/terminal/components/AuthPromptModal");
 const loadPortConflictModal = () => import("@/modules/hosts/components/PortConflictModal");
 const loadCommandPalette = () => import("@/modules/workspace/components/CommandPalette");
@@ -22,7 +20,6 @@ const loadSftpPane = () => import("@/modules/sftp/components/SftpPane");
 export const APP_PRELOADERS = [
   loadHostModal,
   loadKeyVaultModal,
-  loadSettingsModal,
   loadAuthPromptModal,
   loadPortConflictModal,
   loadCommandPalette,
@@ -33,7 +30,6 @@ export const APP_PRELOADERS = [
 
 const HostModal = lazy(() => loadHostModal().then((m) => ({ default: m.HostModal })));
 const KeyVaultModal = lazy(() => loadKeyVaultModal().then((m) => ({ default: m.KeyVaultModal })));
-const SettingsModal = lazy(() => loadSettingsModal().then((m) => ({ default: m.SettingsModal })));
 const AuthPromptModal = lazy(() =>
   loadAuthPromptModal().then((m) => ({ default: m.AuthPromptModal }))
 );
@@ -68,18 +64,15 @@ interface AppModalsProps {
   onOpenVault: () => void;
   onCloseVault: () => void;
 
-  isSettingsOpen: boolean;
   isAppElevated: boolean;
-  settings: AppSettingsValues;
   shellProfiles: ShellProfile[];
-  onCloseSettings: () => void;
-  onSaveSettings: (next: AppSettingsValues) => void;
 
   isPaletteOpen: boolean;
   onClosePalette: () => void;
   onSelectHost: (host: HostProfileSummaryDto) => void;
   onSelectShell: (profile: ShellProfile, asAdmin?: boolean) => void;
   onOpenSftpTab: (host: HostProfileSummaryDto) => void;
+  onOpenSettings: () => void;
 
   authPrompt: SessionAuthPromptEventDto | SftpAuthPromptEventDto | null;
   authPromptSource: "pty" | "sftp";
@@ -117,17 +110,14 @@ export const AppModals: React.FC<AppModalsProps> = ({
   keysVersion,
   onOpenVault,
   onCloseVault,
-  isSettingsOpen,
   isAppElevated,
-  settings,
   shellProfiles,
-  onCloseSettings,
-  onSaveSettings,
   isPaletteOpen,
   onClosePalette,
   onSelectHost,
   onSelectShell,
   onOpenSftpTab,
+  onOpenSettings,
   authPrompt,
   authPromptSource,
   hostKeyPrompt,
@@ -170,16 +160,6 @@ export const AppModals: React.FC<AppModalsProps> = ({
           />
         )}
 
-        {isSettingsOpen && (
-          <SettingsModal
-            isOpen={isSettingsOpen}
-            settings={settings}
-            shellProfiles={shellProfiles}
-            onClose={onCloseSettings}
-            onSave={onSaveSettings}
-          />
-        )}
-
         {(authPrompt || hostKeyPrompt) && (
           <AuthPromptModal
             authPrompt={authPrompt}
@@ -212,6 +192,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             onSelectHost={onSelectHost}
             onSelectShell={onSelectShell}
             onOpenSftp={onOpenSftpTab}
+            onOpenSettings={onOpenSettings}
           />
         )}
 

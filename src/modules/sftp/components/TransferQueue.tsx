@@ -89,7 +89,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
       </div>
 
       {expanded && (
-        <div className="max-h-40 overflow-y-auto border-t border-[#21262d] px-3 py-1.5">
+        <div className="max-h-40 overflow-y-auto border-t border-[#21262d] pl-3 pr-[7px] py-1.5">
           {jobs.length === 0 ? (
             <div className="py-2 text-center text-[11px] text-[#8b949e]">
               {t("sftp.queue_empty")}

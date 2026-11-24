@@ -4,12 +4,23 @@ import { listenEvent } from "@/shared/api/tauriClient";
 import { posixCdCmd } from "@/shared/utils/path";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
-import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
+import type {
+  SettingsCategoryId,
+  ShellProfile,
+  TerminalTabItem,
+} from "@/shared/types/ipc";
 import { isAutoReconnectAllowed, type HostFullConfigDto, type HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import { sftpApi } from "@/modules/sftp";
-import { createLocalTab, useTabsStore, windowApi } from "@/modules/workspace";
+import {
+  DEFAULT_LOCAL_SHELL,
+  createLocalTab,
+  useTabsStore,
+  windowApi,
+} from "@/modules/workspace";
 import { sessionApi } from "../api/sessionApi";
 import type { ConflictStrategy, SessionConnectAckDto } from "../types";
+import { resolveDefaultShell, useShellsStore } from "./useShellsStore";
 
 export interface NewLocalTabOpts {
   profile?: ShellProfile;
@@ -75,6 +86,9 @@ export function useSessionController({
   }, []);
 
   const disposeTab = useCallback((tab: TerminalTabItem, hadSftp: boolean) => {
+    if (tab.tabKind === "settings") {
+      return;
+    }
     if (tab.tabKind === "editor") {
       if (tab.editorFile?.kind === "remote") {
         sftpApi.sftpDisconnect(tab.tabId).catch(() => {});
@@ -86,8 +100,19 @@ export function useSessionController({
   }, []);
 
   const handleEmptyTabs = useCallback(() => {
+    if (useSettingsStore.getState().settings.closeLastTabBehavior === "new_local") {
+      const current = useSettingsStore.getState().settings;
+      const resolved =
+        current.defaultShellProfile ??
+        resolveDefaultShell(useShellsStore.getState().shells, current.defaultShellId) ??
+        DEFAULT_LOCAL_SHELL;
+      const tab = createLocalTab(resolved, isAppElevated);
+      useTabsStore.getState().addTab(tab);
+      onFocusTerminal();
+      return;
+    }
     windowApi.windowClose().catch(() => {});
-  }, []);
+  }, [isAppElevated, onFocusTerminal]);
 
   const selectTab = useCallback(
     (tabId: string) => {
@@ -150,6 +175,14 @@ export function useSessionController({
         autoReconnect: canAuto ? host.auto_reconnect : false,
         reconnectIntervalSec: host.reconnect_interval_sec,
       });
+      onDismissSidebar();
+    },
+    [onDismissSidebar]
+  );
+
+  const openSettingsTab = useCallback(
+    (section?: SettingsCategoryId) => {
+      useTabsStore.getState().openSettingsTab(section);
       onDismissSidebar();
     },
     [onDismissSidebar]
@@ -287,7 +320,7 @@ export function useSessionController({
 
   const duplicateTab = useCallback(
     (tab: TerminalTabItem, connectHostFn: (host: HostProfileSummaryDto) => Promise<void>) => {
-      if (tab.tabKind === "editor") return;
+      if (tab.tabKind === "editor" || tab.tabKind === "settings") return;
       if (tab.hostId === "local") {
         newLocalTab({ profile: tab.shellProfile, asAdmin: !!tab.isAdmin });
         return;
@@ -305,6 +338,7 @@ export function useSessionController({
     newLocalTab,
     spawnHostTab,
     openSftpTab,
+    openSettingsTab,
     closeTabById,
     forceCloseTabById,
     handleCloseTab,

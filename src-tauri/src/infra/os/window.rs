@@ -80,3 +80,54 @@ pub fn dispatch_window_sys_command(window: &tauri::WebviewWindow, action: &str) 
     }
     Ok(())
 }
+
+pub fn apply_ime_mode(window: &tauri::WebviewWindow, mode: &str) {
+    if mode != "alphanumeric" {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Ok(hwnd) = window.hwnd() {
+        use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
+        use windows_sys::Win32::UI::Input::Ime::{
+            ImmGetContext, ImmReleaseContext, ImmSetOpenStatus,
+        };
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            LoadKeyboardLayoutW, KLF_ACTIVATE, KLF_SUBSTITUTE_OK,
+        };
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            EnumChildWindows, PostMessageW, WM_INPUTLANGCHANGEREQUEST,
+        };
+
+        unsafe extern "system" fn apply_to_child(child: HWND, lparam: LPARAM) -> BOOL {
+            let himc = ImmGetContext(child);
+            if !himc.is_null() {
+                let _ = ImmSetOpenStatus(himc, 0);
+                let _ = ImmReleaseContext(child, himc);
+            }
+            if lparam != 0 {
+                let _ = PostMessageW(child, WM_INPUTLANGCHANGEREQUEST, 0, lparam);
+            }
+            1
+        }
+
+        let raw_hwnd = hwnd.0 as HWND;
+        let klid: Vec<u16> = "00000409\0".encode_utf16().collect();
+        unsafe {
+            let hkl = LoadKeyboardLayoutW(klid.as_ptr(), KLF_ACTIVATE | KLF_SUBSTITUTE_OK);
+            let himc = ImmGetContext(raw_hwnd);
+            if !himc.is_null() {
+                let _ = ImmSetOpenStatus(himc, 0);
+                let _ = ImmReleaseContext(raw_hwnd, himc);
+            }
+            let lparam = hkl as isize;
+            if lparam != 0 {
+                let _ = PostMessageW(raw_hwnd, WM_INPUTLANGCHANGEREQUEST, 0, lparam);
+            }
+            let _ = EnumChildWindows(raw_hwnd, Some(apply_to_child), lparam);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
+}

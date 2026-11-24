@@ -104,10 +104,12 @@ export function sortAndFilterItems(
   items: FileItem[],
   filter: string,
   sortKey: SortKey,
-  sortDir: SortDir
+  sortDir: SortDir,
+  showHiddenFiles = true
 ): FileItem[] {
   const q = filter.trim().toLowerCase();
-  const list = q ? items.filter((i) => i.name.toLowerCase().includes(q)) : [...items];
+  const base = showHiddenFiles ? items : items.filter((i) => !i.name.startsWith("."));
+  const list = q ? base.filter((i) => i.name.toLowerCase().includes(q)) : [...base];
   const dir = sortDir === "asc" ? 1 : -1;
   list.sort((a, b) => {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;

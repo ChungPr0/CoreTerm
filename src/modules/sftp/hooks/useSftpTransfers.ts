@@ -18,6 +18,7 @@ interface UseSftpTransfersOptions {
   connStateRef: React.MutableRefObject<SftpConnectionState>;
   showLocalRef: React.MutableRefObject<boolean>;
   conflictPolicy: SftpConflictPolicy;
+  confirmBeforeTransfer?: boolean;
   remoteBrowser: DirectoryBrowser;
   localBrowser: DirectoryBrowser;
   onError: (err: unknown) => void;
@@ -33,6 +34,7 @@ export function useSftpTransfers({
   connStateRef,
   showLocalRef,
   conflictPolicy,
+  confirmBeforeTransfer = true,
   remoteBrowser,
   localBrowser,
   onError,
@@ -46,6 +48,7 @@ export function useSftpTransfers({
   const mountedRef = useRef(true);
   const transferBusyRef = useRef(false);
   const policyRef = useRef(conflictPolicy);
+  const confirmBeforeTransferRef = useRef(confirmBeforeTransfer);
   const conflictsRef = useRef(conflicts);
   const alertedJobsRef = useRef(new Set<string>());
   const remoteRefreshTimerRef = useRef<number | null>(null);
@@ -59,6 +62,7 @@ export function useSftpTransfers({
   const onErrorRef = useRef(onError);
 
   policyRef.current = conflictPolicy;
+  confirmBeforeTransferRef.current = confirmBeforeTransfer;
   conflictsRef.current = conflicts;
   remoteRef.current = remoteBrowser;
   localRef.current = localBrowser;
@@ -132,8 +136,15 @@ export function useSftpTransfers({
   const requestUpload = useCallback((localPaths: string[], targetDestDir?: string) => {
     const destDir = targetDestDir || remoteRef.current.cwdRef.current;
     if (connStateRef.current !== "CONNECTED" || !destDir || localPaths.length === 0) return;
-    setPendingTransfer({ direction: "upload", paths: localPaths, destDir });
-  }, [connStateRef]);
+    const pending: PendingTransfer = { direction: "upload", paths: localPaths, destDir };
+    if (!confirmBeforeTransferRef.current) {
+      void runTransfer(pending).catch((err) => {
+        if (mountedRef.current) onErrorRef.current(err);
+      });
+      return;
+    }
+    setPendingTransfer(pending);
+  }, [connStateRef, runTransfer]);
 
   const requestDownload = useCallback(
     async (remotePaths: string[], targetDestDir?: string) => {
@@ -148,9 +159,16 @@ export function useSftpTransfers({
         destDir = Array.isArray(picked) ? picked[0] : picked;
       }
       if (!destDir) return;
-      setPendingTransfer({ direction: "download", paths: remotePaths, destDir });
+      const pending: PendingTransfer = { direction: "download", paths: remotePaths, destDir };
+      if (!confirmBeforeTransferRef.current) {
+        void runTransfer(pending).catch((err) => {
+          if (mountedRef.current) onErrorRef.current(err);
+        });
+        return;
+      }
+      setPendingTransfer(pending);
     },
-    [connStateRef, showLocalRef]
+    [connStateRef, runTransfer, showLocalRef]
   );
 
   const confirmPendingTransfer = useCallback(async () => {

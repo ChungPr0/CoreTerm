@@ -13,3 +13,4 @@ pub const EVENT_SFTP_TRANSFER_CONFLICT: &str = "sftp:transfer_conflict";
 
 pub const EVENT_OPEN_DIRECTORY: &str = "open-directory";
 pub const EVENT_OPEN_FILE: &str = "open-file";
+pub const EVENT_OPEN_NEW_TAB: &str = "open-new-tab";

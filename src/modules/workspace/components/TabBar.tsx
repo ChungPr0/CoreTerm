@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Menu, Shield } from "lucide-react";
-import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
+import type {
+  SettingsCategoryId,
+  ShellProfile,
+  TerminalTabItem,
+} from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "@/shared/ui";
@@ -34,7 +38,7 @@ interface TabBarProps {
   onConnectProfile: (host: HostProfileSummaryDto) => void;
   onCreateNewHost: () => void;
   onOpenPalette: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: SettingsCategoryId) => void;
   onContextMenuTab: (e: React.MouseEvent, tab: TerminalTabItem) => void;
   onContextMenuTabBar?: (e: React.MouseEvent) => void;
 }

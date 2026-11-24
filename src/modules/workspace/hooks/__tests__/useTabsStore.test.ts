@@ -538,4 +538,34 @@ describe("useTabsStore", () => {
     expect(useTabsStore.getState().activeTabId).toBe(thirdId);
     expect(useTabsStore.getState().tabs[2].title).toBe("hosts");
   });
+
+  it("opens singleton settings tab, focuses on repeat calls, and blocks rename or sftp split", () => {
+    const firstId = useTabsStore.getState().openSettingsTab("general");
+    expect(useTabsStore.getState().activeTabId).toBe(firstId);
+    const createdTab = useTabsStore.getState().tabs.find((t) => t.tabId === firstId);
+    expect(createdTab?.tabKind).toBe("settings");
+    expect(createdTab?.settingsSection).toBe("general");
+
+    // Switch away to another tab, then re-open settings with a section target
+    useTabsStore.getState().setActiveTabId("t1");
+    expect(useTabsStore.getState().activeTabId).toBe("t1");
+
+    const secondId = useTabsStore.getState().openSettingsTab("shells");
+    expect(secondId).toBe(firstId);
+    expect(useTabsStore.getState().tabs.filter((t) => t.tabKind === "settings")).toHaveLength(1);
+    expect(useTabsStore.getState().activeTabId).toBe(firstId);
+    expect(
+      useTabsStore.getState().tabs.find((t) => t.tabId === firstId)?.settingsSection
+    ).toBe("shells");
+
+    useTabsStore.getState().setSettingsSection(firstId, "terminal");
+    expect(
+      useTabsStore.getState().tabs.find((t) => t.tabId === firstId)?.settingsSection
+    ).toBe("terminal");
+
+    useTabsStore.getState().startRenamingTab(firstId);
+    expect(useTabsStore.getState().renamingTabId).toBeNull();
+    useTabsStore.getState().toggleSftpSplit(firstId);
+    expect(useTabsStore.getState().openedSftpTabs[firstId]).toBeUndefined();
+  });
 });

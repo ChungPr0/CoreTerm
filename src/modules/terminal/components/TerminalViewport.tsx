@@ -5,6 +5,7 @@ import { useI18n } from "@/shared/i18n";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
 import { ReconnectBanner, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { useSettingsStore } from "@/modules/settings";
 import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import type { SessionConnectAckDto } from "../types";
 import {
@@ -70,6 +71,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
+  const rightClickPaste = useSettingsStore((s) => s.settings.terminalRightClickPaste);
   const lastAlertErrRef = useRef<string | null>(null);
 
   const { containerRef, terminalRef, searchAddonRef, focus, getContextActions } =
@@ -207,6 +209,19 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
       <div
         onClick={focus}
         onContextMenu={(e) => {
+          if (rightClickPaste && !e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            const actions = getContextActions();
+            if (actions.hasSelection) {
+              void actions.copySelection().then(() => {
+                terminalRef.current?.clearSelection();
+              });
+            } else if (!isDisconnected) {
+              void actions.pasteClipboard();
+            }
+            return;
+          }
           if (!onContextMenuTerminal) return;
           e.preventDefault();
           e.stopPropagation();

@@ -1,8 +1,16 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import vi from "./locales/vi.json";
 import en from "./locales/en.json";
 
 export type Locale = "vi" | "en";
+export type LocalePreference = "system" | Locale;
+
+export function resolveSystemLocale(): Locale {
+  if (typeof navigator !== "undefined" && typeof navigator.language === "string") {
+    return navigator.language.toLowerCase().startsWith("vi") ? "vi" : "en";
+  }
+  return "en";
+}
 
 const dictionaries: Record<Locale, Record<string, unknown>> = {
   vi,
@@ -13,14 +21,18 @@ export type TranslationParams = Record<string, string | number>;
 
 interface I18nContextValue {
   locale: Locale;
+  localePreference: LocalePreference;
   setLocale: (loc: Locale) => void;
+  setLocalePreference: (pref: LocalePreference) => void;
   toggleLocale: () => void;
   t: (key: string, params?: TranslationParams) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({
   locale: "vi",
+  localePreference: "vi",
   setLocale: () => {},
+  setLocalePreference: () => {},
   toggleLocale: () => {},
   t: (k) => k,
 });
@@ -28,18 +40,32 @@ const I18nContext = createContext<I18nContextValue>({
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [locale, setLocaleState] = useState<Locale>(() => {
+  const [localePreference, setLocalePreferenceState] = useState<LocalePreference>(() => {
     const saved = localStorage.getItem("coreterm_locale");
-    return saved === "en" || saved === "vi" ? saved : "vi";
+    return saved === "system" || saved === "en" || saved === "vi" ? saved : "vi";
   });
+  const [systemLocale, setSystemLocale] = useState<Locale>(() => resolveSystemLocale());
+
+  useEffect(() => {
+    const onLangChange = () => setSystemLocale(resolveSystemLocale());
+    window.addEventListener("languagechange", onLangChange);
+    return () => window.removeEventListener("languagechange", onLangChange);
+  }, []);
+
+  const locale: Locale =
+    localePreference === "system" ? systemLocale : localePreference;
+
+  const setLocalePreference = (pref: LocalePreference) => {
+    setLocalePreferenceState(pref);
+    localStorage.setItem("coreterm_locale", pref);
+  };
 
   const setLocale = (loc: Locale) => {
-    setLocaleState(loc);
-    localStorage.setItem("coreterm_locale", loc);
+    setLocalePreference(loc);
   };
 
   const toggleLocale = () => {
-    setLocale(locale === "vi" ? "en" : "vi");
+    setLocalePreference(locale === "vi" ? "en" : "vi");
   };
 
   const t = (key: string, params?: TranslationParams): string => {
@@ -64,7 +90,16 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   return (
-    <I18nContext.Provider value={{ locale, setLocale, toggleLocale, t }}>
+    <I18nContext.Provider
+      value={{
+        locale,
+        localePreference,
+        setLocale,
+        setLocalePreference,
+        toggleLocale,
+        t,
+      }}
+    >
       {children}
     </I18nContext.Provider>
   );

@@ -245,7 +245,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             e.preventDefault();
             e.stopPropagation();
           }}
-          className={`${MENU_PANEL_CLASS} z-[101] max-h-72 overflow-y-auto`}
+          className={`${MENU_PANEL_CLASS} z-[101] max-h-72 overflow-y-auto pr-[1px]`}
         >
           {activeSub.items.map((item) => renderEntry(item, false))}
         </div>
