@@ -3,6 +3,7 @@
 pub const EVENT_SESSION_STATUS: &str = "session:status";
 pub const EVENT_SESSION_AUTH_PROMPT: &str = "session:auth_prompt";
 pub const EVENT_SESSION_HOST_KEY_PROMPT: &str = "session:host_key_prompt";
+pub const EVENT_HOST_UPDATED: &str = "host:updated";
 
 pub const EVENT_SFTP_STATUS: &str = "sftp:status";
 pub const EVENT_SFTP_AUTH_PROMPT: &str = "sftp:auth_prompt";

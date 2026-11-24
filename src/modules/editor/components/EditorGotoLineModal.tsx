@@ -8,6 +8,7 @@ import { ActionModal, Input } from "@/shared/ui";
 interface EditorGotoLineModalProps {
   view: EditorView | null;
   isOpen: boolean;
+  closeOnEscape?: boolean;
   totalLines: number;
   onClose: () => void;
 }
@@ -15,6 +16,7 @@ interface EditorGotoLineModalProps {
 export const EditorGotoLineModal: React.FC<EditorGotoLineModalProps> = ({
   view,
   isOpen,
+  closeOnEscape = true,
   totalLines,
   onClose,
 }) => {
@@ -50,6 +52,7 @@ export const EditorGotoLineModal: React.FC<EditorGotoLineModalProps> = ({
   return (
     <ActionModal
       isOpen={isOpen}
+      closeOnEscape={closeOnEscape}
       onClose={() => {
         onClose();
         window.requestAnimationFrame(() => view?.focus());

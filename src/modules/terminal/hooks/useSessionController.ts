@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
+import { EVENT_HOST_UPDATED } from "@/shared/api/ipcEvents";
+import { listenEvent } from "@/shared/api/tauriClient";
 import { posixCdCmd } from "@/shared/utils/path";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
@@ -22,6 +24,7 @@ interface UseSessionControllerOpts {
   onError: (msg: string) => void;
   onDismissSidebar: () => void;
   onFocusTerminal: () => void;
+  onHostUpdated?: (host: HostFullConfigDto) => void;
 }
 
 export function useSessionController({
@@ -32,8 +35,12 @@ export function useSessionController({
   onError,
   onDismissSidebar,
   onFocusTerminal,
+  onHostUpdated,
 }: UseSessionControllerOpts) {
   const startMouseDrag = useWindowMouseDrag();
+  const onHostUpdatedRef = useRef(onHostUpdated);
+  onHostUpdatedRef.current = onHostUpdated;
+
   useEffect(() => {
     let active = true;
     const unlisteners: Array<() => void> = [];
@@ -48,6 +55,10 @@ export function useSessionController({
             payload.error_message ?? null,
             payload.active_local_forwards
           );
+      }),
+      listenEvent<HostFullConfigDto>(EVENT_HOST_UPDATED, (saved) => {
+        useTabsStore.getState().syncHostConfig(saved);
+        onHostUpdatedRef.current?.(saved);
       }),
     ]).then((fns) => {
       if (!active) {

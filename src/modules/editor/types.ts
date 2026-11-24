@@ -16,6 +16,7 @@ export interface FileEditorPaneProps {
   file: EditorTabMeta;
   isActive: boolean;
   hasBlockingModal?: boolean;
+  hasTopLevelModal?: boolean;
   pauseAutoReconnect?: boolean;
   findToken?: number;
   closeRequestToken?: number;

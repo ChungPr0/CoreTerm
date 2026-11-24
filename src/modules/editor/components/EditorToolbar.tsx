@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useLayoutEffect, useMemo, useRef } from "react";
 import {
   ChevronRight,
   Copy,
@@ -24,6 +24,7 @@ interface EditorToolbarProps {
   effectiveReadonly: boolean;
   fileReadonly: boolean;
   loading: boolean;
+  retrying?: boolean;
   saving: boolean;
   connecting: boolean;
   isDirty: boolean;
@@ -50,6 +51,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   effectiveReadonly,
   fileReadonly,
   loading,
+  retrying = false,
   saving,
   connecting,
   isDirty,
@@ -66,11 +68,18 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onContextMenu,
 }) => {
   const { t } = useI18n();
+  const crumbsRef = useRef<HTMLDivElement>(null);
 
   const crumbs = useMemo(
     () => (isRemote ? splitRemoteCrumbs(path) : splitLocalCrumbs(path)),
     [isRemote, path]
   );
+
+  useLayoutEffect(() => {
+    if (crumbsRef.current) {
+      crumbsRef.current.scrollLeft = crumbsRef.current.scrollWidth;
+    }
+  }, [path, isRemote]);
 
   const statusMeta = useMemo(() => {
     if (!isRemote) {
@@ -121,6 +130,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </div>
 
         <div
+          ref={crumbsRef}
           title={path}
           className="no-scrollbar flex h-6 min-w-0 flex-1 cursor-default items-center gap-0.5 overflow-x-auto rounded border border-[#21262d] bg-[#0d1117] px-2 font-mono text-[11px] text-[#c9d1d9]"
         >
@@ -208,12 +218,12 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </div>
         <IconButton
           size="sm"
-          disabled={loading || saving || connecting}
+          disabled={loading || retrying || saving || connecting}
           onClick={onReload}
           title={t("editor.reload")}
           icon={
             <RefreshCw
-              className={`h-3.5 w-3.5 ${loading || connecting ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${loading || retrying || connecting ? "animate-spin" : ""}`}
             />
           }
         />

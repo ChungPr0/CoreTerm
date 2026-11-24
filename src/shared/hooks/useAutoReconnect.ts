@@ -17,6 +17,7 @@ export interface UseAutoReconnectOptions {
   connected: boolean;
   disconnected: boolean;
   paused?: boolean;
+  resetToken?: number;
   intervalSec: number | undefined;
   onReconnect: () => void;
 }
@@ -26,12 +27,21 @@ export function useAutoReconnect({
   connected,
   disconnected,
   paused = false,
+  resetToken = 0,
   intervalSec,
   onReconnect,
 }: UseAutoReconnectOptions): void {
   const callbackRef = useRef(onReconnect);
   const attemptRef = useRef(0);
+  const prevResetTokenRef = useRef(resetToken);
   callbackRef.current = onReconnect;
+
+  useEffect(() => {
+    if (resetToken !== prevResetTokenRef.current) {
+      prevResetTokenRef.current = resetToken;
+      attemptRef.current = 0;
+    }
+  }, [resetToken]);
 
   // Reset backoff only once reconnected or when disabled, not during CONNECTING retries.
   useEffect(() => {

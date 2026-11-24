@@ -20,6 +20,21 @@ const KEY_BG_SHELL: &str = "Software\\Classes\\Directory\\Background\\shell\\Cor
 #[cfg(windows)]
 const KEY_FILE_SHELL: &str = "Software\\Classes\\*\\shell\\CoreTerm";
 const MENU_TITLE: &str = "Open in CoreTerm";
+const OPT_OUT_MARKER_FILE: &str = "context_menu_disabled";
+
+pub fn set_context_menu_opt_out(app_data_dir: &std::path::Path, opted_out: bool) {
+    let marker = app_data_dir.join(OPT_OUT_MARKER_FILE);
+    if opted_out {
+        let _ = std::fs::create_dir_all(app_data_dir);
+        let _ = std::fs::write(marker, b"1");
+    } else {
+        let _ = std::fs::remove_file(marker);
+    }
+}
+
+pub fn is_context_menu_opted_out(app_data_dir: &std::path::Path) -> bool {
+    app_data_dir.join(OPT_OUT_MARKER_FILE).is_file()
+}
 
 #[cfg(windows)]
 fn set_registry_string(hkey: HKEY, name: Option<&str>, val: &str) -> Result<(), String> {
@@ -125,7 +140,9 @@ fn is_shell_key_registered(base_path: &str) -> bool {
 
 #[cfg(windows)]
 pub fn is_context_menu_registered() -> bool {
-    is_shell_key_registered(KEY_DIR_SHELL) && is_shell_key_registered(KEY_FILE_SHELL)
+    is_shell_key_registered(KEY_DIR_SHELL)
+        && is_shell_key_registered(KEY_BG_SHELL)
+        && is_shell_key_registered(KEY_FILE_SHELL)
 }
 
 #[cfg(not(windows))]
@@ -274,9 +291,10 @@ pub fn get_registered_command() -> Result<String, String> {
 }
 
 #[cfg(windows)]
-pub fn sync_context_menu_if_enabled() {
+pub fn sync_context_menu_if_enabled(app_data_dir: &std::path::Path) {
     #[cfg(debug_assertions)]
     {
+        let _ = app_data_dir;
         let points_to_debug = [KEY_DIR_SHELL, KEY_BG_SHELL, KEY_FILE_SHELL].iter().any(|key| {
             get_registered_command_for(key)
                 .map(|cmd| cmd.contains(r"\target\debug\") || cmd.contains("/target/debug/"))
@@ -306,7 +324,7 @@ pub fn sync_context_menu_if_enabled() {
             || is_shell_key_registered(KEY_BG_SHELL)
             || is_shell_key_registered(KEY_FILE_SHELL);
         if !any_registered {
-            if is_installed_version() {
+            if is_installed_version() && !is_context_menu_opted_out(app_data_dir) {
                 let _ = register_context_menu();
             }
             return;
@@ -327,4 +345,21 @@ pub fn sync_context_menu_if_enabled() {
 }
 
 #[cfg(not(windows))]
-pub fn sync_context_menu_if_enabled() {}
+pub fn sync_context_menu_if_enabled(_app_data_dir: &std::path::Path) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracks_context_menu_opt_out_marker_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        assert!(!is_context_menu_opted_out(dir.path()));
+
+        set_context_menu_opt_out(dir.path(), true);
+        assert!(is_context_menu_opted_out(dir.path()));
+
+        set_context_menu_opt_out(dir.path(), false);
+        assert!(!is_context_menu_opted_out(dir.path()));
+    }
+}

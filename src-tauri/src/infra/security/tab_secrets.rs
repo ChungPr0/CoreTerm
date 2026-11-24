@@ -26,9 +26,15 @@ struct TabSecretKey {
     kind: TabSecretKind,
 }
 
+#[derive(Clone)]
+struct TabSecretValue {
+    secret: Zeroizing<String>,
+    key_id: Option<String>,
+}
+
 #[derive(Clone, Default)]
 pub struct TabSecretStore {
-    entries: Arc<DashMap<TabSecretKey, Zeroizing<String>>>,
+    entries: Arc<DashMap<TabSecretKey, TabSecretValue>>,
 }
 
 impl TabSecretStore {
@@ -54,7 +60,7 @@ impl TabSecretStore {
             host_id: host.to_string(),
             kind,
         };
-        self.entries.get(&key).map(|entry| entry.value().clone())
+        self.entries.get(&key).map(|entry| entry.value().secret.clone())
     }
 
     pub fn set(
@@ -64,17 +70,38 @@ impl TabSecretStore {
         kind: TabSecretKind,
         secret: Zeroizing<String>,
     ) {
+        self.set_with_key(tab_id, host_id, kind, secret, None);
+    }
+
+    pub fn set_with_key(
+        &self,
+        tab_id: &str,
+        host_id: &str,
+        kind: TabSecretKind,
+        secret: Zeroizing<String>,
+        key_id: Option<&str>,
+    ) {
         let tab = tab_id.trim();
         let host = host_id.trim();
         if tab.is_empty() || host.is_empty() || secret.is_empty() {
             return;
         }
+        let clean_key_id = key_id
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         let key = TabSecretKey {
             tab_id: tab.to_string(),
             host_id: host.to_string(),
             kind,
         };
-        self.entries.insert(key, secret);
+        self.entries.insert(
+            key,
+            TabSecretValue {
+                secret,
+                key_id: clean_key_id,
+            },
+        );
     }
 
     pub fn remove(&self, tab_id: &str, host_id: &str, kind: TabSecretKind) {
@@ -107,6 +134,17 @@ impl TabSecretStore {
         self.entries.retain(|k, _| k.host_id != host);
     }
 
+    pub fn clear_key(&self, key_id: &str) {
+        let trimmed = key_id.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.entries.retain(|k, v| {
+            !(k.kind == TabSecretKind::KeyPassphrase && v.key_id.as_deref() == Some(trimmed))
+        });
+    }
+
+    #[allow(dead_code)]
     pub fn clear_all_passphrases(&self) {
         self.entries
             .retain(|k, _| k.kind != TabSecretKind::KeyPassphrase);
@@ -225,5 +263,51 @@ mod tests {
         assert!(store
             .get("tab-1", "host-a", TabSecretKind::Password)
             .is_none());
+    }
+
+    #[test]
+    fn clear_key_removes_only_matching_key_passphrases() {
+        let store = TabSecretStore::new();
+        store.set_with_key(
+            "tab-1",
+            "host-a",
+            TabSecretKind::KeyPassphrase,
+            Zeroizing::new("pass-a".to_string()),
+            Some("key-1"),
+        );
+        store.set_with_key(
+            "tab-2",
+            "host-b",
+            TabSecretKind::KeyPassphrase,
+            Zeroizing::new("pass-b".to_string()),
+            Some("key-2"),
+        );
+        store.set_with_key(
+            "tab-3",
+            "host-c",
+            TabSecretKind::Password,
+            Zeroizing::new("pw-c".to_string()),
+            Some("key-1"),
+        );
+
+        store.clear_key("key-1");
+
+        assert!(store
+            .get("tab-1", "host-a", TabSecretKind::KeyPassphrase)
+            .is_none());
+        assert_eq!(
+            store
+                .get("tab-2", "host-b", TabSecretKind::KeyPassphrase)
+                .as_deref()
+                .map(String::as_str),
+            Some("pass-b")
+        );
+        assert_eq!(
+            store
+                .get("tab-3", "host-c", TabSecretKind::Password)
+                .as_deref()
+                .map(String::as_str),
+            Some("pw-c")
+        );
     }
 }

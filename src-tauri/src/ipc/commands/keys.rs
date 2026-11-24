@@ -56,6 +56,6 @@ pub async fn key_delete(
     let res = state
         .keys
         .delete(&key_id, delete_file_from_disk.unwrap_or(false))?;
-    state.tab_secrets.clear_all_passphrases();
+    state.tab_secrets.clear_key(&key_id);
     Ok(res)
 }

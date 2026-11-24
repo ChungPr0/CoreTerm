@@ -11,7 +11,10 @@ import { useI18n } from "@/shared/i18n";
 import { FindBar, ReconnectBanner, useAlert } from "@/shared/ui";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
-import { useCodeMirrorView } from "../hooks/useCodeMirrorView";
+import {
+  shouldPreventRightClickSelectionCollapse,
+  useCodeMirrorView,
+} from "../hooks/useCodeMirrorView";
 import { useEditorFileSession } from "../hooks/useEditorFileSession";
 import { useEditorSearch } from "../hooks/useEditorSearch";
 import { buildEditorContextItems } from "../menus/editorMenus";
@@ -27,6 +30,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   file,
   isActive,
   hasBlockingModal = false,
+  hasTopLevelModal = false,
   pauseAutoReconnect = false,
   findToken = 0,
   closeRequestToken = 0,
@@ -39,13 +43,16 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   const { t } = useI18n();
   const alert = useAlert();
 
+  const [fileReadonly, setFileReadonly] = useState(false);
   const [userReadonly, setUserReadonly] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
   const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
   const [isDirty, setIsDirty] = useState(false);
   const [gotoOpen, setGotoOpen] = useState(false);
 
+  const effectiveReadonly = fileReadonly || userReadonly;
   const isDirtyRef = useRef(false);
+  const readonlyRef = useRef(effectiveReadonly);
   const saveFnRef = useRef<() => Promise<boolean>>(async () => false);
   const openFindRef = useRef<(withReplace: boolean) => void>(() => {});
   const openGotoRef = useRef<() => void>(() => {});
@@ -56,11 +63,11 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   const savedDocInitRef = useRef("");
   const savedEolInitRef = useRef<EditorLineEnding>("LF");
   const eolInitRef = useRef<EditorLineEnding>("LF");
-  const readonlyInitRef = useRef(false);
   const prevFindTokenRef = useRef(findToken);
   const prevCloseTokenRef = useRef(closeRequestToken);
 
   isDirtyRef.current = isDirty;
+  readonlyRef.current = effectiveReadonly;
 
   const updateDirty = useCallback(
     (next: boolean) => {
@@ -72,7 +79,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
   const cm = useCodeMirrorView({
     wordWrap,
-    effectiveReadonly: readonlyInitRef.current || userReadonly,
+    effectiveReadonly,
     fontSize,
     savedDocRef: savedDocInitRef,
     savedEolRef: savedEolInitRef,
@@ -90,7 +97,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
   const search = useEditorSearch({
     viewRef: cm.viewRef,
-    readonlyRef: readonlyInitRef,
+    readonlyRef,
     docVersion: cm.docVersion,
     cursorPos: cm.cursorPos,
     onBeforeOpenFind: handleBeforeOpenFind,
@@ -105,8 +112,10 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     tab,
     file,
     viewRef: cm.viewRef,
+    fileReadonly,
     userReadonly,
     pauseAutoReconnect,
+    onSetFileReadonly: setFileReadonly,
     onUpdateDirty: updateDirty,
     onResetOverlays: handleResetOverlays,
     onSetLangId: cm.setLangId,
@@ -121,8 +130,10 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   savedDocInitRef.current = session.savedDocRef.current;
   savedEolInitRef.current = session.savedEolRef.current;
   eolInitRef.current = session.eolRef.current;
-  readonlyInitRef.current = session.effectiveReadonly;
   saveFnRef.current = session.handleSave;
+
+  const editorReady = !session.loading && !session.loadError;
+  const hasLoadErrorModal = !session.loading && Boolean(session.loadError);
 
   const openGotoBar = useCallback(() => {
     if (search.findOpen) search.closeFindBar();
@@ -136,7 +147,8 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   findPrevRef.current = search.handleFindPrev;
   findOpenRef.current = search.findOpen;
 
-  const hasEditorModal = gotoOpen || session.confirmDiscard !== null;
+  const hasEditorModal =
+    isActive && (gotoOpen || session.confirmDiscard !== null || hasLoadErrorModal);
   useEffect(() => {
     onModalChange?.(tab.tabId, hasEditorModal);
     return () => {
@@ -199,8 +211,12 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
       const view = cm.viewRef.current;
       const sel = view?.state.selection.main;
+      const isInsideEditorHost =
+        Boolean(cm.editorHostRef.current) &&
+        e.target instanceof Node &&
+        cm.editorHostRef.current!.contains(e.target);
 
-      if (view && sel && sel.empty && (e.clientX !== 0 || e.clientY !== 0)) {
+      if (view && isInsideEditorHost && sel && sel.empty && (e.clientX !== 0 || e.clientY !== 0)) {
         const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
         if (pos !== null) {
           view.dispatch({ selection: { anchor: pos } });
@@ -218,18 +234,20 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         e.clientY,
         buildEditorContextItems({
           t,
+          editorReady: Boolean(view) && editorReady,
           hasSelection: selectedText.length > 0,
-          readonly: session.effectiveReadonly || !view,
-          fileReadonly: session.fileReadonly,
+          readonly: effectiveReadonly,
+          fileReadonly,
           isDirty,
           saving: session.saving,
           loading: session.loading,
+          retrying: session.retrying,
           connecting: session.connecting,
           wordWrap,
           isRemote: session.isRemote,
           isDisconnected: session.isRemoteOffline,
           onCut: () => {
-            if (!view || !selectedText || session.effectiveReadonly) return;
+            if (!view || !selectedText || effectiveReadonly) return;
             void copyText(selectedText);
             view.dispatch(view.state.replaceSelection(""));
             view.focus();
@@ -239,7 +257,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
             view?.focus();
           },
           onPaste: () => {
-            if (!view || session.effectiveReadonly) return;
+            if (!view || effectiveReadonly) return;
             void readText().then((txt) => {
               if (!txt || !cm.viewRef.current) return;
               cm.viewRef.current.dispatch(cm.viewRef.current.state.replaceSelection(txt));
@@ -273,7 +291,11 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
       );
     },
     [
+      cm.editorHostRef,
       cm.viewRef,
+      editorReady,
+      effectiveReadonly,
+      fileReadonly,
       handleCopyPath,
       isDirty,
       onForceClose,
@@ -290,7 +312,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   useEffect(() => {
     if (!isActive) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (hasBlockingModal || gotoOpen || session.confirmDiscard) return;
+      if (hasBlockingModal || gotoOpen || session.confirmDiscard || hasLoadErrorModal) return;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
         if (key === "s") {
@@ -350,12 +372,12 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
     adjustFontSize,
     gotoOpen,
     hasBlockingModal,
+    hasLoadErrorModal,
     isActive,
     search.findOpen,
     session.confirmDiscard,
   ]);
 
-  const editorReady = !session.loading && !session.loadError;
   const zoomPercent = Math.round((fontSize / EDITOR_FONT_SIZE_DEFAULT) * 100);
   const showConnectingBanner =
     session.isRemoteConnecting &&
@@ -386,6 +408,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         effectiveReadonly={session.effectiveReadonly}
         fileReadonly={session.fileReadonly}
         loading={session.loading}
+        retrying={session.retrying}
         saving={session.saving}
         connecting={session.connecting}
         isDirty={isDirty}
@@ -405,12 +428,13 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
       <div
         onContextMenu={handleContextMenu}
         onMouseDownCapture={(e) => {
-          if (e.button === 2) {
-            if (getEditableInput(e.target)) return;
-            const view = cm.viewRef.current;
-            if (view && !view.state.selection.main.empty) {
-              e.preventDefault();
-            }
+          if (getEditableInput(e.target)) return;
+          const view = cm.viewRef.current;
+          if (
+            view &&
+            shouldPreventRightClickSelectionCollapse(e.button, view.state.selection.main.empty)
+          ) {
+            e.preventDefault();
           }
         }}
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ct-editor"
@@ -450,6 +474,8 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
         {!session.loading && session.loadError && (
           <EditorLoadErrorView
+            isOpen={isActive}
+            closeOnEscape={isActive && !hasTopLevelModal}
             loadError={session.loadError}
             loadErrDisconnected={session.loadErrDisconnected}
             connecting={session.connecting}
@@ -492,13 +518,15 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
 
       <EditorGotoLineModal
         view={cm.viewRef.current}
-        isOpen={gotoOpen && editorReady}
+        isOpen={isActive && gotoOpen && editorReady}
+        closeOnEscape={!hasTopLevelModal}
         totalLines={cm.totalLines}
         onClose={() => setGotoOpen(false)}
       />
 
       <EditorDiscardModal
-        confirmDiscard={session.confirmDiscard}
+        confirmDiscard={isActive ? session.confirmDiscard : null}
+        closeOnEscape={!hasTopLevelModal}
         fileName={file.name}
         saving={session.saving}
         canSaveAndClose={!session.effectiveReadonly && !session.isRemoteOffline}

@@ -252,6 +252,7 @@
     "find_next": "Next (Enter)",
     "find_case": "Match Case",
     "find_regex": "Regex",
+    "find_invalid_regex": "Invalid regex",
     "shell_err_title": "Local Shell Error",
     "shell_err_desc": "Shell not found or path invalid. Pick an executable, rescan, or use SSH.",
     "pick_shell": "Browse Shell...",

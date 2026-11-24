@@ -14,6 +14,54 @@ import {
 } from "@/shared/defaults";
 import type { EditorCursorPos } from "../types";
 
+export interface SearchMatchRange {
+  from: number;
+  to: number;
+}
+
+export function resolveActiveMatchIndex(
+  matches: readonly SearchMatchRange[],
+  sel: SearchMatchRange
+): number {
+  if (matches.length === 0) return -1;
+  let idx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+  if (idx === -1) {
+    idx = matches.findIndex((m) => m.from >= sel.from);
+    if (idx === -1) idx = 0;
+  }
+  return idx;
+}
+
+export function resolveNextMatchIndex(
+  matches: readonly SearchMatchRange[],
+  sel: SearchMatchRange
+): number {
+  if (matches.length === 0) return -1;
+  const exactIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+  if (exactIdx !== -1) {
+    return (exactIdx + 1) % matches.length;
+  }
+  const after = matches.findIndex((m) => m.from >= sel.from);
+  return after !== -1 ? after : 0;
+}
+
+export function resolvePrevMatchIndex(
+  matches: readonly SearchMatchRange[],
+  sel: SearchMatchRange
+): number {
+  if (matches.length === 0) return -1;
+  const exactIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
+  if (exactIdx !== -1) {
+    return (exactIdx - 1 + matches.length) % matches.length;
+  }
+  for (let i = matches.length - 1; i >= 0; i--) {
+    if (matches[i].to <= sel.from) {
+      return i;
+    }
+  }
+  return matches.length - 1;
+}
+
 interface UseEditorSearchOpts {
   viewRef: React.MutableRefObject<EditorView | null>;
   readonlyRef: React.MutableRefObject<boolean>;
@@ -30,8 +78,7 @@ export function useEditorSearch({
   onBeforeOpenFind,
 }: UseEditorSearchOpts) {
   const findInputRef = useRef<HTMLInputElement>(null);
-  const matchesRef = useRef<Array<{ from: number; to: number }>>([]);
-  const currentMatchIdxRef = useRef<number>(-1);
+  const matchesRef = useRef<SearchMatchRange[]>([]);
   const [findOpen, setFindOpen] = useState(false);
   const [showReplace, setShowReplace] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -46,24 +93,16 @@ export function useEditorSearch({
     setFindOpen(false);
     setShowReplace(false);
     matchesRef.current = [];
-    currentMatchIdxRef.current = -1;
     setFindMatches({ index: 0, count: 0 });
   }, []);
 
   const updateMatchIndex = useCallback((view: EditorView) => {
     const matches = matchesRef.current;
-    if (matches.length === 0) {
-      currentMatchIdxRef.current = -1;
+    const idx = resolveActiveMatchIndex(matches, view.state.selection.main);
+    if (idx === -1) {
       setFindMatches({ index: 0, count: 0 });
       return;
     }
-    const sel = view.state.selection.main;
-    let idx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
-    if (idx === -1) {
-      idx = matches.findIndex((m) => m.from >= sel.from);
-      if (idx === -1) idx = 0;
-    }
-    currentMatchIdxRef.current = idx;
     setFindMatches({ index: idx + 1, count: matches.length });
   }, []);
 
@@ -75,7 +114,6 @@ export function useEditorSearch({
       const target = matches[clampedIndex];
       if (!target) return;
 
-      currentMatchIdxRef.current = clampedIndex;
       view.dispatch({
         selection: EditorSelection.single(target.from, target.to),
         effects: [EditorView.scrollIntoView(target.from, { y: "center" })],
@@ -87,10 +125,9 @@ export function useEditorSearch({
   );
 
   const syncSearchQuery = useCallback(
-    (view: EditorView): Array<{ from: number; to: number }> => {
+    (view: EditorView): SearchMatchRange[] => {
       if (!findQuery) {
         matchesRef.current = [];
-        currentMatchIdxRef.current = -1;
         setFindMatches({ index: 0, count: 0 });
         setInvalidRegex(false);
         view.dispatch({
@@ -109,50 +146,46 @@ export function useEditorSearch({
 
       if (!q.valid) {
         matchesRef.current = [];
-        currentMatchIdxRef.current = -1;
         setFindMatches({ index: 0, count: 0 });
         setInvalidRegex(true);
+        view.dispatch({
+          effects: setSearchQuery.of(new SearchQuery({ search: "" })),
+        });
         return [];
       }
-
-      setInvalidRegex(false);
-      view.dispatch({ effects: setSearchQuery.of(q) });
 
       const cursor = q.getCursor(view.state) as {
         next: () => { value?: { from: number; to: number }; done?: boolean };
         value?: { from: number; to: number };
         done?: boolean;
       };
-      const collected: Array<{ from: number; to: number }> = [];
+      const collected: SearchMatchRange[] = [];
       const startMs = performance.now();
 
       while (collected.length < EDITOR_FIND_MAX_MATCHES) {
         if (regex && performance.now() - startMs > EDITOR_FIND_TIME_BUDGET_MS) {
           setInvalidRegex(true);
           matchesRef.current = [];
-          currentMatchIdxRef.current = -1;
           setFindMatches({ index: 0, count: 0 });
+          view.dispatch({
+            effects: setSearchQuery.of(new SearchQuery({ search: "" })),
+          });
           return [];
         }
         const step = cursor.next();
         if (step.done || !step.value) break;
         collected.push({ from: step.value.from, to: step.value.to });
       }
+      setInvalidRegex(false);
+      view.dispatch({ effects: setSearchQuery.of(q) });
       matchesRef.current = collected;
 
       if (collected.length === 0) {
-        currentMatchIdxRef.current = -1;
         setFindMatches({ index: 0, count: 0 });
         return collected;
       }
 
-      const sel = view.state.selection.main;
-      let idx = collected.findIndex((m) => m.from === sel.from && m.to === sel.to);
-      if (idx === -1) {
-        idx = collected.findIndex((m) => m.from >= sel.from);
-        if (idx === -1) idx = 0;
-      }
-      currentMatchIdxRef.current = idx;
+      const idx = resolveActiveMatchIndex(collected, view.state.selection.main);
       setFindMatches({ index: idx + 1, count: collected.length });
       return collected;
     },
@@ -180,7 +213,6 @@ export function useEditorSearch({
       view.focus();
     }
     matchesRef.current = [];
-    currentMatchIdxRef.current = -1;
     setFindMatches({ index: 0, count: 0 });
     setFindOpen(false);
   }, [viewRef]);
@@ -217,21 +249,8 @@ export function useEditorSearch({
       if (matches.length === 0) return;
     }
 
-    const sel = view.state.selection.main;
-    const curIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
-    let nextIdx: number;
-    if (curIdx !== -1) {
-      nextIdx = (curIdx + 1) % matches.length;
-    } else {
-      const cur = currentMatchIdxRef.current;
-      if (cur !== -1 && cur < matches.length) {
-        nextIdx = (cur + 1) % matches.length;
-      } else {
-        const after = matches.findIndex((m) => m.from >= sel.from);
-        nextIdx = after !== -1 ? after : 0;
-      }
-    }
-    jumpToMatch(view, nextIdx);
+    const nextIdx = resolveNextMatchIndex(matches, view.state.selection.main);
+    if (nextIdx !== -1) jumpToMatch(view, nextIdx);
   }, [findQuery, jumpToMatch, syncSearchQuery, viewRef]);
 
   const handleFindPrev = useCallback(() => {
@@ -243,27 +262,8 @@ export function useEditorSearch({
       if (matches.length === 0) return;
     }
 
-    const sel = view.state.selection.main;
-    const curIdx = matches.findIndex((m) => m.from === sel.from && m.to === sel.to);
-    let prevIdx: number;
-    if (curIdx !== -1) {
-      prevIdx = (curIdx - 1 + matches.length) % matches.length;
-    } else {
-      const cur = currentMatchIdxRef.current;
-      if (cur !== -1 && cur < matches.length) {
-        prevIdx = (cur - 1 + matches.length) % matches.length;
-      } else {
-        let before = -1;
-        for (let i = matches.length - 1; i >= 0; i--) {
-          if (matches[i].to <= sel.from) {
-            before = i;
-            break;
-          }
-        }
-        prevIdx = before !== -1 ? before : matches.length - 1;
-      }
-    }
-    jumpToMatch(view, prevIdx);
+    const prevIdx = resolvePrevMatchIndex(matches, view.state.selection.main);
+    if (prevIdx !== -1) jumpToMatch(view, prevIdx);
   }, [findQuery, jumpToMatch, syncSearchQuery, viewRef]);
 
   const handleReplaceNext = useCallback(() => {

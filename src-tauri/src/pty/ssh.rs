@@ -3,13 +3,14 @@ use std::ffi::OsString;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use zeroize::Zeroizing;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::hosts::HostService;
 use crate::infra::security::{TabSecretKind, TabSecretStore};
 use crate::ipc::dto::{PortForwardStatusDto, SessionHostKeyPromptEventDto};
+use crate::ipc::events::EVENT_HOST_UPDATED;
 use crate::keys::KeyService;
 use crate::pty::askpass::{
     decide_askpass_action, spawn_askpass_server, AskpassDecision, AskpassPolicyState,
@@ -52,6 +53,8 @@ pub(super) struct SshAskpassContext {
 
 pub(super) struct SshExpectContext<'a> {
     pub app: &'a AppHandle,
+    pub hosts: &'a HostService,
+    pub keys: &'a KeyService,
     pub tab_secrets: &'a TabSecretStore,
     pub session: &'a Arc<PtySession>,
     pub tab_id: &'a str,
@@ -319,8 +322,34 @@ pub(super) fn handle_expect_signal(
         }
         ExpectSignal::Connected => {
             ctx.session.shutdown_askpass();
-            if let Some((kind, secret)) = ctx.session.take_staged_secret() {
-                ctx.tab_secrets.set(ctx.tab_id, ctx.host_id, kind, secret);
+            if let Some(staged) = ctx.session.take_staged_secret() {
+                ctx.tab_secrets.set_with_key(
+                    ctx.tab_id,
+                    ctx.host_id,
+                    staged.kind,
+                    staged.secret.clone(),
+                    ctx.session.ssh_key_id.as_deref(),
+                );
+                if staged.save_to_vault {
+                    match staged.kind {
+                        TabSecretKind::KeyPassphrase => {
+                            if let Some(ref key_id) = ctx.session.ssh_key_id {
+                                let _ = ctx.keys.save_secret(key_id, &staged.secret);
+                            }
+                        }
+                        TabSecretKind::Password => {
+                            if ctx
+                                .hosts
+                                .save_secret(ctx.host_id, &staged.secret, staged.auto_reconnect)
+                                .is_ok()
+                            {
+                                if let Ok(updated) = ctx.hosts.get_detail(ctx.host_id) {
+                                    let _ = ctx.app.emit(EVENT_HOST_UPDATED, updated);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             emit_status(
                 ctx.app,

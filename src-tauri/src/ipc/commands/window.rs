@@ -6,7 +6,7 @@ use crate::infra::os;
 use crate::ipc::commands::AppState;
 use crate::ipc::dto::AppStatusDto;
 use crate::ipc::error::{AppError, AppResult};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub async fn app_get_status() -> AppResult<AppStatusDto> {
@@ -32,11 +32,14 @@ pub async fn context_menu_get_status() -> AppResult<bool> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub async fn context_menu_set_enabled(enabled: bool) -> AppResult<bool> {
+pub async fn context_menu_set_enabled(app: tauri::AppHandle, enabled: bool) -> AppResult<bool> {
     if enabled {
         os::context_menu::register_context_menu().map_err(AppError::Internal)?;
     } else {
         os::context_menu::unregister_context_menu().map_err(AppError::Internal)?;
+    }
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        os::context_menu::set_context_menu_opt_out(&app_data_dir, !enabled);
     }
     Ok(os::context_menu::is_context_menu_registered())
 }

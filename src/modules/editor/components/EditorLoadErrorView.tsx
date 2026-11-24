@@ -4,6 +4,8 @@ import { useI18n } from "@/shared/i18n";
 import { ActionModal, Button } from "@/shared/ui";
 
 interface EditorLoadErrorViewProps {
+  isOpen?: boolean;
+  closeOnEscape?: boolean;
   loadError: string;
   loadErrDisconnected: boolean;
   connecting: boolean;
@@ -15,6 +17,8 @@ interface EditorLoadErrorViewProps {
 }
 
 export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
+  isOpen = true,
+  closeOnEscape = true,
   loadError,
   loadErrDisconnected,
   connecting,
@@ -29,7 +33,7 @@ export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
 
   return (
     <ActionModal
-      isOpen={true}
+      isOpen={isOpen}
       onClose={onForceClose}
       busy={blockClose}
       title={t("editor.load_err_title")}
@@ -37,7 +41,7 @@ export const EditorLoadErrorView: React.FC<EditorLoadErrorViewProps> = ({
       iconTone="danger"
       size="sm"
       closeOnBackdrop={false}
-      closeOnEscape={true}
+      closeOnEscape={closeOnEscape}
       footer={
         <>
           <Button

@@ -103,7 +103,19 @@ export const App: React.FC = () => {
     onError: alert.error,
     onDismissSidebar: () => setIsSidebarOpen(false),
     onFocusTerminal: focusTerminal,
+    onHostUpdated: () => void hosts.loadProfiles(),
   });
+
+  const hasTopLevelModal =
+    hosts.isHostModalOpen ||
+    isVaultOpen ||
+    isSettingsOpen ||
+    hosts.isGroupModalOpen ||
+    !!sessions.authPrompt ||
+    !!sessions.hostKeyPrompt ||
+    sessions.portConflicts.length > 0 ||
+    !!deletePrompt ||
+    isPaletteOpen;
 
   const hasBlockingModal =
     hosts.isHostModalOpen ||
@@ -286,6 +298,7 @@ export const App: React.FC = () => {
                     file={tab.editorFile}
                     isActive={isTabActive}
                     hasBlockingModal={hasModalOpen}
+                    hasTopLevelModal={hasTopLevelModal}
                     pauseAutoReconnect={pauseAutoReconnect}
                     findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
                     closeRequestToken={sessions.editorCloseSeqByTab[tab.tabId] ?? 0}

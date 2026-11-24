@@ -177,4 +177,57 @@ describe("Editor Menus (Unified Context Menu)", () => {
 
     expect(toolbarItems.map((i) => i.id)).toEqual(contextItems.map((i) => i.id));
   });
+
+  it("disables editor actions while not ready and keeps readonly label accurate, and disables reload when retrying", () => {
+    const dummy = vi.fn();
+    const items = buildEditorContextItems({
+      t,
+      editorReady: false,
+      hasSelection: true,
+      readonly: false,
+      fileReadonly: false,
+      isDirty: true,
+      saving: false,
+      loading: false,
+      retrying: true,
+      connecting: false,
+      wordWrap: false,
+      isRemote: false,
+      isDisconnected: false,
+      onCut: dummy,
+      onCopy: dummy,
+      onPaste: dummy,
+      onSelectAll: dummy,
+      onFind: dummy,
+      onReplace: dummy,
+      onGotoLine: dummy,
+      onToggleWordWrap: dummy,
+      onToggleReadonly: dummy,
+      onSave: dummy,
+      onReload: dummy,
+      onCopyPath: dummy,
+    });
+
+    for (const id of [
+      "editor-cut",
+      "editor-copy",
+      "editor-paste",
+      "editor-select-all",
+      "editor-find",
+      "editor-replace",
+      "editor-goto",
+      "editor-word-wrap",
+      "editor-readonly",
+      "editor-save",
+      "editor-reload",
+    ]) {
+      const entry = items.find((i) => i.id === id);
+      expect(entry && "disabled" in entry ? entry.disabled : undefined, id).toBe(true);
+    }
+
+    const readonlyEntry = items.find((i) => i.id === "editor-readonly");
+    expect(readonlyEntry && "label" in readonlyEntry ? readonlyEntry.label : undefined).toBe(
+      "editor.lock_readonly"
+    );
+  });
 });

@@ -141,7 +141,7 @@ pub fn run() {
                 }
             }
 
-            crate::infra::os::context_menu::sync_context_menu_if_enabled();
+            crate::infra::os::context_menu::sync_context_menu_if_enabled(&app_data_dir);
 
             app.manage(AppState {
                 hosts,

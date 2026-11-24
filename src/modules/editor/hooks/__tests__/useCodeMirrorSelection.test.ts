@@ -1,31 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { buildEditorContextItems } from "../../menus/editorMenus";
+import { shouldPreventRightClickSelectionCollapse } from "../useCodeMirrorView";
 
 describe("Editor Right-Click Selection Preservation (TC-ED-066)", () => {
-  function handleRightClickMousedown(
-    event: { button: number; preventDefault: () => void },
-    state: EditorState
-  ): boolean {
-    if (event.button === 2) {
-      const sel = state.selection.main;
-      if (!sel.empty) {
-        event.preventDefault();
-        return true;
-      }
-    }
-    return false;
-  }
-
-  it("prevents default and returns true on right-click when text is selected", () => {
-    let prevented = false;
-    const mockEvent = {
-      button: 2,
-      preventDefault: () => {
-        prevented = true;
-      },
-    };
-
+  it("prevents default on right-click when text is selected", () => {
     const stateWithSelection = EditorState.create({
       doc: "Hello World CoreTerm",
       selection: EditorSelection.single(0, 5), // Selected "Hello"
@@ -33,53 +12,30 @@ describe("Editor Right-Click Selection Preservation (TC-ED-066)", () => {
 
     const sel = stateWithSelection.selection.main;
     expect(sel.empty).toBe(false);
-
-    const handled = handleRightClickMousedown(mockEvent, stateWithSelection);
-
-    expect(prevented).toBe(true);
-    expect(handled).toBe(true);
+    expect(shouldPreventRightClickSelectionCollapse(2, sel.empty)).toBe(true);
   });
 
   it("does not prevent default on right-click when there is no text selected", () => {
-    let prevented = false;
-    const mockEvent = {
-      button: 2,
-      preventDefault: () => {
-        prevented = true;
-      },
-    };
-
     const stateNoSelection = EditorState.create({
       doc: "Hello World CoreTerm",
       selection: EditorSelection.cursor(3),
     });
 
     expect(stateNoSelection.selection.main.empty).toBe(true);
-
-    const handled = handleRightClickMousedown(mockEvent, stateNoSelection);
-
-    expect(prevented).toBe(false);
-    expect(handled).toBe(false);
+    expect(shouldPreventRightClickSelectionCollapse(2, stateNoSelection.selection.main.empty)).toBe(
+      false
+    );
   });
 
   it("does not prevent default on left-click even if text is selected", () => {
-    let prevented = false;
-    const mockEvent = {
-      button: 0,
-      preventDefault: () => {
-        prevented = true;
-      },
-    };
-
     const stateWithSelection = EditorState.create({
       doc: "Hello World CoreTerm",
       selection: EditorSelection.single(0, 5),
     });
 
-    const handled = handleRightClickMousedown(mockEvent, stateWithSelection);
-
-    expect(prevented).toBe(false);
-    expect(handled).toBe(false);
+    expect(
+      shouldPreventRightClickSelectionCollapse(0, stateWithSelection.selection.main.empty)
+    ).toBe(false);
   });
 
   it("buildEditorContextItems correctly enables/disables Cut and Copy based on selection", () => {
