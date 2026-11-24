@@ -19,12 +19,14 @@ import type { ContextMenuEntry } from "@/shared/ui";
 
 export interface BuildEditorContextItemsOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
+  editorReady?: boolean;
   hasSelection: boolean;
   readonly: boolean;
   fileReadonly?: boolean;
   isDirty: boolean;
   saving?: boolean;
   loading?: boolean;
+  retrying?: boolean;
   connecting?: boolean;
   wordWrap?: boolean;
   isRemote: boolean;
@@ -47,12 +49,14 @@ export interface BuildEditorContextItemsOpts {
 
 export function buildEditorContextItems({
   t,
+  editorReady = true,
   hasSelection,
   readonly,
   fileReadonly = false,
   isDirty,
   saving = false,
   loading = false,
+  retrying = false,
   connecting = false,
   wordWrap = false,
   isRemote,
@@ -78,7 +82,7 @@ export function buildEditorContextItems({
       label: t("ctx.cut"),
       icon: <Scissors className="h-3.5 w-3.5" />,
       shortcut: "Ctrl+X",
-      disabled: !hasSelection || readonly,
+      disabled: !editorReady || !hasSelection || readonly,
       onSelect: onCut,
     },
     {
@@ -86,7 +90,7 @@ export function buildEditorContextItems({
       label: t("ctx.copy"),
       icon: <ClipboardCopy className="h-3.5 w-3.5" />,
       shortcut: "Ctrl+C",
-      disabled: !hasSelection,
+      disabled: !editorReady || !hasSelection,
       onSelect: onCopy,
     },
     {
@@ -94,7 +98,7 @@ export function buildEditorContextItems({
       label: t("ctx.paste"),
       icon: <Clipboard className="h-3.5 w-3.5" />,
       shortcut: "Ctrl+V",
-      disabled: readonly,
+      disabled: !editorReady || readonly,
       onSelect: onPaste,
     },
     {
@@ -102,6 +106,7 @@ export function buildEditorContextItems({
       label: t("ctx.select_all"),
       icon: <TextSelect className="h-3.5 w-3.5" />,
       shortcut: "Ctrl+A",
+      disabled: !editorReady,
       onSelect: onSelectAll,
     },
     { type: "separator", id: "sep-editor-search" },
@@ -110,6 +115,7 @@ export function buildEditorContextItems({
       label: t("ctx.find"),
       icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
       shortcut: "Ctrl+F",
+      disabled: !editorReady,
       onSelect: onFind,
     },
   ];
@@ -120,7 +126,7 @@ export function buildEditorContextItems({
       label: t("ctx.replace"),
       icon: <Replace className="h-3.5 w-3.5 text-sky-400" />,
       shortcut: "Ctrl+H",
-      disabled: readonly,
+      disabled: !editorReady || readonly,
       onSelect: onReplace,
     });
   }
@@ -130,6 +136,7 @@ export function buildEditorContextItems({
     label: t("editor.goto_line_title"),
     icon: <Hash className="h-3.5 w-3.5" />,
     shortcut: "Ctrl+G",
+    disabled: !editorReady,
     onSelect: onGotoLine,
   });
 
@@ -141,6 +148,7 @@ export function buildEditorContextItems({
         label: t("editor.word_wrap"),
         icon: <WrapText className="h-3.5 w-3.5" />,
         badge: wordWrap ? { text: t("ctx.state_on"), active: true } : undefined,
+        disabled: !editorReady,
         onSelect: onToggleWordWrap,
       });
     }
@@ -153,7 +161,7 @@ export function buildEditorContextItems({
         ) : (
           <LockOpen className="h-3.5 w-3.5" />
         ),
-        disabled: fileReadonly,
+        disabled: !editorReady || fileReadonly,
         onSelect: onToggleReadonly,
       });
     }
@@ -166,14 +174,14 @@ export function buildEditorContextItems({
       label: t("editor.save"),
       icon: <Save className="h-3.5 w-3.5" />,
       shortcut: "Ctrl+S",
-      disabled: readonly || !isDirty || saving || (isRemote && isDisconnected),
+      disabled: !editorReady || readonly || !isDirty || saving || (isRemote && isDisconnected),
       onSelect: onSave,
     },
     {
       id: "editor-reload",
       label: t("editor.reload"),
       icon: <RefreshCw className="h-3.5 w-3.5" />,
-      disabled: loading || saving || connecting,
+      disabled: loading || retrying || saving || connecting,
       onSelect: onReload,
     }
   );

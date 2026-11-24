@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { ShellProfile } from "@/shared/types/ipc";
-import type { HostProfileSummaryDto } from "@/modules/hosts";
+import type { HostFullConfigDto, HostProfileSummaryDto } from "@/modules/hosts";
 import { useTabsStore } from "@/modules/workspace";
 import { usePtyAuthPrompts } from "./usePtyAuthPrompts";
 import { useSessionController } from "./useSessionController";
@@ -13,6 +13,7 @@ interface UseSshSessionsOpts {
   onError: (msg: string) => void;
   onDismissSidebar: () => void;
   onFocusTerminal: () => void;
+  onHostUpdated?: (host: HostFullConfigDto) => void;
 }
 
 export function useSshSessions(opts: UseSshSessionsOpts) {

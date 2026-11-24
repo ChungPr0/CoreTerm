@@ -32,11 +32,18 @@ pub(super) struct PendingAskpassHostKey {
     pub tx: SyncSender<Option<String>>,
 }
 
+pub(super) struct StagedSecret {
+    pub kind: TabSecretKind,
+    pub secret: Zeroizing<String>,
+    pub save_to_vault: bool,
+    pub auto_reconnect: Option<bool>,
+}
+
 #[derive(Default)]
 pub(super) struct AskpassSessionBridge {
     pub pending_secret: Mutex<Option<PendingAskpassSecret>>,
     pub pending_host_key: Mutex<Option<PendingAskpassHostKey>>,
-    pub staged_secret: Mutex<Option<(TabSecretKind, Zeroizing<String>)>>,
+    pub staged_secret: Mutex<Option<StagedSecret>>,
 }
 
 impl AskpassSessionBridge {
@@ -57,13 +64,13 @@ impl AskpassSessionBridge {
         }
     }
 
-    pub fn stage_secret(&self, kind: TabSecretKind, secret: Zeroizing<String>) {
+    pub fn stage_secret(&self, staged: StagedSecret) {
         if let Ok(mut guard) = self.staged_secret.lock() {
-            *guard = Some((kind, secret));
+            *guard = Some(staged);
         }
     }
 
-    pub fn take_staged_secret(&self) -> Option<(TabSecretKind, Zeroizing<String>)> {
+    pub fn take_staged_secret(&self) -> Option<StagedSecret> {
         self.staged_secret.lock().ok().and_then(|mut g| g.take())
     }
 
@@ -184,13 +191,13 @@ impl PtySession {
         true
     }
 
-    pub(super) fn stage_secret(&self, kind: TabSecretKind, secret: Zeroizing<String>) {
+    pub(super) fn stage_secret(&self, staged: StagedSecret) {
         if let Some(ref bridge) = self.askpass_bridge {
-            bridge.stage_secret(kind, secret);
+            bridge.stage_secret(staged);
         }
     }
 
-    pub(super) fn take_staged_secret(&self) -> Option<(TabSecretKind, Zeroizing<String>)> {
+    pub(super) fn take_staged_secret(&self) -> Option<StagedSecret> {
         self.askpass_bridge.as_ref()?.take_staged_secret()
     }
 
@@ -325,12 +332,43 @@ impl PtySession {
 }
 
 pub(super) struct InFlightConnectGuard {
-    pub map: Arc<DashMap<String, ()>>,
+    pub map: Arc<DashMap<String, Arc<AtomicBool>>>,
     pub tab_id: String,
 }
 
 impl Drop for InFlightConnectGuard {
     fn drop(&mut self) {
         self.map.remove(&self.tab_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn askpass_bridge_stages_clears_and_takes_secret_with_vault_metadata() {
+        let bridge = AskpassSessionBridge::new();
+        bridge.stage_secret(StagedSecret {
+            kind: TabSecretKind::Password,
+            secret: Zeroizing::new("pw-123".to_string()),
+            save_to_vault: true,
+            auto_reconnect: Some(true),
+        });
+        bridge.clear_staged_secret();
+        assert!(bridge.take_staged_secret().is_none());
+
+        bridge.stage_secret(StagedSecret {
+            kind: TabSecretKind::KeyPassphrase,
+            secret: Zeroizing::new("pass-456".to_string()),
+            save_to_vault: true,
+            auto_reconnect: None,
+        });
+        let taken = bridge.take_staged_secret().expect("staged secret");
+        assert_eq!(taken.kind, TabSecretKind::KeyPassphrase);
+        assert_eq!(taken.secret.as_str(), "pass-456");
+        assert!(taken.save_to_vault);
+        assert_eq!(taken.auto_reconnect, None);
+        assert!(bridge.take_staged_secret().is_none());
     }
 }

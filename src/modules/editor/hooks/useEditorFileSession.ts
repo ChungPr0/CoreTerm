@@ -20,8 +20,10 @@ interface UseEditorFileSessionOpts {
   tab: TerminalTabItem;
   file: EditorTabMeta;
   viewRef: React.MutableRefObject<EditorView | null>;
+  fileReadonly: boolean;
   userReadonly: boolean;
   pauseAutoReconnect?: boolean;
+  onSetFileReadonly: (readonly: boolean) => void;
   onUpdateDirty: (dirty: boolean) => void;
   onResetOverlays: () => void;
   onSetLangId: (langId: string) => void;
@@ -37,8 +39,10 @@ export function useEditorFileSession({
   tab,
   file,
   viewRef,
+  fileReadonly,
   userReadonly,
   pauseAutoReconnect = false,
+  onSetFileReadonly,
   onUpdateDirty,
   onResetOverlays,
   onSetLangId,
@@ -60,7 +64,7 @@ export function useEditorFileSession({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadErrDisconnected, setLoadErrDisconnected] = useState(false);
   const [hasLoadedDoc, setHasLoadedDoc] = useState(false);
-  const [fileReadonly, setFileReadonly] = useState(false);
+  const [manualResetSeq, setManualResetSeq] = useState(0);
   const [eol, setEol] = useState<EditorLineEnding>("LF");
   const [savedEol, setSavedEol] = useState<EditorLineEnding>("LF");
   const [confirmDiscard, setConfirmDiscard] = useState<EditorDiscardAction>(null);
@@ -84,6 +88,10 @@ export function useEditorFileSession({
   const effectiveReadonly = fileReadonly || userReadonly;
 
   const mountedRef = useRef(true);
+  const alertRef = useRef(alert);
+  alertRef.current = alert;
+  const tRef = useRef(t);
+  tRef.current = t;
   const savedDocRef = useRef<string>("");
   const savedEolRef = useRef<EditorLineEnding>("LF");
   const eolRef = useRef<EditorLineEnding>("LF");
@@ -96,6 +104,8 @@ export function useEditorFileSession({
   const connectSeqRef = useRef(0);
   const connectingSeqRef = useRef(0);
   const loadSeqRef = useRef(0);
+  const forceReloadNextRef = useRef(false);
+  const retryModeNextRef = useRef(false);
   const connectRef = useRef<(reloadAfter: boolean, isRetry?: boolean) => Promise<boolean>>(
     async () => false
   );
@@ -131,6 +141,15 @@ export function useEditorFileSession({
           (ev.state === "ERROR" || ev.state === "DISCONNECTED")
         ) {
           return;
+        }
+        if (connectingSeqRef.current === 0 && ev.state === "ERROR" && ev.error_message) {
+          if (SFTP_AUTH_BLOCKED_RE.test(ev.error_message)) {
+            setAuthBlocked(true);
+          }
+          if (hasLoadedRef.current && lastErrRef.current !== ev.error_message) {
+            lastErrRef.current = ev.error_message;
+            alertRef.current.error(formatLocalizedError(ev.error_message, tRef.current));
+          }
         }
         useTabsStore.getState().setSftpState(tab.tabId, ev.state);
       })
@@ -175,7 +194,7 @@ export function useEditorFileSession({
 
         setEol(detectedEol);
         setSavedEol(detectedEol);
-        setFileReadonly(dto.readonly);
+        onSetFileReadonly(dto.readonly);
         setHasLoadedDoc(true);
         setLoadError(null);
         setLoadErrDisconnected(false);
@@ -213,6 +232,7 @@ export function useEditorFileSession({
       onMountEditor,
       onResetOverlays,
       onSetCursorPos,
+      onSetFileReadonly,
       onSetLangId,
       onSetTotalChars,
       onUpdateDirty,
@@ -280,6 +300,7 @@ export function useEditorFileSession({
   useEffect(() => {
     setAuthBlocked(false);
     lastErrRef.current = null;
+    onSetFileReadonly(false);
     const timer = window.setTimeout(() => {
       if (!mountedRef.current) return;
       if (isRemote) void connectRef.current(true);
@@ -302,7 +323,14 @@ export function useEditorFileSession({
           setAuthBlocked(false);
           lastErrRef.current = null;
         }
-        void connectRef.current(!hasLoadedRef.current, Boolean(loadErrorRef.current));
+        const forceReload = forceReloadNextRef.current;
+        forceReloadNextRef.current = false;
+        const retryMode = retryModeNextRef.current;
+        retryModeNextRef.current = false;
+        void connectRef.current(
+          forceReload || !hasLoadedRef.current,
+          retryMode || Boolean(loadErrorRef.current)
+        );
       }
     }
   }, [isRemote, tab.reconnectToken, tab.reconnectSource]);
@@ -312,6 +340,7 @@ export function useEditorFileSession({
     connected: isRemote && !connecting && tab.state === "ONLINE",
     disconnected: isRemoteRetryableOffline,
     paused: pauseAutoReconnect,
+    resetToken: manualResetSeq,
     intervalSec: tab.reconnectIntervalSec,
     onReconnect: () => {
       useTabsStore.getState().bumpReconnectToken(tab.tabId, "auto");
@@ -323,6 +352,7 @@ export function useEditorFileSession({
       if (!isRemote || tab.hostId === LOCAL_HOST_ID) return;
       setAuthBlocked(false);
       lastErrRef.current = null;
+      setManualResetSeq((n) => n + 1);
       useTabsStore.getState().bumpReconnectToken(tab.tabId, source);
     },
     [isRemote, tab.hostId, tab.tabId]
@@ -333,9 +363,12 @@ export function useEditorFileSession({
       if (!isRemote || tab.hostId === LOCAL_HOST_ID) return;
       setAuthBlocked(false);
       lastErrRef.current = null;
-      void connectSftp(true, isRetry);
+      forceReloadNextRef.current = true;
+      retryModeNextRef.current = isRetry;
+      setManualResetSeq((n) => n + 1);
+      useTabsStore.getState().bumpReconnectToken(tab.tabId, "tab");
     },
-    [connectSftp, isRemote, tab.hostId]
+    [isRemote, tab.hostId, tab.tabId]
   );
 
   const handleSave = useCallback(async (): Promise<boolean> => {

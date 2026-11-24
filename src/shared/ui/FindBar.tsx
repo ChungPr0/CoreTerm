@@ -69,11 +69,14 @@ export const FindBar: React.FC<FindBarProps> = ({
   const { t } = useI18n();
   if (!isOpen) return null;
 
+  const isRegexErr = Boolean(query && invalidRegex);
   const statusText = !query
     ? ""
-    : matches.count > 0
-      ? `${matches.index || 1}/${matches.count}`
-      : "0/0";
+    : isRegexErr
+      ? t("terminal.find_invalid_regex")
+      : matches.count > 0
+        ? `${matches.index || 1}/${matches.count}`
+        : "0/0";
 
   const canAct = Boolean(query && !invalidRegex && matches.count > 0);
 
@@ -125,12 +128,16 @@ export const FindBar: React.FC<FindBarProps> = ({
             }
           }}
           placeholder={t("terminal.find_placeholder")}
-          className="flex-1 min-w-0 bg-transparent px-1 text-xs text-slate-100 placeholder:text-slate-500 outline-none select-text"
+          className={`flex-1 min-w-0 bg-transparent px-1 text-xs placeholder:text-slate-500 outline-none select-text ${
+            isRegexErr ? "text-rose-300" : "text-slate-100"
+          }`}
         />
 
         <span
           title={statusText || undefined}
-          className="w-[72px] shrink-0 text-right font-mono text-[11px] tabular-nums truncate text-slate-400"
+          className={`max-w-[116px] min-w-[44px] shrink-0 text-right text-[11px] tabular-nums truncate ${
+            isRegexErr ? "text-rose-400 font-sans" : "text-slate-400 font-mono"
+          }`}
         >
           {statusText}
         </span>

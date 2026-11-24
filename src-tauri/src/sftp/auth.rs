@@ -19,7 +19,7 @@ use crate::ssh::known_hosts::{
 };
 
 use super::session::{emit_status, map_russh_error};
-pub use crate::ipc::events::{EVENT_SFTP_AUTH_PROMPT, EVENT_SFTP_HOST_KEY_PROMPT};
+pub use crate::ipc::events::{EVENT_HOST_UPDATED, EVENT_SFTP_AUTH_PROMPT, EVENT_SFTP_HOST_KEY_PROMPT};
 
 pub struct PendingHostKeyChallenge {
     pub host: String,
@@ -331,11 +331,12 @@ async fn load_private_key_with_prompts(
         };
 
         if let Ok(key) = keys::load_secret_key(key_path, Some(secret.as_str())) {
-            ctx.tab_secrets.set(
+            ctx.tab_secrets.set_with_key(
                 ctx.tab_id,
                 &ctx.config.id,
                 TabSecretKind::KeyPassphrase,
                 secret.clone(),
+                ctx.config.ssh_key_id.as_deref(),
             );
             if save_to_vault {
                 if let Some(ref key_id) = ctx.config.ssh_key_id {
@@ -402,7 +403,15 @@ async fn authenticate_password_with_prompts(
                 secret.clone(),
             );
             if save_to_vault {
-                let _ = ctx.hosts.save_secret(&ctx.config.id, secret.as_str(), auto_reconnect);
+                if ctx
+                    .hosts
+                    .save_secret(&ctx.config.id, secret.as_str(), auto_reconnect)
+                    .is_ok()
+                {
+                    if let Ok(updated) = ctx.hosts.get_detail(&ctx.config.id) {
+                        let _ = ctx.app.emit(EVENT_HOST_UPDATED, updated);
+                    }
+                }
             }
             return Ok(());
         }

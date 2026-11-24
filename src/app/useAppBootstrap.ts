@@ -69,7 +69,11 @@ export function useAppBootstrap({
           width: size?.width ?? fallback.width,
           height: size?.height ?? fallback.height,
         });
-        onFocusTerminal();
+        const { tabs, activeTabId } = useTabsStore.getState();
+        const activeTab = tabs.find((item) => item.tabId === activeTabId);
+        if (activeTab?.tabKind !== "editor" && activeTab?.tabKind !== "sftp") {
+          onFocusTerminal();
+        }
       } catch {
         // Ignore in non-Tauri preview
       }

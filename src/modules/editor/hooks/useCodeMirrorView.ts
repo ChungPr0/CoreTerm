@@ -23,6 +23,13 @@ import type { EditorCursorPos, EditorLineEnding } from "../types";
 import { getEditorLanguageById } from "../utils/editorLanguage";
 import { coreTermSyntaxHighlighting, createCoreTermEditorTheme } from "../utils/editorTheme";
 
+export function shouldPreventRightClickSelectionCollapse(
+  button: number,
+  selectionEmpty: boolean
+): boolean {
+  return button === 2 && !selectionEmpty;
+}
+
 interface UseCodeMirrorViewOpts {
   wordWrap: boolean;
   effectiveReadonly: boolean;
@@ -141,13 +148,10 @@ export function useCodeMirrorView({
           readonlyCompartmentRef.current.of(EditorState.readOnly.of(isReadonly)),
           EditorView.domEventHandlers({
             mousedown: (event, view) => {
-              if (event.button === 2) {
-                const sel = view.state.selection.main;
-                if (!sel.empty) {
-                  // Prevent browser contenteditable from collapsing active selection on right-click
-                  event.preventDefault();
-                  return true;
-                }
+              if (shouldPreventRightClickSelectionCollapse(event.button, view.state.selection.main.empty)) {
+                // Prevent browser contenteditable from collapsing active selection on right-click
+                event.preventDefault();
+                return true;
               }
               return false;
             },

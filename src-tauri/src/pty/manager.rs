@@ -24,12 +24,12 @@ use super::shells::{
     default_shell_profile, detect_available_shells as scan_available_shells,
 };
 use super::ssh::prepare_ssh_launch;
-use super::types::{InFlightConnectGuard, PrewarmedLocalSession, PtySession};
+use super::types::{InFlightConnectGuard, PrewarmedLocalSession, PtySession, StagedSecret};
 
 #[derive(Clone)]
 pub struct PtySessionManager {
     pub(super) sessions: Arc<DashMap<String, Arc<PtySession>>>,
-    in_flight_connects: Arc<DashMap<String, ()>>,
+    in_flight_connects: Arc<DashMap<String, Arc<AtomicBool>>>,
     tab_host_map: Arc<DashMap<String, String>>,
     tab_admin_map: Arc<DashMap<String, bool>>,
     tab_shell_map: Arc<DashMap<String, ShellProfile>>,
@@ -108,7 +108,7 @@ impl PtySessionManager {
         req: SessionConnectRequestDto,
         on_output: Channel<Vec<u8>>,
     ) -> CoreResult<SessionConnectAckDto> {
-        let _connect_guard = {
+        let (abort_flag, _connect_guard) = {
             use dashmap::mapref::entry::Entry;
             match self.in_flight_connects.entry(req.tab_id.clone()) {
                 Entry::Occupied(_) => {
@@ -117,14 +117,37 @@ impl PtySessionManager {
                     ));
                 }
                 Entry::Vacant(slot) => {
-                    slot.insert(());
-                    InFlightConnectGuard {
-                        map: self.in_flight_connects.clone(),
-                        tab_id: req.tab_id.clone(),
-                    }
+                    let flag = Arc::new(AtomicBool::new(false));
+                    slot.insert(Arc::clone(&flag));
+                    (
+                        flag,
+                        InFlightConnectGuard {
+                            map: self.in_flight_connects.clone(),
+                            tab_id: req.tab_id.clone(),
+                        },
+                    )
                 }
             }
         };
+
+        let tab_id = req.tab_id.clone();
+        let res = self.connect_inner(app, hosts, keys, req, on_output);
+        if abort_flag.load(Ordering::SeqCst) {
+            let _ = self.terminate_active_session(&tab_id);
+            self.cleanup_tab_metadata(&tab_id);
+            return Err(CoreError::Pty("Tab connection was cancelled".to_string()));
+        }
+        res
+    }
+
+    fn connect_inner(
+        &self,
+        app: &AppHandle,
+        hosts: &HostService,
+        keys: &KeyService,
+        req: SessionConnectRequestDto,
+        on_output: Channel<Vec<u8>>,
+    ) -> CoreResult<SessionConnectAckDto> {
 
         if self.sessions.contains_key(&req.tab_id) {
             let _ = self.disconnect_session_only(app, &req.tab_id);
@@ -280,8 +303,8 @@ impl PtySessionManager {
 
     pub fn submit_secret(
         &self,
-        hosts: &HostService,
-        keys: &KeyService,
+        _hosts: &HostService,
+        _keys: &KeyService,
         tab_id: &str,
         secret: String,
         save_to_vault: bool,
@@ -306,17 +329,12 @@ impl PtySessionManager {
 
         if is_reusable {
             let secret_kind = TabSecretKind::from_prompt_type(&prompt_type);
-            session.stage_secret(secret_kind, zeroized_secret.clone());
-
-            if save_to_vault {
-                if prompt_type == "KEY_PASSPHRASE" {
-                    if let Some(ref key_id) = session.ssh_key_id {
-                        let _ = keys.save_secret(key_id, &zeroized_secret);
-                    }
-                } else {
-                    let _ = hosts.save_secret(&session.host_id, &zeroized_secret, auto_reconnect);
-                }
-            }
+            session.stage_secret(StagedSecret {
+                kind: secret_kind,
+                secret: zeroized_secret,
+                save_to_vault,
+                auto_reconnect,
+            });
         }
 
         Ok(())
@@ -455,7 +473,14 @@ impl PtySessionManager {
         Ok(())
     }
 
+    fn mark_in_flight_aborted(&self, tab_id: &str) {
+        if let Some(flag) = self.in_flight_connects.get(tab_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+
     pub fn disconnect(&self, app: &AppHandle, tab_id: &str) -> CoreResult<()> {
+        self.mark_in_flight_aborted(tab_id);
         self.disconnect_session_only(app, tab_id)?;
         self.cleanup_tab_metadata(tab_id);
         Ok(())
@@ -463,6 +488,9 @@ impl PtySessionManager {
 
     pub fn shutdown_all(&self) {
         self.prewarm_cancelled.store(true, Ordering::SeqCst);
+        for entry in self.in_flight_connects.iter() {
+            entry.value().store(true, Ordering::SeqCst);
+        }
         if let Ok(mut guard) = self.prewarmed_local.lock() {
             if let Some(prewarmed) = guard.take() {
                 prewarmed
@@ -514,5 +542,19 @@ mod tests {
         assert!(tab_secrets
             .get("tab-1", "host-1", TabSecretKind::Password)
             .is_none());
+    }
+
+    #[test]
+    fn mark_in_flight_aborted_flags_active_connect() {
+        let mgr = PtySessionManager::new(
+            JobObjectSupervisor::new().expect("job supervisor"),
+            TabSecretStore::new(),
+        );
+        let flag = Arc::new(AtomicBool::new(false));
+        mgr.in_flight_connects
+            .insert("tab-race".into(), Arc::clone(&flag));
+
+        mgr.mark_in_flight_aborted("tab-race");
+        assert!(flag.load(Ordering::SeqCst));
     }
 }

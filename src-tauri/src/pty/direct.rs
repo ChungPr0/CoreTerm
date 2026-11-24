@@ -39,6 +39,8 @@ struct DirectReaderSpec {
     tab_id: String,
     host_id: String,
     is_local: bool,
+    hosts: HostService,
+    keys: KeyService,
     target_host: String,
     target_port: u16,
     active_forwards: Vec<PortForwardStatusDto>,
@@ -244,6 +246,8 @@ impl PtySessionManager {
             tab_id: tab_id.clone(),
             host_id: host_id.clone(),
             is_local: spec.is_local,
+            hosts: hosts.clone(),
+            keys: keys.clone(),
             target_host,
             target_port,
             active_forwards,
@@ -286,6 +290,8 @@ impl PtySessionManager {
 
                 let expect_ctx = SshExpectContext {
                     app: &app_handle,
+                    hosts: &spec.hosts,
+                    keys: &spec.keys,
                     tab_secrets: &tab_secrets,
                     session: &session_ref,
                     tab_id: &reader_tab_id,

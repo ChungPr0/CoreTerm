@@ -6,6 +6,7 @@ import type { EditorDiscardAction } from "../types";
 
 interface EditorDiscardModalProps {
   confirmDiscard: EditorDiscardAction;
+  closeOnEscape?: boolean;
   fileName: string;
   saving: boolean;
   canSaveAndClose: boolean;
@@ -16,6 +17,7 @@ interface EditorDiscardModalProps {
 
 export const EditorDiscardModal: React.FC<EditorDiscardModalProps> = ({
   confirmDiscard,
+  closeOnEscape = true,
   fileName,
   saving,
   canSaveAndClose,
@@ -29,6 +31,7 @@ export const EditorDiscardModal: React.FC<EditorDiscardModalProps> = ({
     <ActionModal
       isOpen={confirmDiscard !== null}
       onClose={onCancel}
+      closeOnEscape={closeOnEscape}
       busy={saving}
       title={
         confirmDiscard === "close"

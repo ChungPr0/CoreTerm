@@ -45,7 +45,12 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
     setSubmitting(false);
     setSecret("");
     setSaveVault(false);
-    setAutoReconnect(false);
+    const existingTab = useTabsStore
+      .getState()
+      .tabs.find(
+        (tab) => tab.tabId === prompt.tab_id || (prompt.host_id && tab.hostId === prompt.host_id)
+      );
+    setAutoReconnect(Boolean(existingTab?.autoReconnect));
     setShowSecret(false);
     const raf = window.requestAnimationFrame(() => inputRef.current?.focus());
 
@@ -79,19 +84,6 @@ export const SecretPromptModal: React.FC<SecretPromptModalProps> = ({
         await sftpApi.sftpSubmitSecret(prompt.tab_id, secret, saveVault, nextAutoReconnect);
       } else {
         await sessionApi.sessionSubmitSecret(prompt.tab_id, secret, saveVault, nextAutoReconnect);
-      }
-      if (saveVault && isPasswordPrompt) {
-        useTabsStore.setState((s) => ({
-          tabs: s.tabs.map((tab) =>
-            tab.tabId === prompt.tab_id || (prompt.host_id && tab.hostId === prompt.host_id)
-              ? {
-                  ...tab,
-                  canAutoReconnect: true,
-                  autoReconnect: autoReconnect,
-                }
-              : tab
-          ),
-        }));
       }
       setSecret("");
       setSaveVault(false);
