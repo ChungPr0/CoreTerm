@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import { copyText } from "@/shared/utils/clipboard";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import { windowApi, type WindowSysAction } from "../api/windowApi";
 import { startInteractiveWindowMove } from "../utils/interactiveWindowActions";
 import type { ShellProfile, TerminalTabItem } from "../types";
@@ -107,6 +109,7 @@ export function buildTabContextItems({
   const isLocal = !isEditor && !isSettings && tab.hostId === "local";
   const isRemoteSession = !isEditor && !isSettings && tab.hostId !== "local";
   const connecting = isTabConnecting(tab);
+  const kb = useSettingsStore.getState().settings.keybindings;
   const hostProfile =
     isRemoteEditor || isRemoteSession
       ? allProfiles.find((p) => p.id === tab.hostId)
@@ -159,6 +162,7 @@ export function buildTabContextItems({
       id: "tab-duplicate",
       label: t("ctx.duplicate_tab"),
       icon: <CopyPlus className="h-3.5 w-3.5" />,
+      shortcut: getShortcutChord("duplicateTab", kb),
       onSelect: () => onDuplicateTab(tab),
     });
 
@@ -177,7 +181,7 @@ export function buildTabContextItems({
         id: "tab-find",
         label: t("ctx.find"),
         icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-        shortcut: "Ctrl+Shift+F",
+        shortcut: getShortcutChord("termFind", kb),
         onSelect: () => onFindInTab(tab.tabId),
       });
     }
@@ -222,7 +226,7 @@ export function buildTabContextItems({
       id: "tab-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     });
   }
@@ -231,7 +235,7 @@ export function buildTabContextItems({
     id: "tab-close",
     label: t("ctx.close_tab"),
     icon: <X className="h-3.5 w-3.5" />,
-    shortcut: "Ctrl+Shift+W",
+    shortcut: getShortcutChord("closeTab", kb),
     onSelect: () => onCloseTab(tab.tabId),
   });
 
@@ -314,6 +318,7 @@ interface UseTabMenusOpts {
   onOpenSettings?: () => void;
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
+  onRequestCloseWindow?: () => void;
 }
 
 export function useTabMenus(opts: UseTabMenusOpts) {
@@ -336,6 +341,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
     onOpenSettings,
     onCloseTab,
     onCloseOtherTabs,
+    onRequestCloseWindow,
   } = opts;
 
   const openTabMenu = useCallback(
@@ -411,6 +417,10 @@ export function useTabMenus(opts: UseTabMenusOpts) {
                   void startInteractiveWindowMove();
                   return;
                 }
+                if (action === "close" && onRequestCloseWindow) {
+                  onRequestCloseWindow();
+                  return;
+                }
                 void windowApi.windowSysCommand(action).catch(() => {});
               },
             }),
@@ -422,6 +432,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
       isAppElevated,
       onNewLocalTab,
       onOpenSettings,
+      onRequestCloseWindow,
       setContextMenu,
       shellProfiles,
       t,

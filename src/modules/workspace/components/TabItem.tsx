@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import type { SessionState, TerminalTabItem } from "@/shared/types/ipc";
+import type { TabWidthMode } from "@/modules/settings";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "@/shared/ui";
 import { ShellIcon } from "./ShellIcon";
@@ -17,7 +18,10 @@ interface TabItemProps {
   isActive: boolean;
   isDragged: boolean;
   isCompact: boolean;
+  tabWidthMode?: TabWidthMode;
   isRenaming?: boolean;
+  closeShortcut?: string;
+  sftpShortcut?: string;
   elRef: (el: HTMLDivElement | null) => void;
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   onSelect: () => void;
@@ -74,7 +78,10 @@ export const TabItem: React.FC<TabItemProps> = ({
   isActive,
   isDragged,
   isCompact,
+  tabWidthMode = "equal",
   isRenaming = false,
+  closeShortcut = "Ctrl+Shift+W",
+  sftpShortcut = "Ctrl+Shift+E",
   elRef,
   onPointerDown,
   onSelect,
@@ -131,6 +138,16 @@ export const TabItem: React.FC<TabItemProps> = ({
           ? `SFTP: ${tab.title} (${tab.hostSubtitle}) — ${status.label}`
           : `${tab.title} (${tab.hostSubtitle}) — ${status.label}`;
 
+  const isIconOnly =
+    tabWidthMode === "compact" && !isActive && !isDragged && !isRenaming;
+  const widthClasses = isIconOnly
+    ? "w-9 min-w-[36px] max-w-[36px] shrink-0 px-0 justify-center"
+    : tabWidthMode === "compact"
+      ? "w-auto min-w-[136px] max-w-[230px] shrink-0 px-2.5"
+      : tabWidthMode === "title_length"
+        ? "w-auto min-w-[104px] max-w-[260px] shrink-0 px-2.5"
+        : "w-[190px] min-w-[100px] max-w-[210px] shrink grow-0 px-2.5";
+
   return (
     <div
       draggable={false}
@@ -152,7 +169,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         onContextMenu(e);
       }}
       title={titleText}
-      className={`group relative flex items-center gap-1.5 px-2.5 h-8 rounded-t-md text-xs font-medium cursor-pointer touch-none select-none w-[190px] min-w-[100px] max-w-[210px] shrink grow-0 border-t border-x ${
+      className={`group relative flex items-center gap-1.5 h-8 rounded-t-md text-xs font-medium cursor-pointer touch-none select-none border-t border-x ${widthClasses} ${
         isDragged
           ? "z-30 bg-[#0d1424] text-white border-sky-500/60 shadow-[0_8px_22px_rgba(0,0,0,0.75)]"
           : "transition-[background-color,color,border-color] duration-150"
@@ -179,7 +196,7 @@ export const TabItem: React.FC<TabItemProps> = ({
         ) : isLocal ? (
           <ShellIcon
             profile={tab.shellProfile}
-            isAdmin={Boolean(tab.isAdmin && isCompact)}
+            isAdmin={Boolean(tab.isAdmin && (isCompact || isIconOnly))}
           />
         ) : tab.tabKind === "sftp" ? (
           <FolderSync className="w-3.5 h-3.5 text-sky-400" />
@@ -194,93 +211,103 @@ export const TabItem: React.FC<TabItemProps> = ({
             } ${status.dotClass}`}
           />
         )}
+        {isIconOnly && isEditor && tab.editorFile?.dirty && !isRemoteEditor && (
+          <span
+            title={t("editor.unsaved")}
+            className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-slate-300"
+          />
+        )}
       </span>
 
-      {isRenaming ? (
-        <input
-          ref={renameInputRef}
-          type="text"
-          value={renameDraft}
-          onChange={(e) => setRenameDraft(e.target.value)}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.stopPropagation()}
-          onBlur={() => {
-            if (escCancelledRef.current) return;
-            onCommitRename?.(renameDraft);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.stopPropagation();
-              onCommitRename?.(renameDraft);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              escCancelledRef.current = true;
-              onCancelRename?.();
-            }
-          }}
-          className="flex-1 min-w-0 h-5 px-1.5 rounded bg-slate-950 border border-sky-500/80 text-xs font-medium text-slate-100 outline-none select-text"
-        />
-      ) : (
-        <span className="truncate font-medium flex-1 min-w-0">{displayTitle}</span>
-      )}
+      {!isIconOnly && (
+        <>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.stopPropagation()}
+              onBlur={() => {
+                if (escCancelledRef.current) return;
+                onCommitRename?.(renameDraft);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onCommitRename?.(renameDraft);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  escCancelledRef.current = true;
+                  onCancelRename?.();
+                }
+              }}
+              className="flex-1 min-w-0 h-5 px-1.5 rounded bg-slate-950 border border-sky-500/80 text-xs font-medium text-slate-100 outline-none select-text"
+            />
+          ) : (
+            <span className="truncate font-medium flex-1 min-w-0">{displayTitle}</span>
+          )}
 
-      {isEditor && tab.editorFile?.dirty && (
-        <span
-          title={t("editor.unsaved")}
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
-        />
-      )}
+          {isEditor && tab.editorFile?.dirty && (
+            <span
+              title={t("editor.unsaved")}
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
+            />
+          )}
 
-      {!isEditor && !isSettings && tab.isAdmin && !isCompact && (
-        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[9px] font-semibold leading-none text-amber-300 shrink-0">
-          {t("app.admin_badge")}
-        </span>
-      )}
+          {!isEditor && !isSettings && tab.isAdmin && !isCompact && (
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-[9px] font-semibold leading-none text-amber-300 shrink-0">
+              {t("app.admin_badge")}
+            </span>
+          )}
 
-      {tab.tabKind === "sftp" && !isCompact && (
-        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-[9px] font-semibold leading-none text-sky-300 shrink-0">
-          {t("sftp.title")}
-        </span>
-      )}
+          {tab.tabKind === "sftp" && !isCompact && (
+            <span className="px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/30 text-[9px] font-semibold leading-none text-sky-300 shrink-0">
+              {t("sftp.title")}
+            </span>
+          )}
 
-      {!isLocal && !isEditor && !isSettings && tab.tabKind !== "sftp" && onToggleSftp && (
-        <IconButton
-          size="xs"
-          tone="sky"
-          active={tab.sftpOpen}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSftp(e);
-          }}
-          title={`${t("ctx.sftp_panel")}: ${
-            tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off")
-          } (Ctrl+Shift+E)`}
-          icon={<FolderSync className="w-3 h-3" />}
-        />
-      )}
+          {!isLocal && !isEditor && !isSettings && tab.tabKind !== "sftp" && onToggleSftp && (
+            <IconButton
+              size="xs"
+              tone="sky"
+              active={tab.sftpOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSftp(e);
+              }}
+              title={`${t("ctx.sftp_panel")}: ${
+                tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off")
+              } (${sftpShortcut})`}
+              icon={<FolderSync className="w-3 h-3" />}
+            />
+          )}
 
-      {((!isLocal && !isEditor && !isSettings) || isRemoteEditor) && (
-        <IconButton
-          size="xs"
-          tone={isOffline ? "rose" : "default"}
-          disabled={isConnecting}
-          onClick={onReconnect}
-          title={isConnecting ? t("status.connecting") : t("common.reconnect")}
-          icon={<RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />}
-        />
-      )}
+          {((!isLocal && !isEditor && !isSettings) || isRemoteEditor) && (
+            <IconButton
+              size="xs"
+              tone={isOffline ? "rose" : "default"}
+              disabled={isConnecting}
+              onClick={onReconnect}
+              title={isConnecting ? t("status.connecting") : t("common.reconnect")}
+              icon={<RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />}
+            />
+          )}
 
-      <IconButton
-        size="xs"
-        tone="rose"
-        onClick={onClose}
-        title={`${t("common.close")} (Ctrl+Shift+W)`}
-        icon={<X className="w-3.5 h-3.5" />}
-      />
+          <IconButton
+            size="xs"
+            tone="rose"
+            onClick={onClose}
+            title={`${t("common.close")} (${closeShortcut})`}
+            icon={<X className="w-3.5 h-3.5" />}
+          />
+        </>
+      )}
     </div>
   );
 };

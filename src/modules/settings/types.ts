@@ -4,29 +4,55 @@ import type {
   ShellProfile,
   StrictHostKeyChecking,
 } from "@/shared/types/ipc";
+import type { KeybindingOverrides } from "@/shared/utils/shortcuts";
 
-export type { SettingsCategoryId };
+export type { KeybindingOverrides, SettingsCategoryId };
 
 export type CloseLastTabBehavior = "exit" | "new_local";
 export type DefaultImeMode = "default" | "alphanumeric";
 export type StartupBehavior = "default_profile" | "restore_session";
 export type NewInstanceBehavior = "attach" | "new_window";
 export type LaunchMode = "default" | "maximized" | "fullscreen";
+export type NewTabPosition = "end" | "after_current";
+export type TabWidthMode = "equal" | "title_length" | "compact";
 export type TerminalCursorStyle = "block" | "bar" | "underline";
+export type WarnPasteMultilineMode = "bracketed_disabled" | "always" | "never";
 export type SftpDoubleClickAction = "edit" | "transfer";
 export type EditorTabSize = 2 | 4 | 8;
 
 export interface AppSettingsValues {
   // General
+  closeLastTabBehavior: CloseLastTabBehavior;
+
+  // Startup
   launchCols: number;
   launchRows: number;
-  closeLastTabBehavior: CloseLastTabBehavior;
   defaultImeMode: DefaultImeMode;
   startupBehavior: StartupBehavior;
   newInstanceBehavior: NewInstanceBehavior;
   launchMode: LaunchMode;
   centerOnLaunch: boolean;
+
+  // Appearance
   alwaysOnTop: boolean;
+  useActiveTabTitle: boolean;
+  showAdminShield: boolean;
+  newTabPosition: NewTabPosition;
+  tabWidthMode: TabWidthMode;
+  showTabsInFullscreen: boolean;
+
+  // Interaction & Warnings
+  terminalCopyOnSelect: boolean;
+  terminalRightClickPaste: boolean;
+  terminalTrimPasteWhitespace: boolean;
+  terminalCtrlScrollZoom: boolean;
+  terminalDetectUrls: boolean;
+  warnCloseMultiTabs: boolean;
+  warnPasteLarge: boolean;
+  warnPasteMultiline: WarnPasteMultilineMode;
+
+  // Actions (Keyboard Shortcuts)
+  keybindings: KeybindingOverrides;
 
   // Terminal
   terminalFontSize: number;
@@ -35,8 +61,6 @@ export interface AppSettingsValues {
   terminalCursorStyle: TerminalCursorStyle;
   terminalCursorBlink: boolean;
   terminalScrollback: number;
-  terminalCopyOnSelect: boolean;
-  terminalRightClickPaste: boolean;
   terminalWebglRenderer: boolean;
 
   // Local Shells

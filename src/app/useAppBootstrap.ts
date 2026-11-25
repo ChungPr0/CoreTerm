@@ -3,6 +3,7 @@ import {
   EVENT_OPEN_DIRECTORY,
   EVENT_OPEN_FILE,
   EVENT_OPEN_NEW_TAB,
+  EVENT_WINDOW_CLOSE_REQUESTED,
 } from "@/shared/api/ipcEvents";
 import { invoke, listenEvent } from "@/shared/api/tauriClient";
 import { useSettingsStore } from "@/modules/settings";
@@ -26,6 +27,7 @@ interface UseAppBootstrapOpts {
   onOpenDirectory?: () => void;
   onOpenFile?: () => void;
   onOpenNewTab?: () => void;
+  onRequestCloseWindow?: () => void;
 }
 
 export function useAppBootstrap({
@@ -35,6 +37,7 @@ export function useAppBootstrap({
   onOpenDirectory,
   onOpenFile,
   onOpenNewTab,
+  onRequestCloseWindow,
 }: UseAppBootstrapOpts) {
   const settings = useSettingsStore((s) => s.settings);
   const addCustomShell = useSettingsStore((s) => s.addCustomShell);
@@ -57,6 +60,8 @@ export function useAppBootstrap({
   onOpenFileRef.current = onOpenFile;
   const onOpenNewTabRef = useRef(onOpenNewTab);
   onOpenNewTabRef.current = onOpenNewTab;
+  const onRequestCloseWindowRef = useRef(onRequestCloseWindow);
+  onRequestCloseWindowRef.current = onRequestCloseWindow;
   const onFocusTerminalRef = useRef(onFocusTerminal);
   onFocusTerminalRef.current = onFocusTerminal;
   const presentedRef = useRef(false);
@@ -205,6 +210,7 @@ export function useAppBootstrap({
     let unlistenOpenDir: (() => void) | undefined;
     let unlistenOpenFile: (() => void) | undefined;
     let unlistenOpenNewTab: (() => void) | undefined;
+    let unlistenCloseReq: (() => void) | undefined;
     listenEvent<string>(EVENT_OPEN_DIRECTORY, (dir) => {
       if (dir) {
         onOpenDirectoryRef.current?.();
@@ -248,6 +254,22 @@ export function useAppBootstrap({
       })
       .catch(() => {});
 
+    listenEvent(EVENT_WINDOW_CLOSE_REQUESTED, () => {
+      if (onRequestCloseWindowRef.current) {
+        onRequestCloseWindowRef.current();
+      } else {
+        windowApi.windowClose().catch(() => {});
+      }
+    })
+      .then((fn) => {
+        if (!active) {
+          fn();
+        } else {
+          unlistenCloseReq = fn;
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
       cancelled = true;
@@ -255,6 +277,7 @@ export function useAppBootstrap({
       if (unlistenOpenDir) unlistenOpenDir();
       if (unlistenOpenFile) unlistenOpenFile();
       if (unlistenOpenNewTab) unlistenOpenNewTab();
+      if (unlistenCloseReq) unlistenCloseReq();
       if (fallbackTimerRef.current !== null) {
         window.clearTimeout(fallbackTimerRef.current);
         fallbackTimerRef.current = null;

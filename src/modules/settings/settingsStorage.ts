@@ -29,6 +29,7 @@ import type {
   ShellProfile,
   StrictHostKeyChecking,
 } from "@/shared/types/ipc";
+import { sanitizeKeybindings } from "@/shared/utils/shortcuts";
 import type {
   AppSettingsValues,
   CloseLastTabBehavior,
@@ -36,9 +37,12 @@ import type {
   EditorTabSize,
   LaunchMode,
   NewInstanceBehavior,
+  NewTabPosition,
   SftpDoubleClickAction,
   StartupBehavior,
+  TabWidthMode,
   TerminalCursorStyle,
+  WarnPasteMultilineMode,
 } from "./types";
 
 const SETTINGS_STORAGE_KEY = "coreterm_settings";
@@ -52,7 +56,24 @@ export const DEFAULT_SETTINGS: AppSettingsValues = {
   newInstanceBehavior: "attach",
   launchMode: "default",
   centerOnLaunch: false,
+
   alwaysOnTop: false,
+  useActiveTabTitle: true,
+  showAdminShield: true,
+  newTabPosition: "end",
+  tabWidthMode: "equal",
+  showTabsInFullscreen: true,
+
+  terminalCopyOnSelect: false,
+  terminalRightClickPaste: false,
+  terminalTrimPasteWhitespace: true,
+  terminalCtrlScrollZoom: true,
+  terminalDetectUrls: true,
+  warnCloseMultiTabs: true,
+  warnPasteLarge: true,
+  warnPasteMultiline: "bracketed_disabled",
+
+  keybindings: {},
 
   terminalFontSize: TERM_FONT_SIZE_DEFAULT,
   terminalFontFamily: TERM_FONT_FAMILY_DEFAULT,
@@ -60,8 +81,6 @@ export const DEFAULT_SETTINGS: AppSettingsValues = {
   terminalCursorStyle: "block",
   terminalCursorBlink: true,
   terminalScrollback: TERM_SCROLLBACK_DEFAULT,
-  terminalCopyOnSelect: false,
-  terminalRightClickPaste: false,
   terminalWebglRenderer: true,
 
   defaultShellId: DEFAULT_SHELL_ID,
@@ -168,10 +187,24 @@ function parseLaunchMode(value: unknown): LaunchMode {
   return value === "maximized" || value === "fullscreen" ? value : "default";
 }
 
+function parseNewTabPosition(value: unknown): NewTabPosition {
+  return value === "after_current" ? "after_current" : "end";
+}
+
+function parseTabWidthMode(value: unknown): TabWidthMode {
+  return value === "title_length" || value === "compact" ? value : "equal";
+}
+
 function parseCursorStyle(value: unknown): TerminalCursorStyle {
   return value === "bar" || value === "underline" || value === "block"
     ? value
     : "block";
+}
+
+function parseWarnPasteMultiline(value: unknown): WarnPasteMultilineMode {
+  return value === "always" || value === "never" || value === "bracketed_disabled"
+    ? value
+    : "bracketed_disabled";
 }
 
 function parseStrictHostKey(value: unknown): StrictHostKeyChecking {
@@ -205,7 +238,7 @@ function parseDefaultUsername(value: unknown): string {
 /** Sanitizes arbitrary persisted or partial settings into a valid AppSettingsValues object. */
 export function sanitizeSettings(raw: unknown): AppSettingsValues {
   if (!raw || typeof raw !== "object") {
-    return { ...DEFAULT_SETTINGS, customShells: [] };
+    return { ...DEFAULT_SETTINGS, customShells: [], keybindings: {} };
   }
   const parsed = raw as Record<string, unknown>;
   const rawFontFamily =
@@ -225,7 +258,24 @@ export function sanitizeSettings(raw: unknown): AppSettingsValues {
     newInstanceBehavior: parseNewInstanceBehavior(parsed.newInstanceBehavior),
     launchMode: parseLaunchMode(parsed.launchMode),
     centerOnLaunch: parseBool(parsed.centerOnLaunch, false),
+
     alwaysOnTop: parseBool(parsed.alwaysOnTop, false),
+    useActiveTabTitle: parseBool(parsed.useActiveTabTitle, true),
+    showAdminShield: parseBool(parsed.showAdminShield, true),
+    newTabPosition: parseNewTabPosition(parsed.newTabPosition),
+    tabWidthMode: parseTabWidthMode(parsed.tabWidthMode),
+    showTabsInFullscreen: parseBool(parsed.showTabsInFullscreen, true),
+
+    terminalCopyOnSelect: parseBool(parsed.terminalCopyOnSelect, false),
+    terminalRightClickPaste: parseBool(parsed.terminalRightClickPaste, false),
+    terminalTrimPasteWhitespace: parseBool(parsed.terminalTrimPasteWhitespace, true),
+    terminalCtrlScrollZoom: parseBool(parsed.terminalCtrlScrollZoom, true),
+    terminalDetectUrls: parseBool(parsed.terminalDetectUrls, true),
+    warnCloseMultiTabs: parseBool(parsed.warnCloseMultiTabs, true),
+    warnPasteLarge: parseBool(parsed.warnPasteLarge, true),
+    warnPasteMultiline: parseWarnPasteMultiline(parsed.warnPasteMultiline),
+
+    keybindings: sanitizeKeybindings(parsed.keybindings),
 
     terminalFontSize: clampTermFontSize(parsed.terminalFontSize),
     terminalFontFamily: fontFamily,
@@ -233,8 +283,6 @@ export function sanitizeSettings(raw: unknown): AppSettingsValues {
     terminalCursorStyle: parseCursorStyle(parsed.terminalCursorStyle),
     terminalCursorBlink: parseBool(parsed.terminalCursorBlink, true),
     terminalScrollback: clampTermScrollback(parsed.terminalScrollback),
-    terminalCopyOnSelect: parseBool(parsed.terminalCopyOnSelect, false),
-    terminalRightClickPaste: parseBool(parsed.terminalRightClickPaste, false),
     terminalWebglRenderer: parseBool(parsed.terminalWebglRenderer, true),
 
     defaultShellId:
@@ -278,7 +326,7 @@ export function loadSettings(): AppSettingsValues {
   } catch {
     // Fallback to defaults
   }
-  return { ...DEFAULT_SETTINGS, customShells: [] };
+  return { ...DEFAULT_SETTINGS, customShells: [], keybindings: {} };
 }
 
 export function saveSettings(next: AppSettingsValues): void {

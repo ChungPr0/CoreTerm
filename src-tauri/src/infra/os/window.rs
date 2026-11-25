@@ -1,9 +1,18 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static HAS_NATIVE_WINDOW_BORDER: AtomicBool = AtomicBool::new(false);
+static ALLOW_WINDOW_CLOSE: AtomicBool = AtomicBool::new(false);
 
 pub fn has_native_window_border() -> bool {
     HAS_NATIVE_WINDOW_BORDER.load(Ordering::Relaxed)
+}
+
+pub fn allow_window_close() {
+    ALLOW_WINDOW_CLOSE.store(true, Ordering::SeqCst);
+}
+
+pub fn is_window_close_allowed() -> bool {
+    ALLOW_WINDOW_CLOSE.load(Ordering::SeqCst)
 }
 
 pub fn configure_main_window(window: &tauri::WebviewWindow) {
@@ -68,6 +77,7 @@ pub fn dispatch_window_sys_command(window: &tauri::WebviewWindow, action: &str) 
             }
         }
         "close" => {
+            allow_window_close();
             window.close().map_err(|e| e.to_string())?;
         }
         "move" | "size" => {
@@ -130,4 +140,90 @@ pub fn apply_ime_mode(window: &tauri::WebviewWindow, mode: &str) {
 
     #[cfg(not(target_os = "windows"))]
     let _ = window;
+}
+
+pub fn validate_http_url(raw_url: &str) -> Result<&str, String> {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 {
+        return Err("Invalid URL length.".to_string());
+    }
+    if trimmed
+        .bytes()
+        .any(|b| b <= 0x20 || b == 0x7f || b == b'"' || b == b'\\')
+    {
+        return Err("URL contains invalid whitespace or control characters.".to_string());
+    }
+    let bytes = trimmed.as_bytes();
+    let rest = if bytes.len() >= 8 && bytes[..8].eq_ignore_ascii_case(b"https://") {
+        &trimmed[8..]
+    } else if bytes.len() >= 7 && bytes[..7].eq_ignore_ascii_case(b"http://") {
+        &trimmed[7..]
+    } else {
+        return Err("Only http:// and https:// URLs are allowed.".to_string());
+    };
+    if rest.is_empty() || rest.starts_with('/') {
+        return Err("URL host cannot be empty.".to_string());
+    }
+    Ok(trimmed)
+}
+
+pub fn open_external_url(raw_url: &str) -> Result<(), String> {
+    let clean = validate_http_url(raw_url)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        let op: Vec<u16> = "open\0".encode_utf16().collect();
+        let mut wide_url: Vec<u16> = clean.encode_utf16().collect();
+        wide_url.push(0);
+
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                op.as_ptr(),
+                wide_url.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if (result as isize) <= 32 {
+            return Err(format!("Failed to launch default browser (code {}).", result as isize));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = clean;
+        Err("External URL opening is only supported on Windows.".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_http_url;
+
+    #[test]
+    fn validates_strict_http_and_https_urls() {
+        assert_eq!(
+            validate_http_url("https://github.com/org/repo?tab=readme#top").unwrap(),
+            "https://github.com/org/repo?tab=readme#top"
+        );
+        assert_eq!(
+            validate_http_url("  HTTP://localhost:3000/api  ").unwrap(),
+            "HTTP://localhost:3000/api"
+        );
+        assert!(validate_http_url("file:///C:/Windows/System32/cmd.exe").is_err());
+        assert!(validate_http_url("javascript:alert(1)").is_err());
+        assert!(validate_http_url("https:///missing-host").is_err());
+        assert!(validate_http_url("https://example.com/bad path").is_err());
+        assert!(validate_http_url("https://example.com/\0bad").is_err());
+        assert!(validate_http_url("https://example.com/\"quote").is_err());
+        assert!(validate_http_url(r"https://example.com\backslash").is_err());
+        assert_eq!(validate_http_url("http://đ.vn").unwrap(), "http://đ.vn");
+        assert!(validate_http_url("").is_err());
+    }
 }

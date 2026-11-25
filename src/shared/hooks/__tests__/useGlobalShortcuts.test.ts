@@ -191,4 +191,55 @@ describe("handleGlobalKeyDown", () => {
     }
     expect(opts.onCloseActiveTab).not.toHaveBeenCalled();
   });
+
+  it("handles Ctrl+Shift+D duplicate, Ctrl+Tab / Ctrl+Shift+Tab switching, and custom keybinding overrides", () => {
+    const onDuplicateActiveTab = vi.fn();
+    const onNextTab = vi.fn();
+    const onPrevTab = vi.fn();
+    const opts = makeOpts({
+      onDuplicateActiveTab,
+      onNextTab,
+      onPrevTab,
+      keybindings: { closeTab: "Ctrl+W" },
+    });
+
+    handleGlobalKeyDown(
+      makeKeyEvent({ key: "D", code: "KeyD", ctrlKey: true, shiftKey: true }).event,
+      opts
+    );
+    expect(onDuplicateActiveTab).toHaveBeenCalledTimes(1);
+
+    handleGlobalKeyDown(
+      makeKeyEvent({ key: "Tab", code: "Tab", ctrlKey: true, shiftKey: false }).event,
+      opts
+    );
+    expect(onNextTab).toHaveBeenCalledTimes(1);
+
+    handleGlobalKeyDown(
+      makeKeyEvent({ key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true }).event,
+      opts
+    );
+    expect(onPrevTab).toHaveBeenCalledTimes(1);
+
+    // Custom Ctrl+W closes tab while old Ctrl+Shift+W is no longer intercepted
+    handleGlobalKeyDown(
+      makeKeyEvent({ key: "w", code: "KeyW", ctrlKey: true, shiftKey: false }).event,
+      opts
+    );
+    expect(opts.onCloseActiveTab).toHaveBeenCalledTimes(1);
+
+    const oldCloseEv = makeKeyEvent({ key: "W", code: "KeyW", ctrlKey: true, shiftKey: true });
+    handleGlobalKeyDown(oldCloseEv.event, opts);
+    expect(oldCloseEv.preventDefault).not.toHaveBeenCalled();
+    expect(opts.onCloseActiveTab).toHaveBeenCalledTimes(1);
+
+    // Events inside [data-shortcut-recorder='true'] pass through untouched
+    const recEv = makeKeyEvent({
+      key: "F11",
+      target: { closest: (sel: string) => (sel.includes("shortcut-recorder") ? {} : null) } as unknown as EventTarget,
+    });
+    handleGlobalKeyDown(recEv.event, opts);
+    expect(recEv.preventDefault).not.toHaveBeenCalled();
+    expect(opts.onToggleFullscreen).not.toHaveBeenCalled();
+  });
 });

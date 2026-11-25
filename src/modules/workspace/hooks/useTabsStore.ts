@@ -12,6 +12,7 @@ import type {
 } from "@/shared/types/ipc";
 import type { HostFullConfigDto } from "@/modules/hosts";
 import { loadSettings } from "@/modules/settings/settingsStorage";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import {
   hydrateSnapshotTabs,
   type SavedSessionSnapshot,
@@ -34,6 +35,7 @@ interface TabsStoreState {
   tabs: TerminalTabItem[];
   activeTabId: string | null;
   renamingTabId: string | null;
+  isAppElevated: boolean;
   openedSftpTabs: Record<string, boolean>;
   sftpModalByTab: Record<string, boolean>;
   editorCloseSeqByTab: Record<string, number>;
@@ -76,7 +78,7 @@ interface TabsStoreState {
   removeTabIfMultiple: (tabId: string) => void;
   toggleAutoReconnect: (tabId: string, enabled: boolean) => void;
   syncHostConfig: (saved: HostFullConfigDto) => void;
-  markLocalTabsAdmin: () => void;
+  markLocalTabsAdmin: (elevated?: boolean) => void;
   setLaunchDir: (dir: string) => void;
   openDirectoryInTab: (dir: string) => void;
   openLocalFileInTab: (filePath: string, hostLabel: string) => string;
@@ -102,10 +104,28 @@ const initialTab = createLocalTab(initialShell);
 let lastOpenDir = "";
 let lastOpenDirTime = 0;
 
+function insertTabByPosition(
+  tabs: TerminalTabItem[],
+  activeTabId: string | null,
+  newTab: TerminalTabItem
+): TerminalTabItem[] {
+  const pos = useSettingsStore.getState().settings.newTabPosition;
+  if (pos === "after_current" && activeTabId) {
+    const idx = tabs.findIndex((t) => t.tabId === activeTabId);
+    if (idx >= 0) {
+      const next = [...tabs];
+      next.splice(idx + 1, 0, newTab);
+      return next;
+    }
+  }
+  return [...tabs, newTab];
+}
+
 export const useTabsStore = create<TabsStoreState>((set, get) => ({
   tabs: [initialTab],
   activeTabId: initialTab.tabId,
   renamingTabId: null,
+  isAppElevated: false,
   openedSftpTabs: {},
   sftpModalByTab: {},
   editorCloseSeqByTab: {},
@@ -150,7 +170,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
 
   addTab: (tab) =>
     set((s) => ({
-      tabs: [...s.tabs, tab],
+      tabs: insertTabByPosition(s.tabs, s.activeTabId, tab),
       activeTabId: tab.tabId,
       renamingTabId: null,
     })),
@@ -179,7 +199,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       : undefined;
     const newTab = buildNewEditorTab(tabId, meta, resolvedHostId, resolvedReconnect);
     set((s) => ({
-      tabs: [...s.tabs, newTab],
+      tabs: insertTabByPosition(s.tabs, s.activeTabId, newTab),
       activeTabId: tabId,
       renamingTabId: null,
       openedSftpTabs: isRemote ? { ...s.openedSftpTabs, [tabId]: true } : s.openedSftpTabs,
@@ -207,7 +227,7 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
     const tabId = crypto.randomUUID();
     const newTab = buildSettingsTab(tabId, section);
     set((s) => ({
-      tabs: [...s.tabs, newTab],
+      tabs: insertTabByPosition(s.tabs, s.activeTabId, newTab),
       activeTabId: tabId,
       renamingTabId: null,
     }));
@@ -467,11 +487,14 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       tabs: applySyncHostConfig(s.tabs, saved),
     })),
 
-  markLocalTabsAdmin: () =>
+  markLocalTabsAdmin: (elevated = true) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) =>
-        tab.hostId === LOCAL_HOST_ID ? { ...tab, isAdmin: true } : tab
-      ),
+      isAppElevated: elevated,
+      tabs: elevated
+        ? s.tabs.map((tab) =>
+            tab.hostId === LOCAL_HOST_ID ? { ...tab, isAdmin: true } : tab
+          )
+        : s.tabs,
     })),
 
   setLaunchDir: (dir: string) =>
@@ -502,12 +525,12 @@ export const useTabsStore = create<TabsStoreState>((set, get) => ({
       currentSettings.defaultShellProfile ??
       existingLocal?.shellProfile ??
       DEFAULT_LOCAL_SHELL;
-    const isAdmin = get().tabs.some((t) => t.hostId === LOCAL_HOST_ID && t.isAdmin);
+    const isAdmin = get().isAppElevated;
     const newTab = createLocalTab(defaultShell, isAdmin);
     newTab.initialCwd = dir;
 
     set((s) => ({
-      tabs: [...s.tabs, newTab],
+      tabs: insertTabByPosition(s.tabs, s.activeTabId, newTab),
       activeTabId: newTab.tabId,
     }));
   },

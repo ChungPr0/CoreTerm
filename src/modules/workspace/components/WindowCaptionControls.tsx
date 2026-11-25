@@ -3,7 +3,13 @@ import { Minus, Square, X } from "lucide-react";
 import { useI18n } from "@/shared/i18n";
 import { windowApi } from "../api/windowApi";
 
-export const WindowCaptionControls: React.FC = () => {
+interface WindowCaptionControlsProps {
+  onCloseWindow?: () => void;
+}
+
+export const WindowCaptionControls: React.FC<WindowCaptionControlsProps> = ({
+  onCloseWindow,
+}) => {
   const { t } = useI18n();
 
   return (
@@ -32,7 +38,13 @@ export const WindowCaptionControls: React.FC = () => {
       </button>
       <button
         type="button"
-        onClick={() => windowApi.windowClose().catch(() => {})}
+        onClick={() => {
+          if (onCloseWindow) {
+            onCloseWindow();
+          } else {
+            windowApi.windowClose().catch(() => {});
+          }
+        }}
         title={`${t("window.close")} (Alt+F4)`}
         className="h-full w-11 flex items-center justify-center text-slate-400 hover:bg-rose-600 hover:text-white transition-colors"
       >

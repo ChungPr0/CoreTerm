@@ -1,13 +1,22 @@
 import { useEffect, useRef } from "react";
+import {
+  eventToShortcutChord,
+  getShortcutChord,
+  type KeybindingOverrides,
+} from "@/shared/utils/shortcuts";
 
 export interface UseGlobalShortcutsOpts {
   hasBlockingModal: boolean;
   hasAnyModal: boolean;
   isSidebarOpen: boolean;
   hasContextMenu: boolean;
+  keybindings?: KeybindingOverrides;
   onTogglePalette: () => void;
   onNewLocalTab: () => void;
+  onDuplicateActiveTab?: () => void;
   onCloseActiveTab: () => void;
+  onNextTab?: () => void;
+  onPrevTab?: () => void;
   onToggleSidebar: () => void;
   onToggleSftpSplit: () => void;
   onFindInTerminal: () => void;
@@ -21,72 +30,79 @@ export function handleGlobalKeyDown(
   e: KeyboardEvent,
   cur: UseGlobalShortcutsOpts
 ): void {
-  if (e.key === "F11" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+  const targetEl = e.target as HTMLElement | null;
+  if (targetEl?.closest?.("[data-shortcut-recorder='true']")) {
+    return;
+  }
+
+  const chord = eventToShortcutChord(e);
+  if (!chord) return;
+
+  const kb = cur.keybindings;
+  const fullscreenChord = getShortcutChord("toggleFullscreen", kb);
+  const paletteChord = getShortcutChord("commandPalette", kb);
+  const newTabChord = getShortcutChord("newTab", kb);
+  const duplicateTabChord = getShortcutChord("duplicateTab", kb);
+  const closeTabChord = getShortcutChord("closeTab", kb);
+  const nextTabChord = getShortcutChord("nextTab", kb);
+  const prevTabChord = getShortcutChord("prevTab", kb);
+  const sidebarChord = getShortcutChord("toggleSidebar", kb);
+  const sftpChord = getShortcutChord("toggleSftpPanel", kb);
+  const settingsChord = getShortcutChord("openSettings", kb);
+  const findChord = getShortcutChord("termFind", kb);
+
+  const runModalGuarded = (allowWhenPaletteOpen: boolean, action?: () => void) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!e.repeat && !cur.hasAnyModal) {
-      cur.onCloseContextMenu();
-      cur.onToggleFullscreen?.();
-    }
+    if (e.repeat) return;
+    if (allowWhenPaletteOpen ? cur.hasBlockingModal : cur.hasAnyModal) return;
+    cur.onCloseContextMenu();
+    action?.();
+  };
+
+  if (chord === fullscreenChord) {
+    runModalGuarded(false, cur.onToggleFullscreen);
     return;
   }
-  if (e.ctrlKey === e.metaKey || e.altKey) return;
-  const key = e.key.toLowerCase();
-
-  if (!e.shiftKey) {
-    if (e.key === ",") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!e.repeat && !cur.hasAnyModal) {
-        cur.onCloseContextMenu();
-        cur.onOpenSettings();
-      }
-      return;
-    }
-    // Always suppress WebView2's built-in Ctrl+F Find bar and route to Terminal Find.
-    if (key === "f") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!e.repeat && !cur.hasAnyModal) {
-        cur.onCloseContextMenu();
-        cur.onFindInTerminal();
-      }
-    }
+  if (chord === paletteChord) {
+    runModalGuarded(true, cur.onTogglePalette);
     return;
   }
-
-  if (
-    key !== "k" &&
-    key !== "t" &&
-    key !== "f" &&
-    key !== "w" &&
-    key !== "b" &&
-    key !== "e"
-  ) {
+  if (chord === newTabChord) {
+    runModalGuarded(false, cur.onNewLocalTab);
     return;
   }
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.repeat) return;
-
-  if (key === "k" && !cur.hasBlockingModal) {
-    cur.onCloseContextMenu();
-    cur.onTogglePalette();
-  } else if (key === "t" && !cur.hasAnyModal) {
-    cur.onCloseContextMenu();
-    cur.onNewLocalTab();
-  } else if (key === "f" && !cur.hasAnyModal) {
-    cur.onCloseContextMenu();
-    cur.onFindInTerminal();
-  } else if (key === "w" && !cur.hasAnyModal) {
-    cur.onCloseContextMenu();
-    cur.onCloseActiveTab();
-  } else if (key === "b" && !cur.hasAnyModal) {
-    cur.onCloseContextMenu();
-    cur.onToggleSidebar();
-  } else if (key === "e" && !cur.hasAnyModal) {
-    cur.onCloseContextMenu();
-    cur.onToggleSftpSplit();
+  if (chord === duplicateTabChord) {
+    runModalGuarded(false, cur.onDuplicateActiveTab);
+    return;
+  }
+  if (chord === closeTabChord) {
+    runModalGuarded(false, cur.onCloseActiveTab);
+    return;
+  }
+  if (chord === nextTabChord) {
+    runModalGuarded(false, cur.onNextTab);
+    return;
+  }
+  if (chord === prevTabChord) {
+    runModalGuarded(false, cur.onPrevTab);
+    return;
+  }
+  if (chord === sidebarChord) {
+    runModalGuarded(false, cur.onToggleSidebar);
+    return;
+  }
+  if (chord === sftpChord) {
+    runModalGuarded(false, cur.onToggleSftpSplit);
+    return;
+  }
+  if (chord === settingsChord) {
+    runModalGuarded(false, cur.onOpenSettings);
+    return;
+  }
+  // Always suppress WebView2's built-in Ctrl+F Find bar and route to Find alongside configured termFind.
+  if (chord === findChord || chord === "Ctrl+F") {
+    runModalGuarded(false, cur.onFindInTerminal);
   }
 }
 

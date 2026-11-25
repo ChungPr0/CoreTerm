@@ -3,6 +3,9 @@ import {
   AlertTriangle,
   FileCode2,
   FolderSync,
+  Keyboard,
+  MousePointerClick,
+  Palette,
   Rocket,
   RotateCcw,
   Search,
@@ -26,6 +29,7 @@ import {
   IconButton,
   Input,
 } from "@/shared/ui";
+import { getShortcutChord, SHORTCUT_DEFINITIONS } from "@/shared/utils/shortcuts";
 import {
   formatShellArgs,
   mergeShells,
@@ -35,8 +39,11 @@ import {
 import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import { windowApi } from "@/modules/workspace/api/windowApi";
 import { useSettingsStore } from "../useSettingsStore";
+import { ActionsSettingsSection } from "./ActionsSettingsSection";
+import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { EditorSettingsSection } from "./EditorSettingsSection";
 import { GeneralSettingsSection } from "./GeneralSettingsSection";
+import { InteractionSettingsSection } from "./InteractionSettingsSection";
 import { matchesSettingsQuery } from "./SettingsPrimitives";
 import { SftpSettingsSection } from "./SftpSettingsSection";
 import { ShellsSettingsSection } from "./ShellsSettingsSection";
@@ -62,16 +69,20 @@ interface CategoryDef {
   id: SettingsCategoryId;
   labelKey: string;
   icon: React.ReactNode;
+  group: "app" | "tools";
 }
 
 const CATEGORIES: CategoryDef[] = [
-  { id: "general", labelKey: "settings.cat_general", icon: <Sliders className="w-3.5 h-3.5" /> },
-  { id: "startup", labelKey: "settings.cat_startup", icon: <Rocket className="w-3.5 h-3.5" /> },
-  { id: "terminal", labelKey: "settings.cat_terminal", icon: <TerminalSquare className="w-3.5 h-3.5" /> },
-  { id: "shells", labelKey: "settings.cat_shells", icon: <TerminalIcon className="w-3.5 h-3.5" /> },
-  { id: "ssh", labelKey: "settings.cat_ssh", icon: <Shield className="w-3.5 h-3.5" /> },
-  { id: "sftp", labelKey: "settings.cat_sftp", icon: <FolderSync className="w-3.5 h-3.5" /> },
-  { id: "editor", labelKey: "settings.cat_editor", icon: <FileCode2 className="w-3.5 h-3.5" /> },
+  { id: "general", labelKey: "settings.cat_general", icon: <Sliders className="w-3.5 h-3.5" />, group: "app" },
+  { id: "startup", labelKey: "settings.cat_startup", icon: <Rocket className="w-3.5 h-3.5" />, group: "app" },
+  { id: "appearance", labelKey: "settings.cat_appearance", icon: <Palette className="w-3.5 h-3.5" />, group: "app" },
+  { id: "interaction", labelKey: "settings.cat_interaction", icon: <MousePointerClick className="w-3.5 h-3.5" />, group: "app" },
+  { id: "actions", labelKey: "settings.cat_actions", icon: <Keyboard className="w-3.5 h-3.5" />, group: "app" },
+  { id: "terminal", labelKey: "settings.cat_terminal", icon: <TerminalSquare className="w-3.5 h-3.5" />, group: "tools" },
+  { id: "shells", labelKey: "settings.cat_shells", icon: <TerminalIcon className="w-3.5 h-3.5" />, group: "tools" },
+  { id: "ssh", labelKey: "settings.cat_ssh", icon: <Shield className="w-3.5 h-3.5" />, group: "tools" },
+  { id: "sftp", labelKey: "settings.cat_sftp", icon: <FolderSync className="w-3.5 h-3.5" />, group: "tools" },
+  { id: "editor", labelKey: "settings.cat_editor", icon: <FileCode2 className="w-3.5 h-3.5" />, group: "tools" },
 ];
 
 export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
@@ -95,6 +106,7 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingShell, setDeletingShell] = useState<ShellProfile | null>(null);
   const [resetPrompt, setResetPrompt] = useState<ResetPromptState>(null);
+  const [isEditingShortcut, setIsEditingShortcut] = useState(false);
   const [resetSeq, setResetSeq] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
@@ -118,7 +130,8 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
     }
   }, [findToken]);
 
-  const hasChildModal = isActive && (deletingShell !== null || resetPrompt !== null);
+  const hasChildModal =
+    isActive && (deletingShell !== null || resetPrompt !== null || isEditingShortcut);
   useEffect(() => {
     onModalChange?.(tab.tabId, hasChildModal);
     return () => {
@@ -185,11 +198,86 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
         t("settings.cols"),
         t("settings.rows"),
         t("settings.center_on_launch"),
-        t("settings.always_on_top"),
-        "startup window size ime fullscreen maximized always on top"
+        "startup window size ime fullscreen maximized"
       )
     ) {
       matched.add("startup");
+    }
+    if (
+      matchesSettingsQuery(
+        q,
+        t("settings.cat_appearance"),
+        t("settings.cat_appearance_desc"),
+        t("settings.group_window"),
+        t("settings.group_tabs"),
+        t("settings.use_active_tab_title"),
+        t("settings.use_active_tab_title_desc"),
+        t("settings.always_on_top"),
+        t("settings.always_on_top_desc"),
+        t("settings.show_admin_shield"),
+        t("settings.show_admin_shield_desc"),
+        t("settings.new_tab_position"),
+        t("settings.new_tab_position_desc"),
+        t("settings.new_tab_pos_end"),
+        t("settings.new_tab_pos_after_current"),
+        t("settings.tab_width_mode"),
+        t("settings.tab_width_mode_desc"),
+        t("settings.tab_width_equal"),
+        t("settings.tab_width_title"),
+        t("settings.tab_width_compact"),
+        t("settings.show_tabs_fullscreen"),
+        t("settings.show_tabs_fullscreen_desc"),
+        "appearance window title always on top pin admin shield tab width compact fullscreen"
+      )
+    ) {
+      matched.add("appearance");
+    }
+    if (
+      matchesSettingsQuery(
+        q,
+        t("settings.cat_interaction"),
+        t("settings.cat_interaction_desc"),
+        t("settings.group_clipboard_mouse"),
+        t("settings.group_warnings"),
+        t("settings.term_copy_on_select"),
+        t("settings.term_copy_on_select_desc"),
+        t("settings.term_right_click_paste"),
+        t("settings.term_right_click_paste_desc"),
+        t("settings.term_trim_paste"),
+        t("settings.term_trim_paste_desc"),
+        t("settings.term_ctrl_scroll_zoom"),
+        t("settings.term_ctrl_scroll_zoom_desc"),
+        t("settings.term_detect_urls"),
+        t("settings.term_detect_urls_desc"),
+        t("settings.warn_close_multi_tabs"),
+        t("settings.warn_close_multi_tabs_desc"),
+        t("settings.warn_paste_large"),
+        t("settings.warn_paste_large_desc"),
+        t("settings.warn_paste_multiline"),
+        t("settings.warn_paste_multiline_desc"),
+        t("settings.warn_paste_multiline_bracketed"),
+        t("settings.warn_paste_multiline_always"),
+        t("settings.warn_paste_multiline_never"),
+        "clipboard paste copy url link zoom scroll wheel warn warning newline bracketed 5 kib"
+      )
+    ) {
+      matched.add("interaction");
+    }
+    if (
+      SHORTCUT_DEFINITIONS.some((def) =>
+        matchesSettingsQuery(
+          q,
+          t("settings.cat_actions"),
+          t("settings.cat_actions_desc"),
+          t("settings.group_tabs_window"),
+          t(def.labelKey),
+          getShortcutChord(def.id, settings.keybindings),
+          def.defaultChord,
+          "shortcut keybinding hotkey action"
+        )
+      )
+    ) {
+      matched.add("actions");
     }
     if (
       matchesSettingsQuery(
@@ -201,10 +289,8 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
         t("settings.term_cursor_style"),
         t("settings.term_cursor_blink"),
         t("settings.term_scrollback"),
-        t("settings.term_copy_on_select"),
-        t("settings.term_right_click_paste"),
         t("settings.term_webgl"),
-        "font size buffer clipboard gpu"
+        "font size buffer gpu"
       )
     ) {
       matched.add("terminal");
@@ -273,6 +359,7 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
     detectedFromStore,
     searchQuery,
     settings.customShells,
+    settings.keybindings,
     shellProfiles,
     t,
   ]);
@@ -353,34 +440,45 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
 
         <nav
           aria-label={t("settings.title")}
-          className="flex-1 overflow-y-auto py-2.5 pl-2.5 pr-[5px] space-y-1"
+          className="flex-1 overflow-y-auto py-2.5 pl-2.5 pr-[5px] space-y-3"
         >
-          {CATEGORIES.map((cat) => {
-            const isSelected = !isSearching && activeCategory === cat.id;
-            const isMatchedInSearch = isSearching && matchingCategoryIds.has(cat.id);
+          {(["app", "tools"] as const).map((groupKey) => {
+            const groupCats = CATEGORIES.filter((c) => c.group === groupKey);
             return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => selectCategory(cat.id)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer ${
-                  isSelected
-                    ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
-                    : isMatchedInSearch
-                      ? "bg-slate-900/80 text-slate-200 border-slate-800 hover:bg-slate-800/80"
-                      : "bg-transparent text-slate-400 border-transparent hover:bg-slate-900/70 hover:text-slate-200"
-                }`}
-              >
-                <span className="flex items-center gap-2.5 min-w-0">
-                  <span className={isSelected ? "text-sky-400" : "text-slate-400"}>
-                    {cat.icon}
-                  </span>
-                  <span className="truncate">{t(cat.labelKey)}</span>
-                </span>
-                {isMatchedInSearch && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
-                )}
-              </button>
+              <div key={groupKey} className="space-y-1">
+                <div className="px-3 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  {t(groupKey === "app" ? "settings.nav_group_app" : "settings.nav_group_tools")}
+                </div>
+                {groupCats.map((cat) => {
+                  const isSelected = !isSearching && activeCategory === cat.id;
+                  const isMatchedInSearch =
+                    isSearching && matchingCategoryIds.has(cat.id);
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => selectCategory(cat.id)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
+                          : isMatchedInSearch
+                            ? "bg-slate-900/80 text-slate-200 border-slate-800 hover:bg-slate-800/80"
+                            : "bg-transparent text-slate-400 border-transparent hover:bg-slate-900/70 hover:text-slate-200"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <span className={isSelected ? "text-sky-400" : "text-slate-400"}>
+                          {cat.icon}
+                        </span>
+                        <span className="truncate">{t(cat.labelKey)}</span>
+                      </span>
+                      {isMatchedInSearch && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
@@ -433,6 +531,52 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
                         scope: "section",
                         category: "startup",
                         label: t("settings.cat_startup"),
+                      })
+                    }
+                  />
+                )}
+
+                {(isSearching || activeCategory === "appearance") && (
+                  <AppearanceSettingsSection
+                    settings={settings}
+                    query={searchQuery}
+                    onPatch={patchSettings}
+                    onResetSection={() =>
+                      setResetPrompt({
+                        scope: "section",
+                        category: "appearance",
+                        label: t("settings.cat_appearance"),
+                      })
+                    }
+                  />
+                )}
+
+                {(isSearching || activeCategory === "interaction") && (
+                  <InteractionSettingsSection
+                    settings={settings}
+                    query={searchQuery}
+                    onPatch={patchSettings}
+                    onResetSection={() =>
+                      setResetPrompt({
+                        scope: "section",
+                        category: "interaction",
+                        label: t("settings.cat_interaction"),
+                      })
+                    }
+                  />
+                )}
+
+                {(isSearching || activeCategory === "actions") && (
+                  <ActionsSettingsSection
+                    settings={settings}
+                    query={searchQuery}
+                    onPatch={patchSettings}
+                    onEditingChange={setIsEditingShortcut}
+                    onResetSection={() =>
+                      setResetPrompt({
+                        scope: "section",
+                        category: "actions",
+                        label: t("settings.cat_actions"),
                       })
                     }
                   />

@@ -16,4 +16,6 @@ pub use acl::{restrict_private_key_acl, restrict_private_key_dir_acl};
 pub use elevation::is_process_elevated;
 pub use job_object::JobObjectSupervisor;
 pub use known_folders::{system32_binary, system32_dir};
-pub use window::{configure_main_window, has_native_window_border};
+pub use window::{
+    allow_window_close, configure_main_window, has_native_window_border, is_window_close_allowed,
+};

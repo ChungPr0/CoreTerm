@@ -60,6 +60,10 @@ fn set_registry_string(hkey: HKEY, name: Option<&str>, val: &str) -> Result<(), 
     }
 }
 
+pub(crate) fn expected_shell_command(exe_path: &str, arg_placeholder: &str) -> String {
+    format!("\"{exe_path}\" \"{arg_placeholder}\"")
+}
+
 #[cfg(windows)]
 fn register_single_shell_key(
     base_path: &str,
@@ -111,7 +115,7 @@ fn register_single_shell_key(
         return Err(format!("RegCreateKeyExW for {cmd_path} failed with code {res}"));
     }
 
-    let cmd_val = format!("\"{exe_path}\" \"{arg_placeholder}\"");
+    let cmd_val = expected_shell_command(exe_path, arg_placeholder);
     let set_res = set_registry_string(hcmd, None, &cmd_val);
     unsafe { RegCloseKey(hcmd) };
     set_res
@@ -320,11 +324,14 @@ pub fn sync_context_menu_if_enabled(app_data_dir: &std::path::Path) {
 
     #[cfg(not(debug_assertions))]
     {
+        if !is_installed_version() {
+            return;
+        }
         let any_registered = is_shell_key_registered(KEY_DIR_SHELL)
             || is_shell_key_registered(KEY_BG_SHELL)
             || is_shell_key_registered(KEY_FILE_SHELL);
         if !any_registered {
-            if is_installed_version() && !is_context_menu_opted_out(app_data_dir) {
+            if !is_context_menu_opted_out(app_data_dir) {
                 let _ = register_context_menu();
             }
             return;
@@ -332,9 +339,16 @@ pub fn sync_context_menu_if_enabled(app_data_dir: &std::path::Path) {
 
         if let Ok(exe) = current_exe() {
             let exe_str = exe.to_string_lossy();
-            let all_match = [KEY_DIR_SHELL, KEY_BG_SHELL, KEY_FILE_SHELL].iter().all(|key| {
+            let all_match = [
+                (KEY_DIR_SHELL, "%V"),
+                (KEY_BG_SHELL, "%V"),
+                (KEY_FILE_SHELL, "%1"),
+            ]
+            .iter()
+            .all(|(key, placeholder)| {
+                let expected = expected_shell_command(&exe_str, placeholder);
                 get_registered_command_for(key)
-                    .map(|val| val.contains(&*exe_str))
+                    .map(|val| val.trim().eq_ignore_ascii_case(&expected))
                     .unwrap_or(false)
             });
             if !all_match {

@@ -37,6 +37,7 @@ interface UseAppMenusOpts {
   onOpenSettings: () => void;
   onOpenPalette: () => void;
   onDismissSidebar: () => void;
+  onRequestCloseWindow?: () => void;
 }
 
 export type { MenuState, TerminalContextActions };
@@ -78,6 +79,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onOpenSettings: opts.onOpenSettings,
     onCloseTab: opts.onCloseTab,
     onCloseOtherTabs: opts.onCloseOtherTabs,
+    onRequestCloseWindow: opts.onRequestCloseWindow,
   });
 
   const hostMenus = useHostMenus({

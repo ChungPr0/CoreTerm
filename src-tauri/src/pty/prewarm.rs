@@ -47,9 +47,29 @@ impl PtySessionManager {
                     return;
                 }
 
-                let Some(profile) = find_default_shell() else {
+                #[allow(unused_mut)]
+                let Some(mut profile) = find_default_shell() else {
                     return;
                 };
+                #[cfg(windows)]
+                if is_admin {
+                    let Ok(resolved) =
+                        crate::infra::os::elevated_pty::resolve_elevated_shell_executable(
+                            &profile.executable,
+                        )
+                    else {
+                        return;
+                    };
+                    if crate::infra::os::elevated_pty::validate_elevated_shell(
+                        &resolved,
+                        &profile.args,
+                    )
+                    .is_err()
+                    {
+                        return;
+                    }
+                    profile.executable = resolved;
+                }
                 let cwd = std::env::var("USERPROFILE").ok();
                 let Ok(spawned) = spawn_pty(
                     PtySpawnConfig {

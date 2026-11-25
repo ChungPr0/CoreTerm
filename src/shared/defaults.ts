@@ -65,6 +65,7 @@ export const TERM_LINE_HEIGHT_MAX = 1.6;
 export const TERM_SCROLLBACK_DEFAULT = 10000;
 export const TERM_SCROLLBACK_MIN = 1000;
 export const TERM_SCROLLBACK_MAX = 50000;
+export const TERM_PASTE_WARN_BYTES = 5 * 1024;
 
 export const SSH_DEFAULT_PORT = 22;
 export const SSH_DEFAULT_USERNAME = "root";

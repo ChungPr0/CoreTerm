@@ -6,6 +6,9 @@ export type StrictHostKeyChecking = "ACCEPT_NEW" | "YES" | "NO";
 export type SettingsCategoryId =
   | "general"
   | "startup"
+  | "appearance"
+  | "interaction"
+  | "actions"
   | "terminal"
   | "shells"
   | "ssh"

@@ -18,8 +18,26 @@ const CATEGORY_KEYS: Record<SettingsCategoryId, Array<keyof AppSettingsValues>> 
     "newInstanceBehavior",
     "launchMode",
     "centerOnLaunch",
-    "alwaysOnTop",
   ],
+  appearance: [
+    "alwaysOnTop",
+    "useActiveTabTitle",
+    "showAdminShield",
+    "newTabPosition",
+    "tabWidthMode",
+    "showTabsInFullscreen",
+  ],
+  interaction: [
+    "terminalCopyOnSelect",
+    "terminalRightClickPaste",
+    "terminalTrimPasteWhitespace",
+    "terminalCtrlScrollZoom",
+    "terminalDetectUrls",
+    "warnCloseMultiTabs",
+    "warnPasteLarge",
+    "warnPasteMultiline",
+  ],
+  actions: ["keybindings"],
   terminal: [
     "terminalFontSize",
     "terminalFontFamily",
@@ -27,8 +45,6 @@ const CATEGORY_KEYS: Record<SettingsCategoryId, Array<keyof AppSettingsValues>> 
     "terminalCursorStyle",
     "terminalCursorBlink",
     "terminalScrollback",
-    "terminalCopyOnSelect",
-    "terminalRightClickPaste",
     "terminalWebglRenderer",
   ],
   shells: ["defaultShellId", "defaultShellProfile", "customShells"],
@@ -86,6 +102,8 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
       for (const key of CATEGORY_KEYS[category]) {
         if (key === "customShells") {
           patch.customShells = [];
+        } else if (key === "keybindings") {
+          patch.keybindings = {};
         } else {
           (patch as Record<string, unknown>)[key] = DEFAULT_SETTINGS[key];
         }
@@ -95,7 +113,11 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
       return { settings: next };
     }),
   resetAllSettings: () => {
-    const next: AppSettingsValues = { ...DEFAULT_SETTINGS, customShells: [] };
+    const next: AppSettingsValues = {
+      ...DEFAULT_SETTINGS,
+      customShells: [],
+      keybindings: {},
+    };
     saveSettings(next);
     set({ settings: next });
   },

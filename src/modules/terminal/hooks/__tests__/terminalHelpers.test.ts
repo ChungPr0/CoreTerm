@@ -268,4 +268,46 @@ describe("terminalHelpers", () => {
     expect(termClear).toHaveBeenCalledTimes(1);
     expect(termSelectAll).toHaveBeenCalledTimes(1);
   });
+
+  it("delegates Ctrl+Shift+V and Ctrl+0 to custom interaction callbacks when provided", () => {
+    let keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
+    const term = {
+      attachCustomKeyEventHandler: (fn: (e: KeyboardEvent) => boolean) => {
+        keyHandler = fn;
+      },
+      clear: vi.fn(),
+      selectAll: vi.fn(),
+      getSelection: vi.fn(() => ""),
+      paste: vi.fn(),
+    } as unknown as Terminal;
+
+    const onPasteShortcut = vi.fn();
+    const onResetZoom = vi.fn();
+    bindTerminalShortcuts(
+      term,
+      () => false,
+      () => false,
+      { onPasteShortcut, onResetZoom }
+    );
+
+    const makeKey = (overrides: Partial<KeyboardEvent>) =>
+      ({
+        type: "keydown",
+        key: "",
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        repeat: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        ...overrides,
+      }) as unknown as KeyboardEvent;
+
+    expect(keyHandler!(makeKey({ key: "v", ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(onPasteShortcut).toHaveBeenCalledTimes(1);
+
+    expect(keyHandler!(makeKey({ key: "0", ctrlKey: true, shiftKey: false }))).toBe(false);
+    expect(onResetZoom).toHaveBeenCalledTimes(1);
+  });
 });

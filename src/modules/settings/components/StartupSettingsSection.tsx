@@ -143,14 +143,6 @@ export const StartupSettingsSection: React.FC<StartupSettingsSectionProps> = ({
     t("settings.center_on_launch_desc"),
     "center launch parameters"
   );
-  const showAlwaysOnTop = matchesSettingsQuery(
-    query,
-    t("settings.cat_startup"),
-    t("settings.launch_size"),
-    t("settings.always_on_top"),
-    t("settings.always_on_top_desc"),
-    "always on top pin"
-  );
 
   if (
     !showLaunchOnStartup &&
@@ -159,8 +151,7 @@ export const StartupSettingsSection: React.FC<StartupSettingsSectionProps> = ({
     !showImeMode &&
     !showLaunchMode &&
     !showLaunchSize &&
-    !showCenterOnLaunch &&
-    !showAlwaysOnTop
+    !showCenterOnLaunch
   ) {
     return null;
   }
@@ -289,18 +280,6 @@ export const StartupSettingsSection: React.FC<StartupSettingsSectionProps> = ({
             checked={settings.centerOnLaunch}
             onChange={(checked) => onPatch({ centerOnLaunch: checked })}
             aria-label={t("settings.center_on_launch")}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          visible={showAlwaysOnTop}
-          title={t("settings.always_on_top")}
-          description={t("settings.always_on_top_desc")}
-        >
-          <Switch
-            checked={settings.alwaysOnTop}
-            onChange={(checked) => onPatch({ alwaysOnTop: checked })}
-            aria-label={t("settings.always_on_top")}
           />
         </SettingsRow>
       </SettingsCard>

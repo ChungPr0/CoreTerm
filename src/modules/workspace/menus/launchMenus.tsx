@@ -9,6 +9,8 @@ import {
   X,
 } from "lucide-react";
 import type { ContextMenuEntry } from "@/shared/ui";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { WindowSysAction } from "../api/windowApi";
 import type { ShellProfile, TerminalTabItem } from "../types";
 import { ShellIcon } from "../components/ShellIcon";
@@ -47,6 +49,8 @@ export function buildLaunchItems({
   }
 
   const adminTarget = contextShell ?? primaryDefault;
+  const kb = useSettingsStore.getState().settings.keybindings;
+  const newTabShortcut = getShortcutChord("newTab", kb);
 
   const mapShellEntries = (asAdmin: boolean): ContextMenuEntry[] =>
     shells.map((shell) => ({
@@ -72,7 +76,7 @@ export function buildLaunchItems({
         label: t("ctx.new_tab_admin_name", { name: primaryDefault.name }),
         icon: <ShellIcon profile={primaryDefault} />,
         highlight: "admin",
-        shortcut: "Ctrl+Shift+T",
+        shortcut: newTabShortcut,
         onSelect: () =>
           onNewLocalTab({ profile: primaryDefault, asAdmin: true }),
       },
@@ -85,7 +89,7 @@ export function buildLaunchItems({
       id: "new-tab",
       label: t("ctx.new_tab_name", { name: primaryDefault.name }),
       icon: <ShellIcon profile={primaryDefault} />,
-      shortcut: "Ctrl+Shift+T",
+      shortcut: newTabShortcut,
       onSelect: () =>
         onNewLocalTab({ profile: primaryDefault, asAdmin: false }),
     },
@@ -124,7 +128,7 @@ export function buildSftpPanelItem(
       text: tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off"),
       active: Boolean(tab.sftpOpen),
     },
-    shortcut: "Ctrl+Shift+E",
+    shortcut: getShortcutChord("toggleSftpPanel", useSettingsStore.getState().settings.keybindings),
     onSelect: () => onToggleSftp(tab.tabId),
   };
 }

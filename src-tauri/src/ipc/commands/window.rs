@@ -223,6 +223,19 @@ pub async fn window_toggle_fullscreen(window: tauri::WebviewWindow) -> AppResult
     Ok(next)
 }
 
+#[tauri::command]
+pub async fn window_is_fullscreen(window: tauri::WebviewWindow) -> AppResult<bool> {
+    Ok(window.is_fullscreen().unwrap_or(false))
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_set_title(window: tauri::WebviewWindow, title: String) -> AppResult<()> {
+    let trimmed = title.trim();
+    let safe_title = if trimmed.is_empty() { "CoreTerm" } else { trimmed };
+    let _ = window.set_title(safe_title);
+    Ok(())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn window_apply_ime_mode(
     window: tauri::WebviewWindow,
@@ -234,8 +247,14 @@ pub async fn window_apply_ime_mode(
 
 #[tauri::command]
 pub async fn window_close(window: tauri::WebviewWindow) -> AppResult<()> {
+    os::allow_window_close();
     let _ = window.close();
     Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn window_open_url(url: String) -> AppResult<()> {
+    os::window::open_external_url(&url).map_err(AppError::Os)
 }
 
 #[tauri::command]

@@ -13,7 +13,9 @@ import {
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { copyText } from "@/shared/utils/clipboard";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import {
   buildLaunchItems,
   buildSftpPanelItem,
@@ -84,12 +86,13 @@ export function buildTerminalContextItems({
 }: BuildTerminalContextItemsOpts): ContextMenuEntry[] {
   const offline = isTabOffline(tab);
   const connecting = isTabConnecting(tab);
+  const kb = useSettingsStore.getState().settings.keybindings;
   const items: ContextMenuEntry[] = [
     {
       id: "term-copy",
       label: t("ctx.copy"),
       icon: <ClipboardCopy className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+C",
+      shortcut: getShortcutChord("termCopy", kb),
       disabled: !actions.hasSelection,
       onSelect: () => void actions.copySelection(),
     },
@@ -97,7 +100,7 @@ export function buildTerminalContextItems({
       id: "term-paste",
       label: t("ctx.paste"),
       icon: <Clipboard className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+V",
+      shortcut: getShortcutChord("termPaste", kb),
       disabled: offline,
       onSelect: () => void actions.pasteClipboard(),
     },
@@ -105,21 +108,21 @@ export function buildTerminalContextItems({
       id: "term-select-all",
       label: t("ctx.select_all"),
       icon: <TextSelect className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+A",
+      shortcut: getShortcutChord("termSelectAll", kb),
       onSelect: actions.selectAll,
     },
     {
       id: "term-clear",
       label: t("ctx.clear_terminal"),
       icon: <Eraser className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+L",
+      shortcut: getShortcutChord("termClear", kb),
       onSelect: actions.clear,
     },
     {
       id: "term-find",
       label: t("ctx.find"),
       icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-      shortcut: "Ctrl+Shift+F",
+      shortcut: getShortcutChord("termFind", kb),
       onSelect: () => onFindInTab(tab.tabId),
     },
   ];
@@ -156,7 +159,7 @@ export function buildTerminalContextItems({
       id: "term-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     }
   );
@@ -166,7 +169,7 @@ export function buildTerminalContextItems({
       id: "term-close-tab",
       label: t("ctx.close_tab"),
       icon: <X className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+W",
+      shortcut: getShortcutChord("closeTab", kb),
       onSelect: () => onCloseTab(tab.tabId),
     });
   }

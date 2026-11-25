@@ -6,9 +6,11 @@ import type {
   TerminalTabItem,
 } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import type { KeybindingOverrides, TabWidthMode } from "@/modules/settings";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "@/shared/ui";
 import { getEditableInput } from "@/shared/utils/editableTarget";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
 import { useTabDrag } from "../hooks/useTabDrag";
 import { NewTabDropdown } from "./NewTabDropdown";
 import { TabItem } from "./TabItem";
@@ -19,6 +21,9 @@ interface TabBarProps {
   activeTabId: string | null;
   renamingTabId?: string | null;
   isAppElevated: boolean;
+  showAdminShield?: boolean;
+  tabWidthMode?: TabWidthMode;
+  keybindings?: KeybindingOverrides;
   isModalOpen?: boolean;
   isContextMenuOpen?: boolean;
   shellProfiles: ShellProfile[];
@@ -39,6 +44,7 @@ interface TabBarProps {
   onCreateNewHost: () => void;
   onOpenPalette: () => void;
   onOpenSettings: (section?: SettingsCategoryId) => void;
+  onCloseWindow?: () => void;
   onContextMenuTab: (e: React.MouseEvent, tab: TerminalTabItem) => void;
   onContextMenuTabBar?: (e: React.MouseEvent) => void;
 }
@@ -48,6 +54,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   activeTabId,
   renamingTabId = null,
   isAppElevated,
+  showAdminShield = true,
+  tabWidthMode = "equal",
+  keybindings,
   isModalOpen = false,
   isContextMenuOpen = false,
   shellProfiles,
@@ -68,6 +77,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onCreateNewHost,
   onOpenPalette,
   onOpenSettings,
+  onCloseWindow,
   onContextMenuTab,
   onContextMenuTabBar,
 }) => {
@@ -85,7 +95,12 @@ export const TabBar: React.FC<TabBarProps> = ({
   } = useTabDrag({ tabs, onSelectTab, onReorderTab });
 
   const isCompactTabs =
-    tabs.length > 0 && (middleWidth - 104) / tabs.length < 132;
+    tabWidthMode === "equal" &&
+    tabs.length > 0 &&
+    (middleWidth - 104) / tabs.length < 132;
+  const sidebarShortcut = getShortcutChord("toggleSidebar", keybindings);
+  const closeShortcut = getShortcutChord("closeTab", keybindings);
+  const sftpShortcut = getShortcutChord("toggleSftpPanel", keybindings);
 
   useEffect(() => {
     const el = middleRef.current;
@@ -124,7 +139,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         size="md"
         disabled={isModalOpen}
         onClick={onToggleSidebar}
-        title={`${t("app.menu")} (Ctrl+Shift+B)`}
+        title={`${t("app.menu")} (${sidebarShortcut})`}
         icon={<Menu className="w-4 h-4" />}
         className="ml-1.5 mr-1 shrink-0"
       />
@@ -153,7 +168,10 @@ export const TabBar: React.FC<TabBarProps> = ({
               isActive={tab.tabId === activeTabId}
               isDragged={tab.tabId === draggingTabId}
               isCompact={isCompactTabs}
+              tabWidthMode={tabWidthMode}
               isRenaming={tab.tabId === renamingTabId}
+              closeShortcut={closeShortcut}
+              sftpShortcut={sftpShortcut}
               elRef={(el) => {
                 if (el) tabElsRef.current.set(tab.tabId, el);
                 else tabElsRef.current.delete(tab.tabId);
@@ -202,7 +220,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         />
       </div>
 
-      {isAppElevated && (
+      {isAppElevated && showAdminShield && (
         <div
           data-tauri-drag-region="deep"
           className="mr-2 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/35 flex items-center gap-1 text-[10px] font-semibold text-amber-300 shrink-0"
@@ -212,7 +230,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         </div>
       )}
 
-      <WindowCaptionControls />
+      <WindowCaptionControls onCloseWindow={onCloseWindow} />
     </div>
   );
 };

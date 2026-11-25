@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
+import { AlertTriangle, Clipboard, ExternalLink } from "lucide-react";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { useAutoReconnect } from "@/shared/hooks/useAutoReconnect";
-import { ReconnectBanner, useAlert } from "@/shared/ui";
+import { ActionModal, ReconnectBanner, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+import { fmtSize } from "@/shared/utils/formatters";
 import { useSettingsStore } from "@/modules/settings";
 import { useTabsStore } from "@/modules/workspace/hooks/useTabsStore";
 import type { SessionConnectAckDto } from "../types";
@@ -39,6 +41,7 @@ interface TerminalViewportProps {
   onToggleAutoReconnect?: (tabId: string, enabled: boolean) => void;
   onSessionAck?: (tabId: string, ack: SessionConnectAckDto) => void;
   onElevationCancelled?: (tabId: string) => void;
+  onModalChange?: (tabId: string, open: boolean) => void;
   onContextMenuTerminal?: (
     e: React.MouseEvent,
     tab: TerminalTabItem,
@@ -66,6 +69,7 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   onOpenSsh,
   onSessionAck,
   onElevationCancelled,
+  onModalChange,
   onContextMenuTerminal,
   onContextMenuBanner,
 }) => {
@@ -74,18 +78,35 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
   const rightClickPaste = useSettingsStore((s) => s.settings.terminalRightClickPaste);
   const lastAlertErrRef = useRef<string | null>(null);
 
-  const { containerRef, terminalRef, searchAddonRef, focus, getContextActions } =
-    useTerminalSession({
-      tab,
-      isActive,
-      launchCols,
-      launchRows,
-      focusToken,
-      suppressAutoFocus,
-      onPresentWindow,
-      onSessionAck,
-      onElevationCancelled,
-    });
+  const {
+    containerRef,
+    terminalRef,
+    searchAddonRef,
+    pendingPaste,
+    confirmPendingPaste,
+    cancelPendingPaste,
+    hoveredUrl,
+    focus,
+    getContextActions,
+  } = useTerminalSession({
+    tab,
+    isActive,
+    launchCols,
+    launchRows,
+    focusToken,
+    suppressAutoFocus,
+    onPresentWindow,
+    onSessionAck,
+    onElevationCancelled,
+  });
+
+  const hasPasteModal = isActive && pendingPaste !== null;
+  useEffect(() => {
+    onModalChange?.(tab.tabId, hasPasteModal);
+    return () => {
+      onModalChange?.(tab.tabId, false);
+    };
+  }, [hasPasteModal, onModalChange, tab.tabId]);
 
   const find = useTerminalFind({
     terminalRef,
@@ -227,13 +248,62 @@ export const TerminalViewport: React.FC<TerminalViewportProps> = ({
           e.stopPropagation();
           onContextMenuTerminal(e, tab, getContextActions());
         }}
-        className="flex-1 w-full h-full p-1.5 overflow-hidden bg-[#090d16]"
+        className="flex-1 w-full h-full p-1.5 overflow-hidden bg-[#090d16] relative"
       >
         <div
           ref={containerRef}
           className="w-full h-full overflow-hidden xterm-no-scrollback bg-[#090d16]"
         />
+
+        {hoveredUrl && (
+          <div className="pointer-events-none absolute bottom-2 left-2.5 z-20 max-w-[75%] rounded-md border border-slate-700/80 bg-slate-950/95 px-2 py-1 text-[11px] text-slate-200 shadow-lg flex items-center gap-1.5">
+            <ExternalLink className="h-3 w-3 shrink-0 text-sky-400" />
+            <span className="shrink-0 font-medium text-sky-300">
+              {t("terminal.ctrl_click_open_url")}
+            </span>
+            <span className="text-slate-600">·</span>
+            <span className="truncate font-mono text-slate-400">{hoveredUrl}</span>
+          </div>
+        )}
       </div>
+
+      <ActionModal
+        isOpen={pendingPaste !== null}
+        onClose={cancelPendingPaste}
+        title={t("terminal.paste_warn_title")}
+        icon={<AlertTriangle className="h-4 w-4" />}
+        iconTone="warning"
+        size="md"
+        confirmLabel={t("terminal.paste_anyway")}
+        confirmVariant="primary"
+        confirmIcon={<Clipboard className="h-3.5 w-3.5" />}
+        cancelAutoFocus
+        onConfirm={confirmPendingPaste}
+      >
+        {pendingPaste && (
+          <div className="space-y-2.5">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {pendingPaste.warnUnsafeChars
+                ? t("terminal.paste_warn_control_desc")
+                : pendingPaste.warnLarge && pendingPaste.warnMultiline
+                  ? t("terminal.paste_warn_both_desc", {
+                      size: fmtSize(pendingPaste.byteLength),
+                      lines: pendingPaste.lineCount,
+                    })
+                  : pendingPaste.warnLarge
+                    ? t("terminal.paste_warn_large_desc", {
+                        size: fmtSize(pendingPaste.byteLength),
+                      })
+                    : t("terminal.paste_warn_multiline_desc", {
+                        lines: pendingPaste.lineCount,
+                      })}
+            </p>
+            <pre className="max-h-36 overflow-auto rounded-md border border-slate-800 bg-slate-950/90 p-2.5 font-mono text-[11px] text-slate-300 whitespace-pre-wrap break-all">
+              {pendingPaste.preview}
+            </pre>
+          </div>
+        )}
+      </ActionModal>
     </div>
   );
 };

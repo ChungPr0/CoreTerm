@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SettingsCategoryId } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { useGlobalShortcuts } from "@/shared/hooks/useGlobalShortcuts";
@@ -10,8 +10,8 @@ import {
   TerminalViewport,
   useSshSessions,
 } from "@/modules/terminal";
-import { TabBar, windowApi } from "@/modules/workspace";
-import { APP_PRELOADERS, AppModals } from "./AppModals";
+import { TabBar, useTabsStore, windowApi } from "@/modules/workspace";
+import { APP_PRELOADERS, AppModals, type CloseTabsPromptState } from "./AppModals";
 import { useAppBootstrap } from "./useAppBootstrap";
 import { useAppMenus } from "./useAppMenus";
 import { useShellActions } from "./useShellActions";
@@ -37,7 +37,11 @@ export const App: React.FC = () => {
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [keysVersion, setKeysVersion] = useState(0);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState<DeletePromptState | null>(null);
+  const [closeTabsPrompt, setCloseTabsPrompt] = useState<CloseTabsPromptState | null>(
+    null
+  );
   const [findSignal, setFindSignal] = useState<{ tabId: string; seq: number } | null>(null);
 
   const focusTerminal = useCallback(() => setFocusToken((n) => n + 1), []);
@@ -65,6 +69,10 @@ export const App: React.FC = () => {
   const handleOpenNewTabFromExternal = useCallback(() => {
     handleOpenNewTabFromExternalRef.current();
   }, []);
+  const requestCloseWindowRef = useRef<() => void>(() => {});
+  const handleRequestCloseWindow = useCallback(() => {
+    requestCloseWindowRef.current();
+  }, []);
 
   const {
     settings,
@@ -81,6 +89,7 @@ export const App: React.FC = () => {
     onOpenDirectory: handleOpenDirectoryFromExternal,
     onOpenFile: handleOpenFileFromExternal,
     onOpenNewTab: handleOpenNewTabFromExternal,
+    onRequestCloseWindow: handleRequestCloseWindow,
   });
 
   const defaultShellProfile = useMemo(() => {
@@ -97,6 +106,7 @@ export const App: React.FC = () => {
     setIsPaletteOpen(false);
     setIsVaultOpen(false);
     setDeletePrompt(null);
+    setCloseTabsPrompt(null);
     closeMenu();
     hosts.setIsHostModalOpen(false);
     hosts.setIsGroupModalOpen(false);
@@ -129,6 +139,45 @@ export const App: React.FC = () => {
     [closeMenu, sessions]
   );
 
+  const requestCloseWindow = useCallback(() => {
+    const count = useTabsStore.getState().tabs.length;
+    if (settings.warnCloseMultiTabs && count > 1) {
+      setIsSidebarOpen(false);
+      setIsPaletteOpen(false);
+      closeMenu();
+      setCloseTabsPrompt({ mode: "window", count });
+      return;
+    }
+    windowApi.windowClose().catch(() => {});
+  }, [closeMenu, settings.warnCloseMultiTabs]);
+  requestCloseWindowRef.current = requestCloseWindow;
+
+  const requestCloseOtherTabs = useCallback(
+    (keepTabId: string) => {
+      const otherCount = useTabsStore
+        .getState()
+        .tabs.filter((item) => item.tabId !== keepTabId).length;
+      if (settings.warnCloseMultiTabs && otherCount > 1) {
+        closeMenu();
+        setCloseTabsPrompt({ mode: "others", keepTabId, count: otherCount });
+        return;
+      }
+      sessions.closeOtherTabs(keepTabId);
+    },
+    [closeMenu, sessions, settings.warnCloseMultiTabs]
+  );
+
+  const confirmCloseTabsPrompt = useCallback(() => {
+    if (!closeTabsPrompt) return;
+    const prompt = closeTabsPrompt;
+    setCloseTabsPrompt(null);
+    if (prompt.mode === "window") {
+      windowApi.windowClose().catch(() => {});
+    } else {
+      sessions.closeOtherTabs(prompt.keepTabId);
+    }
+  }, [closeTabsPrompt, sessions]);
+
   const hasTopLevelModal =
     hosts.isHostModalOpen ||
     isVaultOpen ||
@@ -137,6 +186,7 @@ export const App: React.FC = () => {
     !!sessions.hostKeyPrompt ||
     sessions.portConflicts.length > 0 ||
     !!deletePrompt ||
+    !!closeTabsPrompt ||
     isPaletteOpen;
 
   const hasBlockingModal =
@@ -147,6 +197,7 @@ export const App: React.FC = () => {
     !!sessions.hostKeyPrompt ||
     sessions.portConflicts.length > 0 ||
     !!deletePrompt ||
+    !!closeTabsPrompt ||
     Object.values(sessions.sftpModalByTab).some(Boolean);
 
   const hasModalOpen = hasBlockingModal || isPaletteOpen;
@@ -173,6 +224,62 @@ export const App: React.FC = () => {
     }
   }, [sessions]);
 
+  const duplicateActiveTab = useCallback(() => {
+    if (!sessions.activeTabId) return;
+    const activeTab = sessions.tabs.find((item) => item.tabId === sessions.activeTabId);
+    if (activeTab) {
+      sessions.duplicateTab(activeTab);
+    }
+  }, [sessions]);
+
+  const cycleTab = useCallback(
+    (delta: 1 | -1) => {
+      const list = sessions.tabs;
+      if (list.length <= 1) return;
+      const curIdx = list.findIndex((item) => item.tabId === sessions.activeTabId);
+      const baseIdx = curIdx >= 0 ? curIdx : 0;
+      const nextIdx = (baseIdx + delta + list.length) % list.length;
+      sessions.selectTab(list[nextIdx].tabId);
+    },
+    [sessions]
+  );
+
+  useEffect(() => {
+    let active = true;
+    const syncFullscreen = () => {
+      windowApi
+        .windowIsFullscreen()
+        .then((fs) => {
+          if (active) setIsFullscreen(fs);
+        })
+        .catch(() => {});
+    };
+    syncFullscreen();
+    window.addEventListener("resize", syncFullscreen);
+    return () => {
+      active = false;
+      window.removeEventListener("resize", syncFullscreen);
+    };
+  }, []);
+
+  const activeWindowTitle = useMemo(() => {
+    if (!settings.useActiveTabTitle) return "CoreTerm";
+    const activeTab = sessions.tabs.find((item) => item.tabId === sessions.activeTabId);
+    if (!activeTab) return "CoreTerm";
+    const label =
+      activeTab.tabKind === "settings"
+        ? t("settings.title")
+        : activeTab.tabKind === "sftp"
+          ? `SFTP: ${activeTab.title}`
+          : activeTab.title;
+    return label ? `${label} — CoreTerm` : "CoreTerm";
+  }, [sessions.activeTabId, sessions.tabs, settings.useActiveTabTitle, t]);
+
+  useEffect(() => {
+    document.title = activeWindowTitle;
+    windowApi.windowSetTitle(activeWindowTitle).catch(() => {});
+  }, [activeWindowTitle]);
+
   const toggleActiveSftpSplit = useCallback(() => {
     const activeId = sessions.activeTabId;
     if (!activeId) return;
@@ -194,15 +301,22 @@ export const App: React.FC = () => {
     hasAnyModal: hasModalOpen,
     isSidebarOpen,
     hasContextMenu: !!contextMenu,
+    keybindings: settings.keybindings,
     onTogglePalette: () => setIsPaletteOpen((v) => !v),
     onNewLocalTab: sessions.newLocalTab,
+    onDuplicateActiveTab: duplicateActiveTab,
     onCloseActiveTab: closeActiveTab,
+    onNextTab: () => cycleTab(1),
+    onPrevTab: () => cycleTab(-1),
     onToggleSidebar: toggleSidebar,
     onToggleSftpSplit: toggleActiveSftpSplit,
     onFindInTerminal: () => triggerFindInTab(),
     onOpenSettings: () => openSettings(),
     onToggleFullscreen: () => {
-      windowApi.windowToggleFullscreen().catch(() => {});
+      windowApi
+        .windowToggleFullscreen()
+        .then((fs) => setIsFullscreen(fs))
+        .catch(() => {});
     },
     onCloseContextMenu: closeMenu,
     onDismissSidebar: dismissSidebar,
@@ -237,7 +351,7 @@ export const App: React.FC = () => {
     onOpenSftp: sessions.openSftpTab,
     onDuplicateTab: sessions.duplicateTab,
     onCloseTab: sessions.closeTabById,
-    onCloseOtherTabs: sessions.closeOtherTabs,
+    onCloseOtherTabs: requestCloseOtherTabs,
     onConnectHost: (h) => void sessions.connectHost(h),
     onEditHost: (id) => void hosts.editHost(id),
     onDuplicateHost: (h) => void hosts.duplicateHost(h),
@@ -249,6 +363,7 @@ export const App: React.FC = () => {
     onOpenSettings: () => openSettings(),
     onOpenPalette: () => setIsPaletteOpen(true),
     onDismissSidebar: dismissSidebar,
+    onRequestCloseWindow: requestCloseWindow,
   });
 
   const handleHostSaved = async (saved: HostFullConfigDto) => {
@@ -273,34 +388,40 @@ export const App: React.FC = () => {
         hasNativeBorder ? "" : "border border-slate-800"
       }`}
     >
-      <TabBar
-        tabs={sessions.tabs}
-        activeTabId={sessions.activeTabId}
-        renamingTabId={sessions.renamingTabId}
-        isAppElevated={isAppElevated}
-        isModalOpen={hasModalOpen}
-        isContextMenuOpen={!!contextMenu}
-        shellProfiles={shellProfiles}
-        defaultShellProfile={defaultShellProfile}
-        profiles={hosts.allProfiles}
-        onToggleSidebar={toggleSidebar}
-        onSelectTab={sessions.selectTab}
-        onBlankSpaceClick={dismissSidebar}
-        onCloseTab={sessions.handleCloseTab}
-        onReconnectTab={sessions.reconnectTab}
-        onToggleSftp={sessions.toggleSftpSplit}
-        onReorderTab={sessions.reorderTab}
-        onCommitRenameTab={sessions.renameTab}
-        onCancelRenameTab={sessions.cancelRenamingTab}
-        onNewTab={sessions.newLocalTab}
-        onRescan={() => rescanShells()}
-        onConnectProfile={sessions.connectHost}
-        onCreateNewHost={() => hosts.openNewHost("Default")}
-        onOpenPalette={() => setIsPaletteOpen(true)}
-        onOpenSettings={openSettings}
-        onContextMenuTab={menus.openTabMenu}
-        onContextMenuTabBar={menus.openTabBarMenu}
-      />
+      {(!isFullscreen || settings.showTabsInFullscreen) && (
+        <TabBar
+          tabs={sessions.tabs}
+          activeTabId={sessions.activeTabId}
+          renamingTabId={sessions.renamingTabId}
+          isAppElevated={isAppElevated}
+          showAdminShield={settings.showAdminShield}
+          tabWidthMode={settings.tabWidthMode}
+          keybindings={settings.keybindings}
+          isModalOpen={hasModalOpen}
+          isContextMenuOpen={!!contextMenu}
+          shellProfiles={shellProfiles}
+          defaultShellProfile={defaultShellProfile}
+          profiles={hosts.allProfiles}
+          onToggleSidebar={toggleSidebar}
+          onSelectTab={sessions.selectTab}
+          onBlankSpaceClick={dismissSidebar}
+          onCloseTab={sessions.handleCloseTab}
+          onReconnectTab={sessions.reconnectTab}
+          onToggleSftp={sessions.toggleSftpSplit}
+          onReorderTab={sessions.reorderTab}
+          onCommitRenameTab={sessions.renameTab}
+          onCancelRenameTab={sessions.cancelRenamingTab}
+          onNewTab={sessions.newLocalTab}
+          onRescan={() => rescanShells()}
+          onConnectProfile={sessions.connectHost}
+          onCreateNewHost={() => hosts.openNewHost("Default")}
+          onOpenPalette={() => setIsPaletteOpen(true)}
+          onOpenSettings={openSettings}
+          onCloseWindow={requestCloseWindow}
+          onContextMenuTab={menus.openTabMenu}
+          onContextMenuTabBar={menus.openTabBarMenu}
+        />
+      )}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {sessions.stableTabs.map((tab) => {
@@ -395,6 +516,7 @@ export const App: React.FC = () => {
                 onToggleAutoReconnect={sessions.toggleAutoReconnect}
                 onSessionAck={sessions.handleSessionAck}
                 onElevationCancelled={sessions.handleElevationCancelled}
+                onModalChange={sessions.handleSftpModalChange}
                 onContextMenuTerminal={menus.openTerminalMenu}
                 onContextMenuBanner={menus.openBannerMenu}
               />
@@ -506,6 +628,12 @@ export const App: React.FC = () => {
           onAbortPortConflicts={sessions.abortPortConflicts}
           deletePrompt={deletePrompt}
           onClearDeletePrompt={() => setDeletePrompt(null)}
+          closeTabsPrompt={closeTabsPrompt}
+          onCancelCloseTabsPrompt={() => {
+            setCloseTabsPrompt(null);
+            focusTerminal();
+          }}
+          onConfirmCloseTabsPrompt={confirmCloseTabsPrompt}
         />
       </div>
 

@@ -86,20 +86,6 @@ export const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = (
     t("settings.term_scrollback_desc"),
     "buffer"
   );
-  const showCopyOnSelect = matchesSettingsQuery(
-    query,
-    t("settings.cat_terminal"),
-    t("settings.term_copy_on_select"),
-    t("settings.term_copy_on_select_desc"),
-    "clipboard"
-  );
-  const showRightClickPaste = matchesSettingsQuery(
-    query,
-    t("settings.cat_terminal"),
-    t("settings.term_right_click_paste"),
-    t("settings.term_right_click_paste_desc"),
-    "clipboard"
-  );
   const showWebgl = matchesSettingsQuery(
     query,
     t("settings.cat_terminal"),
@@ -115,30 +101,25 @@ export const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = (
     showCursorStyle ||
     showCursorBlink ||
     showScrollback ||
-    showCopyOnSelect ||
-    showRightClickPaste ||
     showWebgl;
 
   if (!anyVisible) return null;
 
+  const cursorBlinkClass = settings.terminalCursorBlink
+    ? "animate-cursor-blink"
+    : "";
   const cursorPreview =
     settings.terminalCursorStyle === "bar" ? (
       <span
-        className={`inline-block w-[2px] h-[1.15em] align-middle bg-[#38bdf8] ${
-          settings.terminalCursorBlink ? "animate-pulse" : ""
-        }`}
+        className={`inline-block w-[2px] h-[1.15em] align-middle bg-[#38bdf8] ${cursorBlinkClass}`}
       />
     ) : settings.terminalCursorStyle === "underline" ? (
       <span
-        className={`inline-block w-[0.6em] h-[2px] align-baseline bg-[#38bdf8] ${
-          settings.terminalCursorBlink ? "animate-pulse" : ""
-        }`}
+        className={`inline-block w-[0.6em] h-[2px] align-baseline bg-[#38bdf8] ${cursorBlinkClass}`}
       />
     ) : (
       <span
-        className={`inline-block w-[0.6em] h-[1.15em] align-middle bg-[#38bdf8] ${
-          settings.terminalCursorBlink ? "animate-pulse" : ""
-        }`}
+        className={`inline-block w-[0.6em] h-[1.15em] align-middle bg-[#38bdf8] ${cursorBlinkClass}`}
       />
     );
 
@@ -279,30 +260,6 @@ export const TerminalSettingsSection: React.FC<TerminalSettingsSectionProps> = (
             step={1000}
             clamp={clampTermScrollback}
             onCommit={(next) => onPatch({ terminalScrollback: next })}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          visible={showCopyOnSelect}
-          title={t("settings.term_copy_on_select")}
-          description={t("settings.term_copy_on_select_desc")}
-        >
-          <Switch
-            checked={settings.terminalCopyOnSelect}
-            onChange={(checked) => onPatch({ terminalCopyOnSelect: checked })}
-            aria-label={t("settings.term_copy_on_select")}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          visible={showRightClickPaste}
-          title={t("settings.term_right_click_paste")}
-          description={t("settings.term_right_click_paste_desc")}
-        >
-          <Switch
-            checked={settings.terminalRightClickPaste}
-            onChange={(checked) => onPatch({ terminalRightClickPaste: checked })}
-            aria-label={t("settings.term_right_click_paste")}
           />
         </SettingsRow>
 

@@ -201,6 +201,11 @@ export const SshSettingsSection: React.FC<SshSettingsSectionProps> = ({
         <SettingsRow
           visible={showHostChecking}
           title={t("settings.ssh_default_host_checking")}
+          description={
+            settings.sshDefaultStrictHostKey === "NO"
+              ? t("settings.ssh_default_host_checking_no_warn")
+              : undefined
+          }
         >
           <Select
             value={settings.sshDefaultStrictHostKey}
@@ -233,6 +238,7 @@ export const SshSettingsSection: React.FC<SshSettingsSectionProps> = ({
         <SettingsRow
           visible={showForwardAgent}
           title={t("settings.ssh_default_forward_agent")}
+          description={t("settings.ssh_default_forward_agent_desc")}
         >
           <Switch
             checked={settings.sshDefaultForwardAgent}

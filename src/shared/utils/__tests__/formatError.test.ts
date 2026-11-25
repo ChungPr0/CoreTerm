@@ -217,6 +217,11 @@ describe("formatError utils", () => {
         "Cannot register startup for debug builds",
       ],
       [
+        "Cannot register network or UNC executable to Windows startup.",
+        "đường dẫn mạng",
+        "network path",
+      ],
+      [
         "The system cannot find the file specified. (os error 2)",
         "Tệp tin hoặc thư mục không tồn tại",
         "File or directory not found",

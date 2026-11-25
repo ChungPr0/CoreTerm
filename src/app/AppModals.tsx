@@ -1,12 +1,17 @@
 import React, { Suspense, lazy, useState } from "react";
+import { AlertTriangle, X } from "lucide-react";
 import type { ShellProfile } from "@/shared/types/ipc";
 import type { DeletePromptState, HostFullConfigDto } from "@/modules/hosts";
 import type { HostProfileSummaryDto, PortProbeResultDto } from "@/modules/hosts";
 import type { SftpAuthPromptEventDto, SftpHostKeyPromptEventDto } from "@/modules/sftp";
 import type { SessionAuthPromptEventDto, SessionHostKeyPromptEventDto } from "@/modules/terminal";
 import { useI18n } from "@/shared/i18n";
-import { useAlert } from "@/shared/ui";
+import { ActionModal, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
+
+export type CloseTabsPromptState =
+  | { mode: "window"; count: number }
+  | { mode: "others"; keepTabId: string; count: number };
 
 const loadHostModal = () => import("@/modules/hosts/components/HostModal");
 const loadKeyVaultModal = () => import("@/modules/keys/components/KeyVaultModal");
@@ -90,6 +95,10 @@ interface AppModalsProps {
 
   deletePrompt: DeletePromptState | null;
   onClearDeletePrompt: () => void;
+
+  closeTabsPrompt: CloseTabsPromptState | null;
+  onCancelCloseTabsPrompt: () => void;
+  onConfirmCloseTabsPrompt: () => void;
 }
 
 export const AppModals: React.FC<AppModalsProps> = ({
@@ -132,6 +141,9 @@ export const AppModals: React.FC<AppModalsProps> = ({
   onAbortPortConflicts,
   deletePrompt,
   onClearDeletePrompt,
+  closeTabsPrompt,
+  onCancelCloseTabsPrompt,
+  onConfirmCloseTabsPrompt,
 }) => {
   const { t } = useI18n();
   const alert = useAlert();
@@ -233,6 +245,32 @@ export const AppModals: React.FC<AppModalsProps> = ({
             onCreateGroup={onCreateGroup}
           />
         )}
+
+        <ActionModal
+          isOpen={closeTabsPrompt !== null}
+          onClose={onCancelCloseTabsPrompt}
+          title={
+            closeTabsPrompt?.mode === "window"
+              ? t("window.close_multi_tabs_title")
+              : t("window.close_other_tabs_title")
+          }
+          icon={<AlertTriangle className="h-4 w-4" />}
+          iconTone="warning"
+          size="sm"
+          confirmLabel={t("window.close_all_btn")}
+          confirmVariant="danger"
+          confirmIcon={<X className="h-3.5 w-3.5" />}
+          confirmAutoFocus
+          onConfirm={onConfirmCloseTabsPrompt}
+        >
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {closeTabsPrompt?.mode === "window"
+              ? t("window.close_multi_tabs_desc", { count: closeTabsPrompt.count })
+              : t("window.close_other_tabs_desc", {
+                  count: closeTabsPrompt?.count ?? 0,
+                })}
+          </p>
+        </ActionModal>
     </Suspense>
   );
 };

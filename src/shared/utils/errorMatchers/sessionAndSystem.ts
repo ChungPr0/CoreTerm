@@ -96,6 +96,10 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     key: "errors.startup_debug_blocked",
   },
   {
+    pattern: /^Cannot register network or UNC executable to Windows startup\.?$/i,
+    key: "errors.startup_network_path_blocked",
+  },
+  {
     pattern: /^Windows startup registration is only supported on Windows$/i,
     key: "errors.startup_windows_only",
   },

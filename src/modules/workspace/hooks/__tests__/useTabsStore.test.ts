@@ -24,6 +24,7 @@ describe("useTabsStore", () => {
     useTabsStore.setState({
       tabs: [makeTab({ tabId: "t1" }), makeTab({ tabId: "t2" })],
       activeTabId: "t1",
+      isAppElevated: false,
       openedSftpTabs: {},
       sftpModalByTab: {},
     });
@@ -271,6 +272,37 @@ describe("useTabsStore", () => {
     // Debounce duplicate call with same directory does not create extra tab
     useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\new-proj");
     expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it("uses process-level isAppElevated rather than per-tab isAdmin when opening directory tabs", () => {
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          tabId: "elevated-tab",
+          hostId: "local",
+          title: "Admin PowerShell",
+          isAdmin: true,
+        }),
+      ],
+      activeTabId: "elevated-tab",
+      isAppElevated: false,
+      openedSftpTabs: {},
+      sftpModalByTab: {},
+    });
+
+    useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\unelevated-dir");
+    const unelevatedCreated = useTabsStore.getState().tabs[1];
+    expect(unelevatedCreated.initialCwd).toBe("D:\\Workspace\\unelevated-dir");
+    expect(unelevatedCreated.isAdmin).toBe(false);
+
+    useTabsStore.getState().markLocalTabsAdmin(true);
+    expect(useTabsStore.getState().isAppElevated).toBe(true);
+    expect(useTabsStore.getState().tabs[1].isAdmin).toBe(true);
+
+    useTabsStore.getState().openDirectoryInTab("D:\\Workspace\\elevated-dir");
+    const elevatedCreated = useTabsStore.getState().tabs[2];
+    expect(elevatedCreated.initialCwd).toBe("D:\\Workspace\\elevated-dir");
+    expect(elevatedCreated.isAdmin).toBe(true);
   });
 
   it("handles edge cases when closing or operating on non-existent tab IDs", () => {
@@ -567,5 +599,42 @@ describe("useTabsStore", () => {
     expect(useTabsStore.getState().renamingTabId).toBeNull();
     useTabsStore.getState().toggleSftpSplit(firstId);
     expect(useTabsStore.getState().openedSftpTabs[firstId]).toBeUndefined();
+  });
+
+  it("inserts newly created tabs immediately after active tab when newTabPosition is 'after_current'", async () => {
+    const { useSettingsStore } = await import("@/modules/settings/useSettingsStore");
+    const prevPos = useSettingsStore.getState().settings.newTabPosition;
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, newTabPosition: "after_current" },
+      }));
+
+      useTabsStore.setState({
+        tabs: [
+          makeTab({ tabId: "a", title: "Tab A" }),
+          makeTab({ tabId: "b", title: "Tab B" }),
+          makeTab({ tabId: "c", title: "Tab C" }),
+        ],
+        activeTabId: "a",
+        renamingTabId: null,
+        openedSftpTabs: {},
+        sftpModalByTab: {},
+        editorCloseSeqByTab: {},
+        sftpRefreshSeqByHost: {},
+      });
+
+      useTabsStore.getState().addTab(makeTab({ tabId: "inserted", title: "Inserted" }));
+      expect(useTabsStore.getState().tabs.map((t) => t.tabId)).toEqual([
+        "a",
+        "inserted",
+        "b",
+        "c",
+      ]);
+      expect(useTabsStore.getState().activeTabId).toBe("inserted");
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, newTabPosition: prevPos },
+      }));
+    }
   });
 });

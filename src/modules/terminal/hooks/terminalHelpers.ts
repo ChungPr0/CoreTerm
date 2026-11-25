@@ -11,6 +11,12 @@ import {
   THEME_SELECTION_BG,
 } from "@/shared/defaults";
 import { copyText, readText } from "@/shared/utils/clipboard";
+import {
+  eventToShortcutChord,
+  getShortcutChord,
+  SHORTCUT_DEFINITIONS,
+  type KeybindingOverrides,
+} from "@/shared/utils/shortcuts";
 
 export const XTERM_THEME = {
   background: "#090d16",
@@ -216,42 +222,109 @@ export async function loadWebgl(
   }
 }
 
-/** Handles terminal-scoped Ctrl+Shift shortcuts (C/V/L/A) without leaking to PTY or WebView2. */
+export interface TerminalShortcutCallbacks {
+  getKeybindings?: () => KeybindingOverrides | undefined;
+  onPasteShortcut?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onResetZoom?: () => void;
+}
+
+/** Handles terminal-scoped shortcuts and zoom controls without leaking to PTY or WebView2. */
 export function bindTerminalShortcuts(
   term: Terminal,
   isCancelled: () => boolean,
-  isBlocked?: () => boolean
+  isBlocked?: () => boolean,
+  callbacks?: TerminalShortcutCallbacks
 ): void {
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
-    const key = e.key.toLowerCase();
-    if (e.key === "F11" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest?.("[data-shortcut-recorder='true']")) {
+      return true;
+    }
+
+    const chord = eventToShortcutChord(e);
+    if (!chord) return true;
+
+    const kb = callbacks?.getKeybindings?.();
+    if (
+      chord === "Ctrl+F" ||
+      SHORTCUT_DEFINITIONS.some(
+        (def) => def.scope === "global" && getShortcutChord(def.id, kb) === chord
+      )
+    ) {
       return false;
     }
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && key === "f") {
-      return false;
-    }
-    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
-      if (key === "c" || key === "v" || key === "l" || key === "a") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!e.repeat && !isBlocked?.()) {
-          if (key === "c") {
-            const selected = term.getSelection();
-            if (selected) void copyText(selected);
-          } else if (key === "v") {
+
+    const copyChord = getShortcutChord("termCopy", kb);
+    const pasteChord = getShortcutChord("termPaste", kb);
+    const selectAllChord = getShortcutChord("termSelectAll", kb);
+    const clearChord = getShortcutChord("termClear", kb);
+
+    if (
+      chord === copyChord ||
+      chord === pasteChord ||
+      chord === selectAllChord ||
+      chord === clearChord
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat && !isBlocked?.()) {
+        if (chord === copyChord) {
+          const selected = term.getSelection();
+          if (selected) void copyText(selected);
+        } else if (chord === pasteChord) {
+          if (callbacks?.onPasteShortcut) {
+            callbacks.onPasteShortcut();
+          } else {
             void readText().then((txt) => {
               if (!isCancelled() && txt) term.paste(txt);
             });
-          } else if (key === "a") {
-            term.selectAll();
-          } else {
-            term.clear();
           }
+        } else if (chord === selectAllChord) {
+          term.selectAll();
+        } else {
+          term.clear();
         }
-        return false;
       }
+      return false;
     }
+
+    const zoomInChord = getShortcutChord("termZoomIn", kb);
+    const zoomOutChord = getShortcutChord("termZoomOut", kb);
+    const zoomResetChord = getShortcutChord("termZoomReset", kb);
+
+    if (
+      callbacks?.onZoomIn &&
+      (chord === zoomInChord || (zoomInChord === "Ctrl+=" && chord === "Ctrl+Shift+="))
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat && !isBlocked?.()) {
+        callbacks.onZoomIn();
+      }
+      return false;
+    }
+
+    if (callbacks?.onZoomOut && chord === zoomOutChord) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat && !isBlocked?.()) {
+        callbacks.onZoomOut();
+      }
+      return false;
+    }
+
+    if (callbacks?.onResetZoom && chord === zoomResetChord) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat && !isBlocked?.()) {
+        callbacks.onResetZoom();
+      }
+      return false;
+    }
+
     return true;
   });
 }

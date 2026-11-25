@@ -39,11 +39,14 @@ use crate::ipc::commands::{
     sftp_list_transfers, sftp_pause_transfer, sftp_read_file, sftp_rename, sftp_resolve_conflict,
     sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, sftp_write_file,
     startup_get_status, startup_set_enabled, startup_sync_prefs, window_apply_ime_mode,
-    window_close, window_get_position, window_get_size, window_is_maximized, window_minimize,
-    window_present, window_set_always_on_top, window_set_launch_size, window_set_position,
-    window_set_size, window_sys_command, window_toggle_fullscreen, window_toggle_maximize, AppState,
+    window_close, window_get_position, window_get_size, window_is_fullscreen, window_is_maximized,
+    window_minimize, window_open_url, window_present, window_set_always_on_top,
+    window_set_launch_size, window_set_position, window_set_size, window_set_title,
+    window_sys_command, window_toggle_fullscreen, window_toggle_maximize, AppState,
 };
-use crate::ipc::events::{EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE, EVENT_OPEN_NEW_TAB};
+use crate::ipc::events::{
+    EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE, EVENT_OPEN_NEW_TAB, EVENT_WINDOW_CLOSE_REQUESTED,
+};
 use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
@@ -67,6 +70,13 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
     if attach_instance {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let base_dir = std::path::Path::new(&cwd);
+            let targets: Vec<LaunchTarget> = argv
+                .into_iter()
+                .skip(1)
+                .filter_map(|arg| parse_clean_launch_target_with_base(&arg, Some(base_dir)))
+                .collect();
+
             let live_prefs = app
                 .path()
                 .app_data_dir()
@@ -77,11 +87,18 @@ pub fn run() {
                 if let Ok(exe) = std::env::current_exe() {
                     let mut cmd = std::process::Command::new(exe);
                     cmd.arg("--new-window");
-                    for arg in argv.into_iter().skip(1) {
-                        cmd.arg(arg);
+                    for target in &targets {
+                        match target {
+                            LaunchTarget::Directory(dir) => {
+                                cmd.arg(dir);
+                            }
+                            LaunchTarget::File(file) => {
+                                cmd.arg(file);
+                            }
+                        }
                     }
-                    if !cwd.is_empty() {
-                        cmd.current_dir(&cwd);
+                    if !cwd.is_empty() && base_dir.is_dir() {
+                        cmd.current_dir(base_dir);
                     }
                     let _ = cmd.spawn();
                 }
@@ -93,12 +110,6 @@ pub fn run() {
                 let _ = main_win.unminimize();
                 let _ = main_win.set_focus();
             }
-            let base_dir = std::path::Path::new(&cwd);
-            let targets: Vec<LaunchTarget> = argv
-                .into_iter()
-                .skip(1)
-                .filter_map(|arg| parse_clean_launch_target_with_base(&arg, Some(base_dir)))
-                .collect();
             if targets.is_empty() {
                 let _ = app.emit(EVENT_OPEN_NEW_TAB, ());
                 return;
@@ -146,6 +157,17 @@ pub fn run() {
 
             if let Some(main_win) = app.get_webview_window("main") {
                 crate::infra::os::configure_main_window(&main_win);
+                let close_win = main_win.clone();
+                main_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if !crate::infra::os::is_window_close_allowed()
+                            && close_win.is_visible().unwrap_or(false)
+                        {
+                            api.prevent_close();
+                            let _ = close_win.emit(EVENT_WINDOW_CLOSE_REQUESTED, ());
+                        }
+                    }
+                });
                 let fallback_win = main_win.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(
@@ -265,6 +287,8 @@ pub fn run() {
             window_present,
             window_set_always_on_top,
             window_toggle_fullscreen,
+            window_is_fullscreen,
+            window_set_title,
             window_apply_ime_mode,
             window_is_maximized,
             window_get_position,
@@ -275,6 +299,7 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_close,
+            window_open_url,
         ])
         .build(tauri::generate_context!())
         .expect("Error while building Tauri application");

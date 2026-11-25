@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import type { TerminalTabItem } from "@/shared/types/ipc";
 import type { SessionConnectAckDto } from "../types";
 import { sessionApi } from "../api/sessionApi";
-import { DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
+import { clampTermFontSize, DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
 import { useSettingsStore } from "@/modules/settings/useSettingsStore";
+import { windowApi } from "@/modules/workspace/api/windowApi";
 import {
   bindScrollbackSync,
   bindTerminalShortcuts,
@@ -23,6 +24,12 @@ import {
   TERM_MIN_ROWS,
   waitNextFrame,
 } from "./terminalHelpers";
+import {
+  createOsc8LinkHandler,
+  createTerminalUrlLinkProvider,
+  evaluateTerminalPaste,
+  type TerminalPastePlan,
+} from "./terminalInteraction";
 
 export interface TerminalContextActions {
   hasSelection: boolean;
@@ -95,11 +102,35 @@ export function useTerminalSession({
   const terminalCursorBlink = useSettingsStore((s) => s.settings.terminalCursorBlink);
   const terminalScrollback = useSettingsStore((s) => s.settings.terminalScrollback);
   const terminalCopyOnSelect = useSettingsStore((s) => s.settings.terminalCopyOnSelect);
+  const terminalTrimPasteWhitespace = useSettingsStore(
+    (s) => s.settings.terminalTrimPasteWhitespace
+  );
+  const terminalCtrlScrollZoom = useSettingsStore(
+    (s) => s.settings.terminalCtrlScrollZoom
+  );
+  const terminalDetectUrls = useSettingsStore((s) => s.settings.terminalDetectUrls);
+  const warnPasteLarge = useSettingsStore((s) => s.settings.warnPasteLarge);
+  const warnPasteMultiline = useSettingsStore((s) => s.settings.warnPasteMultiline);
   const terminalWebglRenderer = useSettingsStore((s) => s.settings.terminalWebglRenderer);
   const defaultImeMode = useSettingsStore((s) => s.settings.defaultImeMode);
 
+  const [zoomFontSize, setZoomFontSize] = useState(terminalFontSize);
+  const [pendingPaste, setPendingPaste] = useState<TerminalPastePlan | null>(null);
+  const [hoveredUrl, setHoveredUrl] = useState<string | null>(null);
+
+  const prevDefaultFontRef = useRef(terminalFontSize);
+  useEffect(() => {
+    if (prevDefaultFontRef.current !== terminalFontSize) {
+      prevDefaultFontRef.current = terminalFontSize;
+      setZoomFontSize(terminalFontSize);
+    }
+  }, [terminalFontSize]);
+
+  const defaultFontSizeRef = useRef(terminalFontSize);
+  defaultFontSizeRef.current = terminalFontSize;
+
   const appearanceRef = useRef({
-    fontSize: terminalFontSize,
+    fontSize: zoomFontSize,
     fontFamily: terminalFontFamily,
     lineHeight: terminalLineHeight,
     cursorStyle: terminalCursorStyle,
@@ -107,7 +138,7 @@ export function useTerminalSession({
     scrollback: terminalScrollback,
   });
   appearanceRef.current = {
-    fontSize: terminalFontSize,
+    fontSize: zoomFontSize,
     fontFamily: terminalFontFamily,
     lineHeight: terminalLineHeight,
     cursorStyle: terminalCursorStyle,
@@ -116,8 +147,59 @@ export function useTerminalSession({
   };
   const copyOnSelectRef = useRef(terminalCopyOnSelect);
   copyOnSelectRef.current = terminalCopyOnSelect;
+  const ctrlScrollZoomRef = useRef(terminalCtrlScrollZoom);
+  ctrlScrollZoomRef.current = terminalCtrlScrollZoom;
+  const detectUrlsRef = useRef(terminalDetectUrls);
+  detectUrlsRef.current = terminalDetectUrls;
+  const pasteOptsRef = useRef({
+    trimWhitespace: terminalTrimPasteWhitespace,
+    warnLarge: warnPasteLarge,
+    warnMultiline: warnPasteMultiline,
+  });
+  pasteOptsRef.current = {
+    trimWhitespace: terminalTrimPasteWhitespace,
+    warnLarge: warnPasteLarge,
+    warnMultiline: warnPasteMultiline,
+  };
   const webglEnabledRef = useRef(terminalWebglRenderer);
   webglEnabledRef.current = terminalWebglRenderer;
+
+  const requestPasteText = useCallback((rawText: string) => {
+    const term = terminalRef.current;
+    if (!term || !rawText) return;
+    const plan = evaluateTerminalPaste(rawText, {
+      ...pasteOptsRef.current,
+      bracketedPasteActive: Boolean(term.modes?.bracketedPasteMode),
+    });
+    if (!plan.text) return;
+    if (plan.needsConfirmation) {
+      setPendingPaste(plan);
+      return;
+    }
+    term.paste(plan.text);
+    term.focus();
+  }, []);
+
+  const requestPasteTextRef = useRef(requestPasteText);
+  requestPasteTextRef.current = requestPasteText;
+
+  const confirmPendingPaste = useCallback(() => {
+    setPendingPaste((current) => {
+      const term = terminalRef.current;
+      if (current && term) {
+        term.paste(current.text);
+        window.requestAnimationFrame(() => term.focus());
+      }
+      return null;
+    });
+  }, []);
+
+  const cancelPendingPaste = useCallback(() => {
+    setPendingPaste(null);
+    window.requestAnimationFrame(() => {
+      terminalRef.current?.focus();
+    });
+  }, []);
 
   isActiveRef.current = isActive;
   suppressAutoFocusRef.current = suppressAutoFocus;
@@ -188,11 +270,59 @@ export function useTerminalSession({
     let cancelled = false;
     const isCancelled = () => cancelled || terminalRef.current !== term;
     const disposeScrollback = bindScrollbackSync(term, container);
+    term.options.linkHandler = createOsc8LinkHandler({
+      enabled: () => detectUrlsRef.current,
+      onOpenUrl: (url) => {
+        windowApi.windowOpenUrl(url).catch(() => {});
+      },
+      onHoverChange: (url) => {
+        if (!isCancelled()) setHoveredUrl(url);
+      },
+    });
     bindTerminalShortcuts(
       term,
       () => cancelled,
-      () => suppressAutoFocusRef.current
+      () => suppressAutoFocusRef.current,
+      {
+        getKeybindings: () => useSettingsStore.getState().settings.keybindings,
+        onPasteShortcut: () => {
+          void readText().then((txt) => {
+            if (!isCancelled() && txt) requestPasteTextRef.current(txt);
+          });
+        },
+        onZoomIn: () => {
+          setZoomFontSize((prev) => clampTermFontSize(prev + 1));
+        },
+        onZoomOut: () => {
+          setZoomFontSize((prev) => clampTermFontSize(prev - 1));
+        },
+        onResetZoom: () => {
+          setZoomFontSize(defaultFontSizeRef.current);
+        },
+      }
     );
+
+    const onWheel = (e: WheelEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (ctrlScrollZoomRef.current && !e.shiftKey && e.deltaY !== 0) {
+          setZoomFontSize((prev) => clampTermFontSize(prev + (e.deltaY < 0 ? 1 : -1)));
+        }
+      }
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+
+    const onNativePaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text/plain");
+      if (text === undefined) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!suppressAutoFocusRef.current && text) {
+        requestPasteTextRef.current(text);
+      }
+    };
+    container.addEventListener("paste", onNativePaste, true);
 
     const onSelectionDisposable = term.onSelectionChange(() => {
       if (!copyOnSelectRef.current) return;
@@ -308,6 +438,10 @@ export function useTerminalSession({
       connectedRef.current = false;
       readyRef.current = false;
       disposeScrollback();
+      container.removeEventListener("wheel", onWheel);
+      container.removeEventListener("paste", onNativePaste, true);
+      setHoveredUrl(null);
+      setPendingPaste(null);
       clearTimeout(connectTimer);
       if (fitRafId !== null) cancelAnimationFrame(fitRafId);
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -328,7 +462,7 @@ export function useTerminalSession({
   useEffect(() => {
     const term = terminalRef.current;
     if (!term) return;
-    term.options.fontSize = terminalFontSize;
+    term.options.fontSize = zoomFontSize;
     term.options.fontFamily = terminalFontFamily;
     term.options.lineHeight = terminalLineHeight;
     term.options.cursorStyle = terminalCursorStyle;
@@ -336,7 +470,7 @@ export function useTerminalSession({
     term.options.scrollback = terminalScrollback;
     fitNow(true);
   }, [
-    terminalFontSize,
+    zoomFontSize,
     terminalFontFamily,
     terminalLineHeight,
     terminalCursorStyle,
@@ -344,6 +478,30 @@ export function useTerminalSession({
     terminalScrollback,
     fitNow,
   ]);
+
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term || !terminalDetectUrls) {
+      setHoveredUrl(null);
+      return;
+    }
+    let disposed = false;
+    const disposable = term.registerLinkProvider(
+      createTerminalUrlLinkProvider(term, {
+        onOpenUrl: (url) => {
+          windowApi.windowOpenUrl(url).catch(() => {});
+        },
+        onHoverChange: (url) => {
+          if (!disposed) setHoveredUrl(url);
+        },
+      })
+    );
+    return () => {
+      disposed = true;
+      setHoveredUrl(null);
+      disposable.dispose();
+    };
+  }, [terminalDetectUrls, tab.tabId, tab.hostId]);
 
   useEffect(() => {
     const term = terminalRef.current;
@@ -470,8 +628,8 @@ export function useTerminalSession({
       },
       pasteClipboard: async () => {
         const text = await readText();
-        if (text && term) term.paste(text);
-        term?.focus();
+        if (text) requestPasteText(text);
+        else term?.focus();
       },
       selectAll: () => {
         term?.selectAll();
@@ -491,6 +649,10 @@ export function useTerminalSession({
     containerRef,
     terminalRef,
     searchAddonRef,
+    pendingPaste,
+    confirmPendingPaste,
+    cancelPendingPaste,
+    hoveredUrl,
     focus: () => terminalRef.current?.focus(),
     getContextActions,
   };

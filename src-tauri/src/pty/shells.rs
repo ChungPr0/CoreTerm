@@ -52,6 +52,9 @@ fn find_system_first_executable(exe_name: &str, system_paths: &[PathBuf]) -> Opt
             return Some(candidate.to_string_lossy().into_owned());
         }
     }
+    if crate::infra::os::is_process_elevated() {
+        return None;
+    }
     if let Some(p) = find_in_path(exe_name) {
         return Some(p.to_string_lossy().into_owned());
     }
@@ -79,23 +82,30 @@ fn git_bash_from_git_exe(git_exe: &Path) -> Option<PathBuf> {
 }
 
 fn find_git_bash() -> Option<String> {
-    let candidates = [
+    let elevated = crate::infra::os::is_process_elevated();
+    let mut candidates = vec![
         env_path("ProgramFiles", r"Git\bin\bash.exe"),
         env_path("ProgramFiles", r"Git\usr\bin\bash.exe"),
         env_path("ProgramFiles(x86)", r"Git\bin\bash.exe"),
         env_path("ProgramFiles(x86)", r"Git\usr\bin\bash.exe"),
-        env_path("LOCALAPPDATA", r"Programs\Git\bin\bash.exe"),
-        env_path("LOCALAPPDATA", r"Programs\Git\usr\bin\bash.exe"),
-        env_path("USERPROFILE", r"scoop\apps\git\current\bin\bash.exe"),
     ];
+    if !elevated {
+        candidates.extend([
+            env_path("LOCALAPPDATA", r"Programs\Git\bin\bash.exe"),
+            env_path("LOCALAPPDATA", r"Programs\Git\usr\bin\bash.exe"),
+            env_path("USERPROFILE", r"scoop\apps\git\current\bin\bash.exe"),
+        ]);
+    }
     for candidate in candidates.into_iter().flatten() {
         if is_usable_file(&candidate) {
             return Some(candidate.to_string_lossy().into_owned());
         }
     }
-    if let Some(git_exe) = find_in_path("git.exe") {
-        if let Some(bash) = git_bash_from_git_exe(&git_exe) {
-            return Some(bash.to_string_lossy().into_owned());
+    if !elevated {
+        if let Some(git_exe) = find_in_path("git.exe") {
+            if let Some(bash) = git_bash_from_git_exe(&git_exe) {
+                return Some(bash.to_string_lossy().into_owned());
+            }
         }
     }
     None
@@ -103,10 +113,14 @@ fn find_git_bash() -> Option<String> {
 
 #[cfg(windows)]
 fn ps_profile() -> Option<ShellProfile> {
-    let fallbacks: Vec<PathBuf> =
-        env_path("SystemRoot", r"System32\WindowsPowerShell\v1.0\powershell.exe")
-            .into_iter()
-            .collect();
+    let mut fallbacks: Vec<PathBuf> = Vec::new();
+    if let Some(sys32) = crate::infra::os::system32_dir() {
+        fallbacks.push(sys32.join(r"WindowsPowerShell\v1.0\powershell.exe"));
+    }
+    fallbacks.extend(env_path(
+        "SystemRoot",
+        r"System32\WindowsPowerShell\v1.0\powershell.exe",
+    ));
     find_system_first_executable("powershell.exe", &fallbacks).map(|exe| ShellProfile {
         id: "powershell".to_string(),
         kind: "powershell".to_string(),
@@ -118,17 +132,20 @@ fn ps_profile() -> Option<ShellProfile> {
 
 #[cfg(windows)]
 fn pwsh_profile() -> Option<ShellProfile> {
-    let fallbacks: Vec<PathBuf> = [
+    let elevated = crate::infra::os::is_process_elevated();
+    let mut raw_candidates = vec![
         env_path("ProgramFiles", r"PowerShell\7\pwsh.exe"),
         env_path("ProgramFiles", r"PowerShell\7-preview\pwsh.exe"),
         env_path("ProgramFiles(x86)", r"PowerShell\7\pwsh.exe"),
-        env_path("LOCALAPPDATA", r"Microsoft\PowerShell\pwsh.exe"),
-        env_path("USERPROFILE", r".dotnet\tools\pwsh.exe"),
-        env_path("USERPROFILE", r"scoop\apps\pwsh\current\pwsh.exe"),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    ];
+    if !elevated {
+        raw_candidates.extend([
+            env_path("LOCALAPPDATA", r"Microsoft\PowerShell\pwsh.exe"),
+            env_path("USERPROFILE", r".dotnet\tools\pwsh.exe"),
+            env_path("USERPROFILE", r"scoop\apps\pwsh\current\pwsh.exe"),
+        ]);
+    }
+    let fallbacks: Vec<PathBuf> = raw_candidates.into_iter().flatten().collect();
     find_system_first_executable("pwsh.exe", &fallbacks).map(|exe| ShellProfile {
         id: "pwsh".to_string(),
         kind: "pwsh".to_string(),
@@ -141,16 +158,21 @@ fn pwsh_profile() -> Option<ShellProfile> {
 #[cfg(windows)]
 fn cmd_profile() -> Option<ShellProfile> {
     let mut fallbacks = Vec::new();
+    if let Some(sys32) = crate::infra::os::system32_dir() {
+        fallbacks.push(sys32.join("cmd.exe"));
+    }
     if let Some(sys_cmd) = env_path("SystemRoot", r"System32\cmd.exe") {
         fallbacks.push(sys_cmd);
     }
-    if let Some(comspec) = std::env::var_os("ComSpec").map(PathBuf::from) {
-        if comspec
-            .file_name()
-            .and_then(|s| s.to_str())
-            .is_some_and(|n| n.eq_ignore_ascii_case("cmd.exe"))
-        {
-            fallbacks.push(comspec);
+    if !crate::infra::os::is_process_elevated() {
+        if let Some(comspec) = std::env::var_os("ComSpec").map(PathBuf::from) {
+            if comspec
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|n| n.eq_ignore_ascii_case("cmd.exe"))
+            {
+                fallbacks.push(comspec);
+            }
         }
     }
     find_system_first_executable("cmd.exe", &fallbacks).map(|exe| ShellProfile {

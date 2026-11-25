@@ -167,7 +167,7 @@ impl PtySessionManager {
         let is_admin = is_local && (app_elevated || req.as_admin.unwrap_or(false));
         self.tab_admin_map.insert(req.tab_id.clone(), is_admin);
 
-        let local_profile = if is_local {
+        let mut local_profile = if is_local {
             let profile = match req.shell_profile.clone() {
                 Some(p) => p,
                 None => match self.fallback_shell() {
@@ -207,27 +207,28 @@ impl PtySessionManager {
             None
         };
 
-        if is_admin && !app_elevated {
+        if is_admin {
             let mut profile = local_profile.unwrap_or_else(default_shell_profile);
             #[cfg(windows)]
             {
-                let resolved_exe = match crate::infra::os::elevated_pty::resolve_elevated_shell_executable(
-                    &profile.executable,
-                ) {
-                    Ok(path) => path,
-                    Err(msg) => {
-                        let err = CoreError::Validation(msg);
-                        emit_status(
-                            app,
-                            &req.tab_id,
-                            &req.host_id,
-                            "ERROR",
-                            vec![],
-                            Some(err.to_string()),
-                        );
-                        return Err(err);
-                    }
-                };
+                let resolved_exe =
+                    match crate::infra::os::elevated_pty::resolve_elevated_shell_executable(
+                        &profile.executable,
+                    ) {
+                        Ok(path) => path,
+                        Err(msg) => {
+                            let err = CoreError::Validation(msg);
+                            emit_status(
+                                app,
+                                &req.tab_id,
+                                &req.host_id,
+                                "ERROR",
+                                vec![],
+                                Some(err.to_string()),
+                            );
+                            return Err(err);
+                        }
+                    };
                 if let Err(msg) = crate::infra::os::elevated_pty::validate_elevated_shell(
                     &resolved_exe,
                     &profile.args,
@@ -245,7 +246,12 @@ impl PtySessionManager {
                 }
                 profile.executable = resolved_exe;
             }
-            return self.connect_elevated_local(app, req, &profile, on_output);
+            self.tab_shell_map
+                .insert(req.tab_id.clone(), profile.clone());
+            if !app_elevated {
+                return self.connect_elevated_local(app, req, &profile, on_output);
+            }
+            local_profile = Some(profile);
         }
 
         if let Some(ref profile) = local_profile {

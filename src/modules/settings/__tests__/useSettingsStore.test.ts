@@ -259,6 +259,18 @@ describe("useSettingsStore", () => {
       launchMode: "unknown",
       centerOnLaunch: "yes",
       alwaysOnTop: 123,
+      useActiveTabTitle: "invalid",
+      showAdminShield: 99,
+      newTabPosition: "middle",
+      tabWidthMode: "huge",
+      showTabsInFullscreen: "no",
+      keybindings: { closeTab: "ctrl+w", newTab: "invalid_bare_key" },
+      terminalTrimPasteWhitespace: "invalid",
+      terminalCtrlScrollZoom: 0,
+      terminalDetectUrls: null,
+      warnCloseMultiTabs: "no",
+      warnPasteLarge: 42,
+      warnPasteMultiline: "invalid_mode",
       sftpDoubleClickFileAction: "bad",
     });
     expect(clamped.terminalFontFamily).toBe(DEFAULT_SETTINGS.terminalFontFamily);
@@ -279,6 +291,18 @@ describe("useSettingsStore", () => {
     expect(clamped.launchMode).toBe("default");
     expect(clamped.centerOnLaunch).toBe(false);
     expect(clamped.alwaysOnTop).toBe(false);
+    expect(clamped.useActiveTabTitle).toBe(true);
+    expect(clamped.showAdminShield).toBe(true);
+    expect(clamped.newTabPosition).toBe("end");
+    expect(clamped.tabWidthMode).toBe("equal");
+    expect(clamped.showTabsInFullscreen).toBe(true);
+    expect(clamped.keybindings).toEqual({ closeTab: "Ctrl+W" });
+    expect(clamped.terminalTrimPasteWhitespace).toBe(true);
+    expect(clamped.terminalCtrlScrollZoom).toBe(true);
+    expect(clamped.terminalDetectUrls).toBe(true);
+    expect(clamped.warnCloseMultiTabs).toBe(true);
+    expect(clamped.warnPasteLarge).toBe(true);
+    expect(clamped.warnPasteMultiline).toBe("bracketed_disabled");
     expect(clamped.sftpDoubleClickFileAction).toBe("edit");
 
     // patchSettings persists incremental updates immediately
@@ -291,8 +315,21 @@ describe("useSettingsStore", () => {
       launchMode: "maximized",
       centerOnLaunch: true,
       alwaysOnTop: true,
+      useActiveTabTitle: false,
+      showAdminShield: false,
+      newTabPosition: "after_current",
+      tabWidthMode: "compact",
+      showTabsInFullscreen: false,
+      keybindings: { closeTab: "Ctrl+W" },
       terminalFontSize: 18,
       terminalCopyOnSelect: true,
+      terminalRightClickPaste: true,
+      terminalTrimPasteWhitespace: false,
+      terminalCtrlScrollZoom: false,
+      terminalDetectUrls: false,
+      warnCloseMultiTabs: false,
+      warnPasteLarge: false,
+      warnPasteMultiline: "always",
       sshDefaultPort: 2222,
       sftpShowHiddenFiles: false,
       editorTabSize: 4,
@@ -306,6 +343,13 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(true);
     expect(useSettingsStore.getState().settings.terminalFontSize).toBe(18);
     expect(useSettingsStore.getState().settings.terminalCopyOnSelect).toBe(true);
+    expect(useSettingsStore.getState().settings.terminalRightClickPaste).toBe(true);
+    expect(useSettingsStore.getState().settings.terminalTrimPasteWhitespace).toBe(false);
+    expect(useSettingsStore.getState().settings.terminalCtrlScrollZoom).toBe(false);
+    expect(useSettingsStore.getState().settings.terminalDetectUrls).toBe(false);
+    expect(useSettingsStore.getState().settings.warnCloseMultiTabs).toBe(false);
+    expect(useSettingsStore.getState().settings.warnPasteLarge).toBe(false);
+    expect(useSettingsStore.getState().settings.warnPasteMultiline).toBe("always");
     expect(useSettingsStore.getState().settings.sshDefaultPort).toBe(2222);
 
     // resetCategorySettings resets only the target section
@@ -321,14 +365,36 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().settings.newInstanceBehavior).toBe("attach");
     expect(useSettingsStore.getState().settings.launchMode).toBe("default");
     expect(useSettingsStore.getState().settings.centerOnLaunch).toBe(false);
-    expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(false);
+    // alwaysOnTop now belongs to appearance, so resetting startup leaves it untouched
+    expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(true);
     expect(useSettingsStore.getState().settings.terminalFontSize).toBe(18);
+
+    useSettingsStore.getState().resetCategorySettings("appearance");
+    expect(useSettingsStore.getState().settings.alwaysOnTop).toBe(false);
+    expect(useSettingsStore.getState().settings.useActiveTabTitle).toBe(true);
+    expect(useSettingsStore.getState().settings.showAdminShield).toBe(true);
+    expect(useSettingsStore.getState().settings.newTabPosition).toBe("end");
+    expect(useSettingsStore.getState().settings.tabWidthMode).toBe("equal");
+    expect(useSettingsStore.getState().settings.showTabsInFullscreen).toBe(true);
+
+    useSettingsStore.getState().resetCategorySettings("actions");
+    expect(useSettingsStore.getState().settings.keybindings).toEqual({});
 
     useSettingsStore.getState().resetCategorySettings("terminal");
     expect(useSettingsStore.getState().settings.terminalFontSize).toBe(
       DEFAULT_SETTINGS.terminalFontSize
     );
+    expect(useSettingsStore.getState().settings.terminalCopyOnSelect).toBe(true);
+
+    useSettingsStore.getState().resetCategorySettings("interaction");
     expect(useSettingsStore.getState().settings.terminalCopyOnSelect).toBe(false);
+    expect(useSettingsStore.getState().settings.terminalRightClickPaste).toBe(false);
+    expect(useSettingsStore.getState().settings.terminalTrimPasteWhitespace).toBe(true);
+    expect(useSettingsStore.getState().settings.terminalCtrlScrollZoom).toBe(true);
+    expect(useSettingsStore.getState().settings.terminalDetectUrls).toBe(true);
+    expect(useSettingsStore.getState().settings.warnCloseMultiTabs).toBe(true);
+    expect(useSettingsStore.getState().settings.warnPasteLarge).toBe(true);
+    expect(useSettingsStore.getState().settings.warnPasteMultiline).toBe("bracketed_disabled");
     expect(useSettingsStore.getState().settings.sshDefaultPort).toBe(2222);
     expect(useSettingsStore.getState().settings.sftpShowHiddenFiles).toBe(false);
 

@@ -32,6 +32,7 @@ export interface ActionModalProps {
   onSubmit?: (e: React.FormEvent) => void;
   confirmDisabled?: boolean;
   confirmAutoFocus?: boolean;
+  cancelAutoFocus?: boolean;
   formId?: string;
 }
 
@@ -73,6 +74,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   onSubmit,
   confirmDisabled = false,
   confirmAutoFocus = false,
+  cancelAutoFocus = false,
   formId,
 }) => {
   const { t } = useI18n();
@@ -142,7 +144,13 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   ) : hasForm || confirmLabel ? (
     <div className="flex items-center justify-end gap-2 border-t border-[#21262d] px-4 py-3 shrink-0">
       {cancelLabel !== null && (
-        <Button variant="secondary" size="sm" disabled={busy} onClick={onClose}>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          autoFocus={cancelAutoFocus}
+          onClick={onClose}
+        >
           {cancelLabel ?? t("common.cancel")}
         </Button>
       )}

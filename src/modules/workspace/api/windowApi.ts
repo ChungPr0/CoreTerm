@@ -79,6 +79,14 @@ export const windowApi = {
     return invoke<boolean>("window_toggle_fullscreen", {});
   },
 
+  windowIsFullscreen(): Promise<boolean> {
+    return invoke<boolean>("window_is_fullscreen", {});
+  },
+
+  windowSetTitle(title: string): Promise<void> {
+    return invoke<void>("window_set_title", { title });
+  },
+
   windowApplyImeMode(mode: DefaultImeMode): Promise<void> {
     return invoke<void>("window_apply_ime_mode", { mode });
   },
@@ -117,5 +125,9 @@ export const windowApi = {
 
   windowClose(): Promise<void> {
     return invoke<void>("window_close", {});
+  },
+
+  windowOpenUrl(url: string): Promise<void> {
+    return invoke<void>("window_open_url", { url });
   },
 };
