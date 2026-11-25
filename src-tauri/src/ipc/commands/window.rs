@@ -135,6 +135,7 @@ pub async fn window_set_launch_size(
 }
 
 #[tauri::command(rename_all = "snake_case")]
+#[allow(clippy::too_many_arguments)]
 pub async fn window_present(
     window: tauri::WebviewWindow,
     cols: Option<u16>,

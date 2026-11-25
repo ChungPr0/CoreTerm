@@ -402,15 +402,14 @@ async fn authenticate_password_with_prompts(
                 TabSecretKind::Password,
                 secret.clone(),
             );
-            if save_to_vault {
-                if ctx
+            if save_to_vault
+                && ctx
                     .hosts
                     .save_secret(&ctx.config.id, secret.as_str(), auto_reconnect)
                     .is_ok()
-                {
-                    if let Ok(updated) = ctx.hosts.get_detail(&ctx.config.id) {
-                        let _ = ctx.app.emit(EVENT_HOST_UPDATED, updated);
-                    }
+            {
+                if let Ok(updated) = ctx.hosts.get_detail(&ctx.config.id) {
+                    let _ = ctx.app.emit(EVENT_HOST_UPDATED, updated);
                 }
             }
             return Ok(());

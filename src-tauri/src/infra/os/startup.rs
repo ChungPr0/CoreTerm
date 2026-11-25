@@ -191,10 +191,10 @@ pub fn sync_startup_if_enabled() {
 
     #[cfg(debug_assertions)]
     {
-        if registered_cmd.contains(r"\target\debug\") || registered_cmd.contains("/target/debug/") {
-            if register_startup().is_err() {
-                let _ = unregister_startup();
-            }
+        if (registered_cmd.contains(r"\target\debug\") || registered_cmd.contains("/target/debug/"))
+            && register_startup().is_err()
+        {
+            let _ = unregister_startup();
         }
     }
 
