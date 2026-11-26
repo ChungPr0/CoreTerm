@@ -4,6 +4,7 @@ import {
   ClipboardCopy,
   Eraser,
   FolderSync,
+  Minimize2,
   RotateCw,
   Search,
   Settings as SettingsIcon,
@@ -40,6 +41,8 @@ export interface BuildTerminalContextItemsOpts {
   onOpenSftp?: (host: HostProfileSummaryDto) => void;
   onOpenSettings: () => void;
   onCloseTab?: (tabId: string) => void;
+  isFullscreen?: boolean;
+  onExitFullscreen?: () => void;
 }
 
 function appendSshSftpItems(
@@ -83,6 +86,8 @@ export function buildTerminalContextItems({
   onOpenSftp,
   onOpenSettings,
   onCloseTab,
+  isFullscreen = false,
+  onExitFullscreen,
 }: BuildTerminalContextItemsOpts): ContextMenuEntry[] {
   const offline = isTabOffline(tab);
   const connecting = isTabConnecting(tab);
@@ -153,16 +158,25 @@ export function buildTerminalContextItems({
     items.push({ type: "separator", id: "sep-term-launch" }, ...launchItems);
   }
 
-  items.push(
-    { type: "separator", id: "sep-term-settings" },
-    {
-      id: "term-settings",
-      label: t("ctx.settings"),
-      icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: getShortcutChord("openSettings", kb),
-      onSelect: onOpenSettings,
-    }
-  );
+  items.push({ type: "separator", id: "sep-term-settings" });
+
+  if (isFullscreen && onExitFullscreen) {
+    items.push({
+      id: "term-exit-fullscreen",
+      label: t("ctx.exit_fullscreen"),
+      icon: <Minimize2 className="h-3.5 w-3.5 text-sky-400" />,
+      shortcut: getShortcutChord("toggleFullscreen", kb),
+      onSelect: onExitFullscreen,
+    });
+  }
+
+  items.push({
+    id: "term-settings",
+    label: t("ctx.settings"),
+    icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
+    shortcut: getShortcutChord("openSettings", kb),
+    onSelect: onOpenSettings,
+  });
 
   if (onCloseTab) {
     items.push({
@@ -188,6 +202,8 @@ export interface BuildBannerContextItemsOpts {
   onOpenSftp?: (host: HostProfileSummaryDto) => void;
   onOpenSettings: () => void;
   onCloseTab?: (tabId: string) => void;
+  isFullscreen?: boolean;
+  onExitFullscreen?: () => void;
 }
 
 export function buildBannerContextItems({
@@ -203,6 +219,7 @@ export function buildBannerContextItems({
   onCloseTab,
 }: BuildBannerContextItemsOpts): ContextMenuEntry[] {
   const connecting = isTabConnecting(tab);
+  const kb = useSettingsStore.getState().settings.keybindings;
   const items: ContextMenuEntry[] = [];
   if (selectedText.length > 0) {
     items.push(
@@ -232,7 +249,7 @@ export function buildBannerContextItems({
       id: "banner-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     }
   );
@@ -242,7 +259,7 @@ export function buildBannerContextItems({
       id: "banner-close-tab",
       label: t("ctx.close_tab"),
       icon: <X className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+W",
+      shortcut: getShortcutChord("closeTab", kb),
       onSelect: () => onCloseTab(tab.tabId),
     });
   }
@@ -264,6 +281,8 @@ interface UseTerminalMenusOpts {
   onOpenSftp?: (host: HostProfileSummaryDto) => void;
   onOpenSettings: () => void;
   onCloseTab?: (tabId: string) => void;
+  isFullscreen?: boolean;
+  onExitFullscreen?: () => void;
 }
 
 export function useTerminalMenus(opts: UseTerminalMenusOpts) {
@@ -281,6 +300,8 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
     onOpenSftp,
     onOpenSettings,
     onCloseTab,
+    isFullscreen,
+    onExitFullscreen,
   } = opts;
 
   const openTerminalMenu = useCallback(
@@ -303,6 +324,8 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
           onOpenSftp,
           onOpenSettings,
           onCloseTab,
+          isFullscreen,
+          onExitFullscreen,
         }),
       });
     },
@@ -310,7 +333,9 @@ export function useTerminalMenus(opts: UseTerminalMenusOpts) {
       allProfiles,
       defaultShellProfile,
       isAppElevated,
+      isFullscreen,
       onCloseTab,
+      onExitFullscreen,
       onFindInTab,
       onNewLocalTab,
       onOpenSettings,

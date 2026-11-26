@@ -40,9 +40,10 @@ use crate::ipc::commands::{
     sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, sftp_write_file,
     startup_get_status, startup_set_enabled, startup_sync_prefs, window_apply_ime_mode,
     window_close, window_get_position, window_get_size, window_is_fullscreen, window_is_maximized,
-    window_minimize, window_open_url, window_present, window_set_always_on_top,
-    window_set_launch_size, window_set_position, window_set_size, window_set_title,
-    window_sys_command, window_toggle_fullscreen, window_toggle_maximize, AppState,
+    window_minimize, window_open_url, window_present, window_restore_focus,
+    window_set_always_on_top, window_set_launch_size, window_set_position, window_set_size,
+    window_set_title, window_sys_command, window_toggle_fullscreen, window_toggle_maximize,
+    AppState,
 };
 use crate::ipc::events::{
     EVENT_OPEN_DIRECTORY, EVENT_OPEN_FILE, EVENT_OPEN_NEW_TAB, EVENT_WINDOW_CLOSE_REQUESTED,
@@ -64,11 +65,9 @@ pub fn run() {
         JobObjectSupervisor::new().expect("Failed to initialize Windows Job Object Supervisor");
 
     let force_new_window = std::env::args().skip(1).any(|arg| arg == "--new-window");
-    let early_prefs = crate::infra::os::startup_prefs::read_startup_prefs_early();
-    let attach_instance = !force_new_window && early_prefs.new_instance_behavior != "new_window";
 
     let mut builder = tauri::Builder::default();
-    if attach_instance {
+    if !force_new_window {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             let base_dir = std::path::Path::new(&cwd);
             let targets: Vec<LaunchTarget> = argv
@@ -209,6 +208,7 @@ pub fn run() {
                 sftp_manager,
                 launch_dir,
                 launch_files,
+                is_secondary_window: force_new_window,
             });
             Ok(())
         })
@@ -285,6 +285,7 @@ pub fn run() {
             clipboard_write_text,
             window_set_launch_size,
             window_present,
+            window_restore_focus,
             window_set_always_on_top,
             window_toggle_fullscreen,
             window_is_fullscreen,

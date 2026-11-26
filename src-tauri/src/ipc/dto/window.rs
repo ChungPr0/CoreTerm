@@ -4,4 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct AppStatusDto {
     pub is_elevated: bool,
     pub has_native_border: bool,
+    #[serde(default)]
+    pub is_secondary_window: bool,
 }

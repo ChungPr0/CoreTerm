@@ -545,6 +545,14 @@ export function useTerminalSession({
     if (!textarea) return;
     textarea.lang = defaultImeMode === "alphanumeric" ? "en" : "";
     textarea.spellcheck = false;
+    if (defaultImeMode !== "alphanumeric") return;
+    const onTextareaFocus = () => {
+      windowApi.windowApplyImeMode("alphanumeric").catch(() => {});
+    };
+    textarea.addEventListener("focus", onTextareaFocus);
+    return () => {
+      textarea.removeEventListener("focus", onTextareaFocus);
+    };
   }, [defaultImeMode, tab.tabId]);
 
   useEffect(() => {

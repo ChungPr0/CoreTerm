@@ -7,6 +7,7 @@ import {
 } from "@/shared/api/ipcEvents";
 import { invoke, listenEvent } from "@/shared/api/tauriClient";
 import { useSettingsStore } from "@/modules/settings";
+import { loadSettings } from "@/modules/settings/settingsStorage";
 import {
   calcWinSize,
   mergeShells,
@@ -136,21 +137,24 @@ export function useAppBootstrap({
 
     void useShellsStore.getState().detectShells();
 
-    const elevatedPromise = windowApi
+    const statusPromise = windowApi
       .appGetStatus()
       .then((status) => {
         setIsAppElevated(status.is_elevated);
         setHasNativeBorder(status.has_native_border);
         if (status.is_elevated) useTabsStore.getState().markLocalTabsAdmin();
-        return status.is_elevated;
+        return {
+          elevated: status.is_elevated,
+          isSecondaryWindow: Boolean(status.is_secondary_window),
+        };
       })
-      .catch(() => false);
+      .catch(() => ({ elevated: false, isSecondaryWindow: false }));
 
     Promise.all([
       sessionApi.appGetLaunchDir().catch(() => null),
       sessionApi.appGetLaunchFiles().catch(() => [] as string[]),
-      elevatedPromise,
-    ]).then(async ([dir, files, elevated]) => {
+      statusPromise,
+    ]).then(async ([dir, files, { elevated, isSecondaryWindow }]) => {
       if (cancelled) return;
       if (dir) useTabsStore.getState().setLaunchDir(dir);
       if (files.length > 0) {
@@ -161,7 +165,11 @@ export function useAppBootstrap({
           },
         });
         void presentWindow();
-      } else if (!dir && settingsRef.current.startupBehavior === "restore_session") {
+      } else if (
+        !isSecondaryWindow &&
+        !dir &&
+        settingsRef.current.startupBehavior === "restore_session"
+      ) {
         const snapshot = loadSessionSnapshot();
         if (snapshot && snapshot.tabs.length > 0) {
           const profiles = await invoke<Array<{ id: string }>>("host_list", {}).catch(
@@ -191,13 +199,20 @@ export function useAppBootstrap({
         }
       }
 
-      if (cancelled) return;
+      if (cancelled || isSecondaryWindow) return;
       snapshotTrackingReady = true;
       const curState = useTabsStore.getState();
       if (curState.tabs.some((t) => t.tabKind !== "settings")) {
         saveSessionSnapshot(curState.tabs, curState.activeTabId);
       }
     });
+
+    const onStorageSync = (e: StorageEvent) => {
+      if (e.key === "coreterm_settings" && e.newValue) {
+        useSettingsStore.setState({ settings: loadSettings() });
+      }
+    };
+    window.addEventListener("storage", onStorageSync);
 
     const unsubscribeSnapshot = useTabsStore.subscribe((state) => {
       if (!snapshotTrackingReady) return;
@@ -273,6 +288,7 @@ export function useAppBootstrap({
     return () => {
       active = false;
       cancelled = true;
+      window.removeEventListener("storage", onStorageSync);
       unsubscribeSnapshot();
       if (unlistenOpenDir) unlistenOpenDir();
       if (unlistenOpenFile) unlistenOpenFile();

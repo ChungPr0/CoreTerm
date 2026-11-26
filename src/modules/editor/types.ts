@@ -22,6 +22,7 @@ export interface FileEditorPaneProps {
   closeRequestToken?: number;
   onDirtyChange: (dirty: boolean) => void;
   onForceClose: () => void;
+  onCancelCloseRequest?: () => void;
   onShowMenu: (x: number, y: number, items: ContextMenuEntry[]) => void;
   onModalChange?: (tabId: string, open: boolean) => void;
   onSaved?: (res: FileWriteResultDto) => void;

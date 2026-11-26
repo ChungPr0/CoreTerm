@@ -41,6 +41,7 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
   closeRequestToken = 0,
   onDirtyChange,
   onForceClose,
+  onCancelCloseRequest,
   onShowMenu,
   onModalChange,
   onSaved,
@@ -684,7 +685,11 @@ export const FileEditorPane: React.FC<FileEditorPaneProps> = ({
         fileName={file.name}
         saving={session.saving}
         canSaveAndClose={!session.effectiveReadonly && !session.isRemoteOffline}
-        onCancel={() => session.setConfirmDiscard(null)}
+        onCancel={() => {
+          const wasClosing = session.confirmDiscard === "close";
+          session.setConfirmDiscard(null);
+          if (wasClosing) onCancelCloseRequest?.();
+        }}
         onDiscard={() => {
           const action = session.confirmDiscard;
           session.setConfirmDiscard(null);

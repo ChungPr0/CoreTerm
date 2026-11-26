@@ -504,7 +504,8 @@
     "zoom_in": "Zoom In",
     "zoom_out": "Zoom Out",
     "zoom_reset": "Reset Zoom",
-    "copy_host": "Copy Host / IP"
+    "copy_host": "Copy Host / IP",
+    "exit_fullscreen": "Exit Full Screen"
   },
   "sftp": {
     "title": "SFTP",

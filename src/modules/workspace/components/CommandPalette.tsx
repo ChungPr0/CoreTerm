@@ -10,9 +10,11 @@ import {
   X,
 } from "lucide-react";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { ShellProfile } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
 import { Button, IconButton, ModalShell } from "@/shared/ui";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
 import { ShellIcon } from "./ShellIcon";
 
 interface CommandPaletteProps {
@@ -44,6 +46,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenSettings,
 }) => {
   const { t } = useI18n();
+  const keybindings = useSettingsStore((s) => s.settings.keybindings);
+  const settingsShortcut = getShortcutChord("openSettings", keybindings);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -228,7 +232,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold truncate">{t("settings.title")}</span>
                           <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 font-mono">
-                            Ctrl+,
+                            {settingsShortcut}
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 truncate">

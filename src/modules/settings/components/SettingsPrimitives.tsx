@@ -7,7 +7,8 @@ function normalizeSearchText(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/đ/g, "d");
 }
 
 /** Checks whether all space-separated tokens in `query` match at least one candidate string. */
@@ -177,6 +178,18 @@ interface SettingsNumberInputProps {
   containerClassName?: string;
 }
 
+export function commitNumberDraft(
+  draft: string,
+  currentValue: number,
+  clamp: (raw: unknown) => number
+): { nextDraft: string; committed?: number } {
+  const clamped = clamp(draft);
+  return {
+    nextDraft: String(clamped),
+    ...(clamped !== currentValue ? { committed: clamped } : {}),
+  };
+}
+
 /** Numeric input that lets the user type intermediate digits cleanly before clamping on blur/Enter. */
 export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
   value,
@@ -200,10 +213,10 @@ export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
   }, [value]);
 
   const commitDraft = () => {
-    const clamped = clamp(draft);
-    setDraft(String(clamped));
-    if (clamped !== value) {
-      onCommit(clamped);
+    const res = commitNumberDraft(draft, value, clamp);
+    setDraft(res.nextDraft);
+    if (res.committed !== undefined) {
+      onCommit(res.committed);
     }
   };
 
@@ -227,19 +240,15 @@ export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
         if (e.key === "Enter") {
           e.preventDefault();
           commitDraft();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setDraft(String(value));
+          e.currentTarget.blur();
         }
       }}
       onChange={(e) => {
-        const nextRaw = e.target.value;
-        setDraft(nextRaw);
-        if (nextRaw.trim() === "") return;
-        const parsed = Number(nextRaw);
-        if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
-          const clamped = clamp(parsed);
-          if (clamped !== value) {
-            onCommit(clamped);
-          }
-        }
+        setDraft(e.target.value);
       }}
       className={`font-mono ${className}`}
       containerClassName={containerClassName}

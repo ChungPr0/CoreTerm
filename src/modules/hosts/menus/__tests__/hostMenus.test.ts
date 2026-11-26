@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { HostProfileSummaryDto } from "../../types";
 import {
   buildGroupMenuItems,
@@ -112,5 +113,39 @@ describe("hostMenus", () => {
       "sep-sidebar",
       "sidebar-settings",
     ]);
+  });
+
+  it("propagates custom openSettings shortcut into sidebar and group context menus", () => {
+    const prevKb = useSettingsStore.getState().settings.keybindings;
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: { openSettings: "Ctrl+Alt+S" } },
+      }));
+      const sidebarSettings = buildSidebarMenuItems({
+        t,
+        onNewHost: vi.fn(),
+        onOpenGroupModal: vi.fn(),
+        onOpenVault: vi.fn(),
+        onOpenSettings: vi.fn(),
+      }).find((i) => i.id === "sidebar-settings");
+      const groupSettings = buildGroupMenuItems({
+        t,
+        groupName: "Default",
+        onNewHost: vi.fn(),
+        onOpenGroupModal: vi.fn(),
+        onDeleteGroup: vi.fn(),
+        onOpenSettings: vi.fn(),
+      }).find((i) => i.id === "group-settings");
+      expect(
+        sidebarSettings && sidebarSettings.type !== "separator" && sidebarSettings.shortcut
+      ).toBe("Ctrl+Alt+S");
+      expect(
+        groupSettings && groupSettings.type !== "separator" && groupSettings.shortcut
+      ).toBe("Ctrl+Alt+S");
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: prevKb },
+      }));
+    }
   });
 });

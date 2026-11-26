@@ -9,10 +9,11 @@ use crate::ipc::error::{AppError, AppResult};
 use tauri::{Manager, State};
 
 #[tauri::command]
-pub async fn app_get_status() -> AppResult<AppStatusDto> {
+pub async fn app_get_status(state: State<'_, AppState>) -> AppResult<AppStatusDto> {
     Ok(AppStatusDto {
         is_elevated: os::is_process_elevated(),
         has_native_border: os::has_native_window_border(),
+        is_secondary_window: state.is_secondary_window,
     })
 }
 
@@ -242,6 +243,18 @@ pub async fn window_apply_ime_mode(
     mode: String,
 ) -> AppResult<()> {
     os::window::apply_ime_mode(&window, &mode);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn window_restore_focus(window: tauri::WebviewWindow) -> AppResult<()> {
+    if window.is_minimized().unwrap_or(false) {
+        let _ = window.unminimize();
+    }
+    if !window.is_visible().unwrap_or(false) {
+        let _ = window.show();
+    }
+    let _ = window.set_focus();
     Ok(())
 }
 

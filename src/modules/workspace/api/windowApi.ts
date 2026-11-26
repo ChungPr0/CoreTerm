@@ -123,6 +123,10 @@ export const windowApi = {
     return invoke<void>("window_toggle_maximize", {});
   },
 
+  windowRestoreFocus(): Promise<void> {
+    return invoke<void>("window_restore_focus", {});
+  },
+
   windowClose(): Promise<void> {
     return invoke<void>("window_close", {});
   },

@@ -284,11 +284,12 @@ export function buildTabBarContextItems({
     items.push(...launchItems);
   }
   if (onOpenSettings) {
+    const kb = useSettingsStore.getState().settings.keybindings;
     items.push({
       id: "tabbar-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     });
   }

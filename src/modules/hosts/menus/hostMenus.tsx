@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import { copyText } from "@/shared/utils/clipboard";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { HostProfileSummaryDto } from "../types";
 
 export interface BuildHostMenuItemsOpts {
@@ -101,6 +103,7 @@ export function buildSidebarMenuItems({
   onOpenVault,
   onOpenSettings,
 }: BuildSidebarMenuItemsOpts): ContextMenuEntry[] {
+  const kb = useSettingsStore.getState().settings.keybindings;
   return [
     {
       id: "sidebar-new-connection",
@@ -125,7 +128,7 @@ export function buildSidebarMenuItems({
       id: "sidebar-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     },
   ];
@@ -174,13 +177,14 @@ export function buildGroupMenuItems({
       }
     );
   }
+  const kb = useSettingsStore.getState().settings.keybindings;
   items.push(
     { type: "separator", id: "sep-group-settings" },
     {
       id: "group-settings",
       label: t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: onOpenSettings,
     }
   );

@@ -249,6 +249,7 @@ impl PtySessionManager {
             self.tab_shell_map
                 .insert(req.tab_id.clone(), profile.clone());
             if !app_elevated {
+                self.discard_prewarmed_local();
                 return self.connect_elevated_local(app, req, &profile, on_output);
             }
             local_profile = Some(profile);
@@ -261,7 +262,11 @@ impl PtySessionManager {
                 {
                     return Ok(ack);
                 }
+            } else {
+                self.discard_prewarmed_local();
             }
+        } else {
+            self.discard_prewarmed_local();
         }
 
         let ssh_plan = if is_local {
@@ -489,22 +494,16 @@ impl PtySessionManager {
         self.mark_in_flight_aborted(tab_id);
         self.disconnect_session_only(app, tab_id)?;
         self.cleanup_tab_metadata(tab_id);
+        if self.sessions.is_empty() {
+            self.discard_prewarmed_local();
+        }
         Ok(())
     }
 
     pub fn shutdown_all(&self) {
-        self.prewarm_cancelled.store(true, Ordering::SeqCst);
+        self.discard_prewarmed_local();
         for entry in self.in_flight_connects.iter() {
             entry.value().store(true, Ordering::SeqCst);
-        }
-        if let Ok(mut guard) = self.prewarmed_local.lock() {
-            if let Some(prewarmed) = guard.take() {
-                prewarmed
-                    .session
-                    .manual_disconnect
-                    .store(true, Ordering::SeqCst);
-                prewarmed.session.terminate();
-            }
         }
         let keys: Vec<String> = self.sessions.iter().map(|e| e.key().clone()).collect();
         for tab_id in keys {

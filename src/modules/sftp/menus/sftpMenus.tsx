@@ -30,6 +30,8 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ContextMenuEntry } from "@/shared/ui";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { SortDir, SortKey } from "../hooks/fileListUtils";
 import type { FileItem, SftpConnectionState, SftpTransferJobDto } from "../types";
 
@@ -145,6 +147,7 @@ function appendSftpFooterItems(
   }
 ) {
   if (!opts.onOpenSettings && !opts.onClose) return;
+  const kb = useSettingsStore.getState().settings.keybindings;
   if (!opts.omitSeparator && entries.length > 0) {
     entries.push({ type: "separator", id: opts.sepId });
   }
@@ -153,7 +156,7 @@ function appendSftpFooterItems(
       id: `${opts.idPrefix}-settings`,
       label: opts.t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: opts.onOpenSettings,
     });
   }
@@ -163,7 +166,9 @@ function appendSftpFooterItems(
       id: `${opts.idPrefix}-close`,
       label: isSplit ? opts.t("ctx.close_sftp_panel") : opts.t("ctx.close_tab"),
       icon: <X className="h-3.5 w-3.5" />,
-      shortcut: isSplit ? "Ctrl+Shift+E" : "Ctrl+Shift+W",
+      shortcut: isSplit
+        ? getShortcutChord("toggleSftpPanel", kb)
+        : getShortcutChord("closeTab", kb),
       onSelect: opts.onClose,
     });
   }

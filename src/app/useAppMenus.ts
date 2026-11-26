@@ -14,6 +14,7 @@ interface UseAppMenusOpts {
   tabs: TerminalTabItem[];
   allProfiles: HostProfileSummaryDto[];
   isAppElevated: boolean;
+  isFullscreen?: boolean;
   shellProfiles: ShellProfile[];
   defaultShellProfile: ShellProfile | null;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
@@ -38,6 +39,7 @@ interface UseAppMenusOpts {
   onOpenPalette: () => void;
   onDismissSidebar: () => void;
   onRequestCloseWindow?: () => void;
+  onExitFullscreen?: () => void;
 }
 
 export type { MenuState, TerminalContextActions };
@@ -58,6 +60,8 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onOpenSftp: opts.onOpenSftp,
     onOpenSettings: opts.onOpenSettings,
     onCloseTab: opts.onCloseTab,
+    isFullscreen: opts.isFullscreen,
+    onExitFullscreen: opts.onExitFullscreen,
   });
 
   const tabMenus = useTabMenus({
@@ -101,6 +105,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
   useGlobalContextMenu({
     t: opts.t,
     isAppElevated: opts.isAppElevated,
+    isFullscreen: opts.isFullscreen,
     shellProfiles: opts.shellProfiles,
     defaultShellProfile: opts.defaultShellProfile,
     setContextMenu: opts.setContextMenu,
@@ -108,6 +113,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onNewHost: opts.onNewHost,
     onOpenPalette: opts.onOpenPalette,
     onOpenSettings: opts.onOpenSettings,
+    onExitFullscreen: opts.onExitFullscreen,
   });
 
   return {

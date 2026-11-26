@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TerminalTabItem } from "@/shared/types/ipc";
 import { createLocalTab } from "../../utils/tabHelpers";
+import { planWindowClose } from "../tabsStoreHelpers";
 import { useTabsStore } from "../useTabsStore";
 
 function makeTab(overrides: Partial<TerminalTabItem> = {}): TerminalTabItem {
@@ -636,5 +637,63 @@ describe("useTabsStore", () => {
         settings: { ...s.settings, newTabPosition: prevPos },
       }));
     }
+  });
+
+  it("planWindowClose guards unsaved editor tabs before multi-tab or immediate exit", () => {
+    const singleDirtyEditor = [
+      makeTab({
+        tabId: "ed-1",
+        hostId: "local",
+        tabKind: "editor",
+        editorFile: {
+          kind: "local",
+          path: "D:\\notes.md",
+          name: "notes.md",
+          hostLabel: "Local",
+          dirty: true,
+        },
+      }),
+    ];
+    expect(planWindowClose(singleDirtyEditor, false)).toEqual({
+      action: "prompt_dirty_editor",
+      tabId: "ed-1",
+    });
+    expect(planWindowClose(singleDirtyEditor, true)).toEqual({
+      action: "prompt_dirty_editor",
+      tabId: "ed-1",
+    });
+
+    const mixedTabs = [
+      makeTab({ tabId: "ssh-1", hostId: "h1" }),
+      makeTab({
+        tabId: "ed-clean",
+        hostId: "local",
+        tabKind: "editor",
+        editorFile: {
+          kind: "local",
+          path: "D:\\clean.md",
+          name: "clean.md",
+          hostLabel: "Local",
+          dirty: false,
+        },
+      }),
+      singleDirtyEditor[0],
+    ];
+    expect(planWindowClose(mixedTabs, true)).toEqual({
+      action: "prompt_dirty_editor",
+      tabId: "ed-1",
+    });
+
+    const cleanMultiTabs = mixedTabs.slice(0, 2);
+    expect(planWindowClose(cleanMultiTabs, true)).toEqual({
+      action: "prompt_multi_tabs",
+      count: 2,
+    });
+    expect(planWindowClose(cleanMultiTabs, false)).toEqual({
+      action: "close_now",
+    });
+    expect(planWindowClose([cleanMultiTabs[0]], true)).toEqual({
+      action: "close_now",
+    });
   });
 });

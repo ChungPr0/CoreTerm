@@ -17,6 +17,7 @@ import {
 interface GeneralSettingsSectionProps {
   settings: AppSettingsValues;
   query: string;
+  resetSeq?: number;
   onPatch: (patch: Partial<AppSettingsValues>) => void;
   onResetSection?: () => void;
   onRequestResetAll: () => void;
@@ -25,6 +26,7 @@ interface GeneralSettingsSectionProps {
 export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
   settings,
   query,
+  resetSeq = 0,
   onPatch,
   onResetSection,
   onRequestResetAll,
@@ -45,7 +47,7 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [resetSeq]);
 
   const handleToggleContextMenu = async (next: boolean) => {
     if (contextMenuBusy) return;

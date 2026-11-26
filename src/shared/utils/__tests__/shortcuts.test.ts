@@ -91,4 +91,15 @@ describe("shortcuts utility", () => {
     expect(getShortcutChord("closeTab", sanitized)).toBe("Ctrl+W");
     expect(getShortcutChord("duplicateTab", sanitized)).toBe("Ctrl+Shift+D");
   });
+
+  it("reserves Ctrl+F for Find while allowing termFind itself to bind Ctrl+F", () => {
+    expect(findConflictingShortcut("Ctrl+F", {}, "termClear")?.id).toBe("termFind");
+    expect(findConflictingShortcut("Ctrl+F", {}, "newTab")?.id).toBe("termFind");
+    expect(findConflictingShortcut("Ctrl+F", {}, "termFind")).toBeNull();
+
+    expect(sanitizeKeybindings({ termClear: "Ctrl+F" })).toEqual({});
+    expect(sanitizeKeybindings({ termFind: "Ctrl+F" })).toEqual({
+      termFind: "Ctrl+F",
+    });
+  });
 });

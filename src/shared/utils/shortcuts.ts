@@ -222,6 +222,9 @@ export function findConflictingShortcut(
       return def;
     }
   }
+  if (chord === "Ctrl+F" && ignoreActionId !== "termFind") {
+    return SHORTCUT_DEFINITIONS.find((def) => def.id === "termFind") ?? null;
+  }
   return null;
 }
 
@@ -248,6 +251,12 @@ export function sanitizeKeybindings(raw: unknown): KeybindingOverrides {
     if (!candidateIds.has(def.id)) {
       used.add(def.defaultChord);
     }
+  }
+  const termFindUsesCtrlF = candidateEntries.some(
+    ([id, ch]) => id === "termFind" && ch === "Ctrl+F"
+  );
+  if (!termFindUsesCtrlF) {
+    used.add("Ctrl+F");
   }
 
   const sanitized: KeybindingOverrides = {};

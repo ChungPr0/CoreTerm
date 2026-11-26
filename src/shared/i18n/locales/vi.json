@@ -504,7 +504,8 @@
     "zoom_in": "Phóng to chữ",
     "zoom_out": "Thu nhỏ chữ",
     "zoom_reset": "Cỡ chữ mặc định",
-    "copy_host": "Sao chép Host / IP"
+    "copy_host": "Sao chép Host / IP",
+    "exit_fullscreen": "Thoát toàn màn hình"
   },
   "sftp": {
     "title": "SFTP",

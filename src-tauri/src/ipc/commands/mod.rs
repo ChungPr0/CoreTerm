@@ -26,4 +26,5 @@ pub struct AppState {
     pub sftp_manager: SftpSessionManager,
     pub launch_dir: Option<String>,
     pub launch_files: Vec<String>,
+    pub is_secondary_window: bool,
 }

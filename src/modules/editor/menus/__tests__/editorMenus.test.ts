@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import {
   buildEditorBannerMenu,
   buildEditorContextItems,
@@ -304,6 +305,41 @@ describe("Editor Menus (Viewport, Toolbar, StatusBar, Banner)", () => {
     ]) {
       const entry = items.find((i) => i.id === id);
       expect(entry && "disabled" in entry ? entry.disabled : undefined, id).toBe(true);
+    }
+  });
+
+  it("propagates custom openSettings and closeTab shortcuts into editor footer menus", () => {
+    const prevKb = useSettingsStore.getState().settings.keybindings;
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: {
+          ...s.settings,
+          keybindings: { openSettings: "Ctrl+Alt+S", closeTab: "Ctrl+W" },
+        },
+      }));
+      const bannerItems = buildEditorBannerMenu({
+        t,
+        selectedText: "",
+        isConnecting: false,
+        reloadDisabled: false,
+        onCopy: vi.fn(),
+        onReconnect: vi.fn(),
+        onReload: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const settingsItem = bannerItems.find((i) => i.id === "editor-banner-settings");
+      const closeItem = bannerItems.find((i) => i.id === "editor-banner-close");
+      expect(settingsItem && "shortcut" in settingsItem ? settingsItem.shortcut : undefined).toBe(
+        "Ctrl+Alt+S"
+      );
+      expect(closeItem && "shortcut" in closeItem ? closeItem.shortcut : undefined).toBe(
+        "Ctrl+W"
+      );
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: prevKb },
+      }));
     }
   });
 });

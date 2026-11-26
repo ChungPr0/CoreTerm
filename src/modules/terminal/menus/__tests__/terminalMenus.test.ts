@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import {
   buildBannerContextItems,
@@ -191,5 +192,69 @@ describe("buildBannerContextItems", () => {
       closeItem.onSelect?.();
     }
     expect(onCloseTab).toHaveBeenCalledWith("t1");
+  });
+
+  it("reflects custom keybindings and exposes Exit Full Screen when fullscreen is active", () => {
+    const prevKb = useSettingsStore.getState().settings.keybindings;
+    const onExitFullscreen = vi.fn();
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: {
+          ...s.settings,
+          keybindings: {
+            openSettings: "Ctrl+Alt+S",
+            closeTab: "Ctrl+W",
+            toggleFullscreen: "Alt+Enter",
+          },
+        },
+      }));
+
+      const termItems = buildTerminalContextItems({
+        t,
+        tab: baseTab(),
+        actions: baseActions(),
+        isAppElevated: false,
+        shellProfiles: [PS],
+        defaultShellProfile: PS,
+        onNewLocalTab: vi.fn(),
+        onFindInTab: vi.fn(),
+        onReconnectTab: vi.fn(),
+        onToggleSftp: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onCloseTab: vi.fn(),
+        isFullscreen: true,
+        onExitFullscreen,
+      });
+
+      const exitFs = termItems.find((i) => i.id === "term-exit-fullscreen");
+      expect(exitFs).toBeDefined();
+      if (exitFs && exitFs.type !== "separator") {
+        expect(exitFs.shortcut).toBe("Alt+Enter");
+        exitFs.onSelect?.();
+      }
+      expect(onExitFullscreen).toHaveBeenCalledTimes(1);
+
+      const bannerItems = buildBannerContextItems({
+        t,
+        tab: baseTab({ hostId: "h1", state: "DISCONNECTED" }),
+        selectedText: "",
+        onCopy: vi.fn(),
+        onReconnectTab: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onCloseTab: vi.fn(),
+      });
+      const bannerSettings = bannerItems.find((i) => i.id === "banner-settings");
+      const bannerClose = bannerItems.find((i) => i.id === "banner-close-tab");
+      expect(
+        bannerSettings && bannerSettings.type !== "separator" && bannerSettings.shortcut
+      ).toBe("Ctrl+Alt+S");
+      expect(
+        bannerClose && bannerClose.type !== "separator" && bannerClose.shortcut
+      ).toBe("Ctrl+W");
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: prevKb },
+      }));
+    }
   });
 });

@@ -21,4 +21,5 @@ export type {
 export interface AppStatusDto {
   is_elevated: boolean;
   has_native_border: boolean;
+  is_secondary_window?: boolean;
 }

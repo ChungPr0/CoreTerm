@@ -194,6 +194,19 @@ impl PtySessionManager {
             });
     }
 
+    pub(super) fn discard_prewarmed_local(&self) {
+        self.prewarm_cancelled.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.prewarmed_local.lock() {
+            if let Some(prewarmed) = guard.take() {
+                prewarmed
+                    .session
+                    .manual_disconnect
+                    .store(true, Ordering::SeqCst);
+                prewarmed.session.terminate();
+            }
+        }
+    }
+
     pub(super) fn try_claim_prewarmed_local(
         &self,
         app: &AppHandle,
@@ -208,6 +221,14 @@ impl PtySessionManager {
                 .as_ref()
                 .is_some_and(|p| p.is_admin == is_admin && profile_matches(&p.profile, profile));
             if !matches {
+                self.prewarm_cancelled.store(true, Ordering::SeqCst);
+                if let Some(unused) = guard.take() {
+                    unused
+                        .session
+                        .manual_disconnect
+                        .store(true, Ordering::SeqCst);
+                    unused.session.terminate();
+                }
                 return None;
             }
             self.prewarm_cancelled.store(true, Ordering::SeqCst);
@@ -273,5 +294,66 @@ impl PtySessionManager {
             is_admin: taken.is_admin,
             shell_profile: Some(profile.clone()),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::os::JobObjectSupervisor;
+    use crate::infra::security::TabSecretStore;
+
+    fn make_profile(id: &str, exe: &str, args: &[&str]) -> ShellProfile {
+        ShellProfile {
+            id: id.to_string(),
+            kind: id.to_string(),
+            name: id.to_string(),
+            executable: exe.to_string(),
+            args: args.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn profile_matches_default_powershell_and_rejects_mismatched_shells() {
+        let prewarmed_ps = make_profile(
+            "powershell",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            &["-NoLogo"],
+        );
+        let custom_ps_nologo = make_profile(
+            "custom:ps",
+            "powershell.exe",
+            &["-NoLogo"],
+        );
+        let custom_ps_extra = make_profile(
+            "custom:ps-script",
+            "powershell.exe",
+            &["-NoLogo", "-NoProfile"],
+        );
+        let pwsh_full = make_profile(
+            "pwsh",
+            r"C:\Program Files\PowerShell\7\pwsh.exe",
+            &["-NoLogo"],
+        );
+        let pwsh_bare = make_profile("pwsh", "PWSH.EXE", &["-NoLogo"]);
+
+        assert!(profile_matches(&prewarmed_ps, &custom_ps_nologo));
+        assert!(!profile_matches(&prewarmed_ps, &custom_ps_extra));
+        assert!(!profile_matches(&prewarmed_ps, &pwsh_full));
+        assert!(profile_matches(&pwsh_full, &pwsh_bare));
+    }
+
+    #[test]
+    fn discard_prewarmed_local_marks_cancelled_and_clears_slot() {
+        let mgr = PtySessionManager::new(
+            JobObjectSupervisor::new().expect("job supervisor"),
+            TabSecretStore::new(),
+        );
+        assert!(!mgr.prewarm_cancelled.load(Ordering::SeqCst));
+
+        mgr.discard_prewarmed_local();
+
+        assert!(mgr.prewarm_cancelled.load(Ordering::SeqCst));
+        assert!(mgr.prewarmed_local.lock().expect("lock").is_none());
     }
 }

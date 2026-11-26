@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import { PopoverMenu } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { SettingsCategoryId, ShellProfile } from "@/shared/types/ipc";
 import { ShellIcon } from "./ShellIcon";
 
@@ -44,6 +46,10 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
   onOpenSettings,
 }) => {
   const { t } = useI18n();
+  const keybindings = useSettingsStore((s) => s.settings.keybindings);
+  const newTabShortcut = getShortcutChord("newTab", keybindings);
+  const paletteShortcut = getShortcutChord("commandPalette", keybindings);
+  const settingsShortcut = getShortcutChord("openSettings", keybindings);
   const [isOpen, setIsOpen] = useState(false);
   const [showPlusTip, setShowPlusTip] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -118,7 +124,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
           }}
           aria-label={
             defaultShellProfile
-              ? `${t("app.new_tab_tooltip", { name: defaultShellProfile.name })} (Ctrl+Shift+T) — ${adminHint}`
+              ? `${t("app.new_tab_tooltip", { name: defaultShellProfile.name })} (${newTabShortcut}) — ${adminHint}`
               : t("app.no_shell_hint")
           }
           className="inline-flex h-7 w-7 items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors"
@@ -144,7 +150,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                   {t("app.new_tab_tooltip", { name: defaultShellProfile.name })}
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">
-                  Ctrl+Shift+T
+                  {newTabShortcut}
                 </span>
               </div>
               <div className="text-[10px] italic text-slate-400">{adminHint}</div>
@@ -225,7 +231,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                         {t("app.default_badge")}
                       </span>
                       <span className="text-[10px] font-mono text-slate-500">
-                        Ctrl+Shift+T
+                        {newTabShortcut}
                       </span>
                     </span>
                   )}
@@ -294,7 +300,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
               <Search className="w-3.5 h-3.5 text-sky-400 shrink-0" />
               <span className="truncate font-medium">{t("ctx.quick_jump")}</span>
             </span>
-            <span className="text-[10px] font-mono text-slate-500 shrink-0">Ctrl+Shift+K</span>
+            <span className="text-[10px] font-mono text-slate-500 shrink-0">{paletteShortcut}</span>
           </button>
 
           <button
@@ -309,7 +315,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
               <SettingsIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
               <span className="truncate font-medium">{t("ctx.settings")}</span>
             </span>
-            <span className="text-[10px] font-mono text-slate-500 shrink-0">Ctrl+,</span>
+            <span className="text-[10px] font-mono text-slate-500 shrink-0">{settingsShortcut}</span>
           </button>
         </div>
       </PopoverMenu>

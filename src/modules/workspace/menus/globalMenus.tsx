@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import {
   Clipboard,
   ClipboardCopy,
+  Minimize2,
   Plus,
   Scissors,
   Search,
@@ -11,12 +12,15 @@ import {
 import type { ContextMenuEntry, MenuState } from "@/shared/ui";
 import { copyText, readText, replaceInputSelection } from "@/shared/utils/clipboard";
 import { getEditableInput } from "@/shared/utils/editableTarget";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { ShellProfile } from "../types";
 import { buildLaunchItems, type LocalTabLaunchOpts } from "./tabMenus";
 
 interface UseGlobalContextMenuOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
   isAppElevated: boolean;
+  isFullscreen?: boolean;
   shellProfiles: ShellProfile[];
   defaultShellProfile: ShellProfile | null;
   setContextMenu: React.Dispatch<React.SetStateAction<MenuState | null>>;
@@ -24,12 +28,14 @@ interface UseGlobalContextMenuOpts {
   onNewHost: (initialGroup?: string) => void;
   onOpenPalette: () => void;
   onOpenSettings: () => void;
+  onExitFullscreen?: () => void;
 }
 
 export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
   const {
     t,
     isAppElevated,
+    isFullscreen = false,
     shellProfiles,
     defaultShellProfile,
     setContextMenu,
@@ -37,6 +43,7 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
     onNewHost,
     onOpenPalette,
     onOpenSettings,
+    onExitFullscreen,
   } = opts;
 
   const handlerRef = useRef<(e: MouseEvent) => void>();
@@ -130,6 +137,7 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
       return;
     }
 
+    const kb = useSettingsStore.getState().settings.keybindings;
     const items: ContextMenuEntry[] = [
       ...(docSelection.length > 0
         ? [
@@ -160,15 +168,26 @@ export function useGlobalContextMenu(opts: UseGlobalContextMenuOpts) {
         id: "gen-palette",
         label: t("ctx.quick_jump"),
         icon: <Search className="h-3.5 w-3.5 text-sky-400" />,
-        shortcut: "Ctrl+Shift+K",
+        shortcut: getShortcutChord("commandPalette", kb),
         onSelect: onOpenPalette,
       },
       { type: "separator", id: "sep-gen-2" },
+      ...(isFullscreen && onExitFullscreen
+        ? [
+            {
+              id: "gen-exit-fullscreen",
+              label: t("ctx.exit_fullscreen"),
+              icon: <Minimize2 className="h-3.5 w-3.5 text-sky-400" />,
+              shortcut: getShortcutChord("toggleFullscreen", kb),
+              onSelect: onExitFullscreen,
+            } as ContextMenuEntry,
+          ]
+        : []),
       {
         id: "gen-settings",
         label: t("ctx.settings"),
         icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-        shortcut: "Ctrl+,",
+        shortcut: getShortcutChord("openSettings", kb),
         onSelect: onOpenSettings,
       },
     ];

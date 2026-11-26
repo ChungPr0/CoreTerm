@@ -195,6 +195,13 @@ export function useSessionController({
     [disposeTab, handleEmptyTabs]
   );
 
+  const closeTabForWindowExit = useCallback(
+    (tabId: string) => {
+      useTabsStore.getState().closeTab(tabId, disposeTab);
+    },
+    [disposeTab]
+  );
+
   const closeTabById = useCallback(
     (tabId: string) => {
       const target = useTabsStore.getState().tabs.find((item) => item.tabId === tabId);
@@ -341,6 +348,7 @@ export function useSessionController({
     openSettingsTab,
     closeTabById,
     forceCloseTabById,
+    closeTabForWindowExit,
     handleCloseTab,
     closeOtherTabs,
     abortAuthPromptTab,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { SftpTransferJobDto } from "../../types";
 import {
   buildColumnHeaderMenu,
@@ -339,5 +340,56 @@ describe("sftpMenus", () => {
       "sep-split-close",
       "sftp-split-close",
     ]);
+  });
+
+  it("propagates custom openSettings, toggleSftpPanel, and closeTab shortcuts into SFTP menus", () => {
+    const prevKb = useSettingsStore.getState().settings.keybindings;
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: {
+          ...s.settings,
+          keybindings: {
+            openSettings: "Ctrl+Alt+S",
+            toggleSftpPanel: "Alt+S",
+            closeTab: "Ctrl+W",
+          },
+        },
+      }));
+      const splitToolbar = buildToolbarMenu({
+        t,
+        mode: "split",
+        connState: "CONNECTED",
+        onReconnect: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const splitSettings = splitToolbar.find((i) => i.id === "sftp-toolbar-settings");
+      const splitClose = splitToolbar.find((i) => i.id === "sftp-toolbar-close");
+      expect(
+        splitSettings && splitSettings.type !== "separator" && splitSettings.shortcut
+      ).toBe("Ctrl+Alt+S");
+      expect(splitClose && splitClose.type !== "separator" && splitClose.shortcut).toBe(
+        "Alt+S"
+      );
+
+      const fullBanner = buildSftpBannerMenu({
+        t,
+        mode: "full",
+        selectedText: "",
+        isConnecting: false,
+        onCopy: vi.fn(),
+        onReconnect: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const fullClose = fullBanner.find((i) => i.id === "sftp-banner-close");
+      expect(fullClose && fullClose.type !== "separator" && fullClose.shortcut).toBe(
+        "Ctrl+W"
+      );
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: prevKb },
+      }));
+    }
   });
 });

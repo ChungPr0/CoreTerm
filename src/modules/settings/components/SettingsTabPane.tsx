@@ -93,7 +93,7 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
   onOpenVault,
   onModalChange,
 }) => {
-  const { t } = useI18n();
+  const { t, resetLocalePreference } = useI18n();
   const settings = useSettingsStore((s) => s.settings);
   const patchSettings = useSettingsStore((s) => s.patchSettings);
   const resetCategorySettings = useSettingsStore((s) => s.resetCategorySettings);
@@ -393,11 +393,15 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
     if (!resetPrompt) return;
     if (resetPrompt.scope === "all") {
       resetAllSettings();
+      resetLocalePreference();
       windowApi.startupSetEnabled(false).catch(() => {});
       setResetSeq((n) => n + 1);
     } else {
       resetCategorySettings(resetPrompt.category);
-      if (resetPrompt.category === "startup") {
+      if (resetPrompt.category === "general") {
+        resetLocalePreference();
+        setResetSeq((n) => n + 1);
+      } else if (resetPrompt.category === "startup") {
         windowApi.startupSetEnabled(false).catch(() => {});
         setResetSeq((n) => n + 1);
       }
@@ -508,6 +512,7 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
                   <GeneralSettingsSection
                     settings={settings}
                     query={searchQuery}
+                    resetSeq={resetSeq}
                     onPatch={patchSettings}
                     onResetSection={() =>
                       setResetPrompt({

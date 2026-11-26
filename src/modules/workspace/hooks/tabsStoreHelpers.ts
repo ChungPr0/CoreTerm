@@ -156,6 +156,28 @@ export function applySetTabShell(
   });
 }
 
+export type WindowCloseDecision =
+  | { action: "prompt_dirty_editor"; tabId: string }
+  | { action: "prompt_multi_tabs"; count: number }
+  | { action: "close_now" };
+
+/** Determines whether closing the window must first prompt unsaved editors or multi-tab confirmation. */
+export function planWindowClose(
+  tabs: TerminalTabItem[],
+  warnCloseMultiTabs: boolean
+): WindowCloseDecision {
+  const dirtyEditor = tabs.find(
+    (t) => t.tabKind === "editor" && Boolean(t.editorFile?.dirty)
+  );
+  if (dirtyEditor) {
+    return { action: "prompt_dirty_editor", tabId: dirtyEditor.tabId };
+  }
+  if (warnCloseMultiTabs && tabs.length > 1) {
+    return { action: "prompt_multi_tabs", count: tabs.length };
+  }
+  return { action: "close_now" };
+}
+
 export function applySyncHostConfig(
   tabs: TerminalTabItem[],
   saved: HostFullConfigDto

@@ -7,6 +7,10 @@ export { CommandPalette } from "./components/CommandPalette";
 export { useTabDrag } from "./hooks/useTabDrag";
 export { useTabsStore, type TabDisposeCallback } from "./hooks/useTabsStore";
 export {
+  planWindowClose,
+  type WindowCloseDecision,
+} from "./hooks/tabsStoreHelpers";
+export {
   useTabMenus,
   buildLaunchItems,
   buildSftpPanelItem,

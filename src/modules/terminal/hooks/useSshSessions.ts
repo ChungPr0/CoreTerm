@@ -83,6 +83,7 @@ export function useSshSessions(opts: UseSshSessionsOpts) {
     openSettingsTab: controller.openSettingsTab,
     closeTabById: controller.closeTabById,
     forceCloseTabById: controller.forceCloseTabById,
+    closeTabForWindowExit: controller.closeTabForWindowExit,
     abortAuthTab: controller.abortAuthPromptTab,
     handleCloseTab: controller.handleCloseTab,
     reorderTab,

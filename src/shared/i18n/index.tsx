@@ -24,6 +24,7 @@ interface I18nContextValue {
   localePreference: LocalePreference;
   setLocale: (loc: Locale) => void;
   setLocalePreference: (pref: LocalePreference) => void;
+  resetLocalePreference: () => void;
   toggleLocale: () => void;
   t: (key: string, params?: TranslationParams) => string;
 }
@@ -33,6 +34,7 @@ const I18nContext = createContext<I18nContextValue>({
   localePreference: "vi",
   setLocale: () => {},
   setLocalePreference: () => {},
+  resetLocalePreference: () => {},
   toggleLocale: () => {},
   t: (k) => k,
 });
@@ -48,8 +50,20 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const onLangChange = () => setSystemLocale(resolveSystemLocale());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "coreterm_locale") {
+        const next = e.newValue;
+        setLocalePreferenceState(
+          next === "system" || next === "en" || next === "vi" ? next : "vi"
+        );
+      }
+    };
     window.addEventListener("languagechange", onLangChange);
-    return () => window.removeEventListener("languagechange", onLangChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("languagechange", onLangChange);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   const locale: Locale =
@@ -58,6 +72,11 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   const setLocalePreference = (pref: LocalePreference) => {
     setLocalePreferenceState(pref);
     localStorage.setItem("coreterm_locale", pref);
+  };
+
+  const resetLocalePreference = () => {
+    localStorage.removeItem("coreterm_locale");
+    setLocalePreferenceState("vi");
   };
 
   const setLocale = (loc: Locale) => {
@@ -96,6 +115,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
         localePreference,
         setLocale,
         setLocalePreference,
+        resetLocalePreference,
         toggleLocale,
         t,
       }}

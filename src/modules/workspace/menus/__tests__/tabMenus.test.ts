@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import {
   buildLaunchItems,
@@ -455,5 +456,39 @@ describe("buildTabBarWindowMenu and buildTabBarContextItems", () => {
       settingsItem.onSelect?.();
     }
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates custom keybindings into TabBar context menu", () => {
+    const prevKb = useSettingsStore.getState().settings.keybindings;
+    try {
+      useSettingsStore.setState((s) => ({
+        settings: {
+          ...s.settings,
+          keybindings: { newTab: "Ctrl+T", openSettings: "Ctrl+Alt+S" },
+        },
+      }));
+      const items = buildTabBarContextItems({
+        t,
+        isMaximized: false,
+        isAppElevated: false,
+        shellProfiles: [PS],
+        defaultShellProfile: PS,
+        onNewLocalTab: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onWindowAction: vi.fn(),
+      });
+      const newTabItem = items.find((i) => i.id === "new-tab");
+      const settingsItem = items.find((i) => i.id === "tabbar-settings");
+      expect(newTabItem && newTabItem.type !== "separator" && newTabItem.shortcut).toBe(
+        "Ctrl+T"
+      );
+      expect(
+        settingsItem && settingsItem.type !== "separator" && settingsItem.shortcut
+      ).toBe("Ctrl+Alt+S");
+    } finally {
+      useSettingsStore.setState((s) => ({
+        settings: { ...s.settings, keybindings: prevKb },
+      }));
+    }
   });
 });

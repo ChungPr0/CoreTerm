@@ -10,7 +10,7 @@ import {
   TerminalViewport,
   useSshSessions,
 } from "@/modules/terminal";
-import { TabBar, useTabsStore, windowApi } from "@/modules/workspace";
+import { planWindowClose, TabBar, useTabsStore, windowApi } from "@/modules/workspace";
 import { APP_PRELOADERS, AppModals, type CloseTabsPromptState } from "./AppModals";
 import { useAppBootstrap } from "./useAppBootstrap";
 import { useAppMenus } from "./useAppMenus";
@@ -38,11 +38,13 @@ export const App: React.FC = () => {
   const [keysVersion, setKeysVersion] = useState(0);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenBarPeek, setFullscreenBarPeek] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState<DeletePromptState | null>(null);
   const [closeTabsPrompt, setCloseTabsPrompt] = useState<CloseTabsPromptState | null>(
     null
   );
   const [findSignal, setFindSignal] = useState<{ tabId: string; seq: number } | null>(null);
+  const pendingWindowCloseRef = useRef(false);
 
   const focusTerminal = useCallback(() => setFocusToken((n) => n + 1), []);
   const dismissSidebar = useCallback(() => {
@@ -102,6 +104,7 @@ export const App: React.FC = () => {
   const hosts = useHostProfiles({ t, onError: alert.error, onRequestDelete: setDeletePrompt });
 
   dismissExternalOverlaysRef.current = () => {
+    pendingWindowCloseRef.current = false;
     setIsSidebarOpen(false);
     setIsPaletteOpen(false);
     setIsVaultOpen(false);
@@ -140,17 +143,57 @@ export const App: React.FC = () => {
   );
 
   const requestCloseWindow = useCallback(() => {
-    const count = useTabsStore.getState().tabs.length;
-    if (settings.warnCloseMultiTabs && count > 1) {
-      setIsSidebarOpen(false);
-      setIsPaletteOpen(false);
-      closeMenu();
-      setCloseTabsPrompt({ mode: "window", count });
+    const decision = planWindowClose(
+      useTabsStore.getState().tabs,
+      settings.warnCloseMultiTabs
+    );
+    if (decision.action === "close_now") {
+      pendingWindowCloseRef.current = false;
+      windowApi.windowClose().catch(() => {});
       return;
     }
-    windowApi.windowClose().catch(() => {});
+    pendingWindowCloseRef.current = true;
+    setIsSidebarOpen(false);
+    setIsPaletteOpen(false);
+    closeMenu();
+    windowApi.windowRestoreFocus().catch(() => {});
+    if (decision.action === "prompt_dirty_editor") {
+      setCloseTabsPrompt(null);
+      useTabsStore.getState().requestEditorClose(decision.tabId);
+      return;
+    }
+    setCloseTabsPrompt({ mode: "window", count: decision.count });
   }, [closeMenu, settings.warnCloseMultiTabs]);
   requestCloseWindowRef.current = requestCloseWindow;
+
+  const cancelPendingWindowClose = useCallback(() => {
+    pendingWindowCloseRef.current = false;
+  }, []);
+
+  const handleEditorForceClose = useCallback(
+    (tabId: string) => {
+      if (!pendingWindowCloseRef.current) {
+        sessions.forceCloseTabById(tabId);
+        return;
+      }
+      sessions.closeTabForWindowExit(tabId);
+      const nextDecision = planWindowClose(
+        useTabsStore.getState().tabs,
+        settings.warnCloseMultiTabs
+      );
+      if (nextDecision.action === "prompt_dirty_editor") {
+        useTabsStore.getState().requestEditorClose(nextDecision.tabId);
+        return;
+      }
+      if (nextDecision.action === "prompt_multi_tabs") {
+        setCloseTabsPrompt({ mode: "window", count: nextDecision.count });
+        return;
+      }
+      pendingWindowCloseRef.current = false;
+      windowApi.windowClose().catch(() => {});
+    },
+    [sessions, settings.warnCloseMultiTabs]
+  );
 
   const requestCloseOtherTabs = useCallback(
     (keepTabId: string) => {
@@ -172,6 +215,7 @@ export const App: React.FC = () => {
     const prompt = closeTabsPrompt;
     setCloseTabsPrompt(null);
     if (prompt.mode === "window") {
+      pendingWindowCloseRef.current = false;
       windowApi.windowClose().catch(() => {});
     } else {
       sessions.closeOtherTabs(prompt.keepTabId);
@@ -244,6 +288,22 @@ export const App: React.FC = () => {
     [sessions]
   );
 
+  const toggleFullscreen = useCallback(() => {
+    windowApi
+      .windowToggleFullscreen()
+      .then((fs) => {
+        setIsFullscreen(fs);
+        if (!fs) setFullscreenBarPeek(false);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen || settings.showTabsInFullscreen) {
+      setFullscreenBarPeek(false);
+    }
+  }, [isFullscreen, settings.showTabsInFullscreen]);
+
   useEffect(() => {
     let active = true;
     const syncFullscreen = () => {
@@ -312,12 +372,7 @@ export const App: React.FC = () => {
     onToggleSftpSplit: toggleActiveSftpSplit,
     onFindInTerminal: () => triggerFindInTab(),
     onOpenSettings: () => openSettings(),
-    onToggleFullscreen: () => {
-      windowApi
-        .windowToggleFullscreen()
-        .then((fs) => setIsFullscreen(fs))
-        .catch(() => {});
-    },
+    onToggleFullscreen: toggleFullscreen,
     onCloseContextMenu: closeMenu,
     onDismissSidebar: dismissSidebar,
   });
@@ -340,6 +395,7 @@ export const App: React.FC = () => {
     tabs: sessions.tabs,
     allProfiles: hosts.allProfiles,
     isAppElevated,
+    isFullscreen,
     shellProfiles,
     defaultShellProfile,
     setContextMenu,
@@ -364,6 +420,7 @@ export const App: React.FC = () => {
     onOpenPalette: () => setIsPaletteOpen(true),
     onDismissSidebar: dismissSidebar,
     onRequestCloseWindow: requestCloseWindow,
+    onExitFullscreen: toggleFullscreen,
   });
 
   const handleHostSaved = async (saved: HostFullConfigDto) => {
@@ -382,45 +439,68 @@ export const App: React.FC = () => {
     onError: alert.error,
   });
 
+  const hideStaticTabBar = isFullscreen && !settings.showTabsInFullscreen;
+  const tabBarNode = (
+    <TabBar
+      tabs={sessions.tabs}
+      activeTabId={sessions.activeTabId}
+      renamingTabId={sessions.renamingTabId}
+      isAppElevated={isAppElevated}
+      showAdminShield={settings.showAdminShield}
+      tabWidthMode={settings.tabWidthMode}
+      keybindings={settings.keybindings}
+      isModalOpen={hasModalOpen}
+      isContextMenuOpen={!!contextMenu}
+      shellProfiles={shellProfiles}
+      defaultShellProfile={defaultShellProfile}
+      profiles={hosts.allProfiles}
+      onToggleSidebar={toggleSidebar}
+      onSelectTab={sessions.selectTab}
+      onBlankSpaceClick={dismissSidebar}
+      onCloseTab={sessions.handleCloseTab}
+      onReconnectTab={sessions.reconnectTab}
+      onToggleSftp={sessions.toggleSftpSplit}
+      onReorderTab={sessions.reorderTab}
+      onCommitRenameTab={sessions.renameTab}
+      onCancelRenameTab={sessions.cancelRenamingTab}
+      onNewTab={sessions.newLocalTab}
+      onRescan={() => rescanShells()}
+      onConnectProfile={sessions.connectHost}
+      onCreateNewHost={() => hosts.openNewHost("Default")}
+      onOpenPalette={() => setIsPaletteOpen(true)}
+      onOpenSettings={openSettings}
+      onCloseWindow={requestCloseWindow}
+      onContextMenuTab={menus.openTabMenu}
+      onContextMenuTabBar={menus.openTabBarMenu}
+    />
+  );
+
   return (
     <div
       className={`relative flex h-full w-full flex-col overflow-hidden bg-[#090d16] text-slate-100 ${
         hasNativeBorder ? "" : "border border-slate-800"
       }`}
     >
-      {(!isFullscreen || settings.showTabsInFullscreen) && (
-        <TabBar
-          tabs={sessions.tabs}
-          activeTabId={sessions.activeTabId}
-          renamingTabId={sessions.renamingTabId}
-          isAppElevated={isAppElevated}
-          showAdminShield={settings.showAdminShield}
-          tabWidthMode={settings.tabWidthMode}
-          keybindings={settings.keybindings}
-          isModalOpen={hasModalOpen}
-          isContextMenuOpen={!!contextMenu}
-          shellProfiles={shellProfiles}
-          defaultShellProfile={defaultShellProfile}
-          profiles={hosts.allProfiles}
-          onToggleSidebar={toggleSidebar}
-          onSelectTab={sessions.selectTab}
-          onBlankSpaceClick={dismissSidebar}
-          onCloseTab={sessions.handleCloseTab}
-          onReconnectTab={sessions.reconnectTab}
-          onToggleSftp={sessions.toggleSftpSplit}
-          onReorderTab={sessions.reorderTab}
-          onCommitRenameTab={sessions.renameTab}
-          onCancelRenameTab={sessions.cancelRenamingTab}
-          onNewTab={sessions.newLocalTab}
-          onRescan={() => rescanShells()}
-          onConnectProfile={sessions.connectHost}
-          onCreateNewHost={() => hosts.openNewHost("Default")}
-          onOpenPalette={() => setIsPaletteOpen(true)}
-          onOpenSettings={openSettings}
-          onCloseWindow={requestCloseWindow}
-          onContextMenuTab={menus.openTabMenu}
-          onContextMenuTabBar={menus.openTabBarMenu}
+      {!hideStaticTabBar && tabBarNode}
+
+      {hideStaticTabBar && !fullscreenBarPeek && !hasModalOpen && (
+        <div
+          onMouseEnter={() => setFullscreenBarPeek(true)}
+          className="fixed top-0 left-0 right-0 z-[85] h-1.5"
         />
+      )}
+
+      {hideStaticTabBar && fullscreenBarPeek && (
+        <div
+          onMouseLeave={() => {
+            if (!contextMenu && !sessions.renamingTabId) {
+              setFullscreenBarPeek(false);
+            }
+          }}
+          className="fixed top-0 left-0 right-0 z-[88] shadow-[0_8px_24px_rgba(0,0,0,0.65)]"
+        >
+          {tabBarNode}
+        </div>
       )}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -474,7 +554,8 @@ export const App: React.FC = () => {
                     findToken={findSignal?.tabId === tab.tabId ? findSignal.seq : 0}
                     closeRequestToken={sessions.editorCloseSeqByTab[tab.tabId] ?? 0}
                     onDirtyChange={(dirty) => sessions.setEditorDirty(tab.tabId, dirty)}
-                    onForceClose={() => sessions.forceCloseTabById(tab.tabId)}
+                    onForceClose={() => handleEditorForceClose(tab.tabId)}
+                    onCancelCloseRequest={cancelPendingWindowClose}
                     onShowMenu={openMenu}
                     onModalChange={sessions.handleSftpModalChange}
                     onSaved={() => {
@@ -630,6 +711,7 @@ export const App: React.FC = () => {
           onClearDeletePrompt={() => setDeletePrompt(null)}
           closeTabsPrompt={closeTabsPrompt}
           onCancelCloseTabsPrompt={() => {
+            pendingWindowCloseRef.current = false;
             setCloseTabsPrompt(null);
             focusTerminal();
           }}

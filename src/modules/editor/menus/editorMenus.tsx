@@ -23,6 +23,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type { ContextMenuEntry } from "@/shared/ui";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import type { EditorLineEnding } from "../types";
 
 export interface BuildEditorContextItemsOpts {
@@ -295,6 +297,7 @@ function appendCommonFooterItems(
   }
 ) {
   if (!opts.onOpenSettings && !opts.onClose) return;
+  const kb = useSettingsStore.getState().settings.keybindings;
   if (!opts.omitSeparator && items.length > 0) {
     items.push({ type: "separator", id: opts.sepId });
   }
@@ -303,7 +306,7 @@ function appendCommonFooterItems(
       id: `${opts.idPrefix}-settings`,
       label: opts.t("ctx.settings"),
       icon: <SettingsIcon className="h-3.5 w-3.5 text-slate-300" />,
-      shortcut: "Ctrl+,",
+      shortcut: getShortcutChord("openSettings", kb),
       onSelect: opts.onOpenSettings,
     });
   }
@@ -312,7 +315,7 @@ function appendCommonFooterItems(
       id: `${opts.idPrefix}-close`,
       label: opts.t("ctx.close_tab"),
       icon: <X className="h-3.5 w-3.5" />,
-      shortcut: "Ctrl+Shift+W",
+      shortcut: getShortcutChord("closeTab", kb),
       onSelect: opts.onClose,
     });
   }
