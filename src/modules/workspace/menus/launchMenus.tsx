@@ -136,21 +136,22 @@ export function buildSftpPanelItem(
 export function buildTabBarWindowMenu(
   t: (key: string, params?: Record<string, string | number>) => string,
   isMaximized: boolean,
-  onAction: (action: WindowSysAction) => void
+  onAction: (action: WindowSysAction) => void,
+  isFullscreen = false
 ): ContextMenuEntry[] {
   return [
     {
       id: "win-restore",
       label: t("window.restore"),
       icon: <Minimize2 className="h-3.5 w-3.5" />,
-      disabled: !isMaximized,
+      disabled: !isMaximized && !isFullscreen,
       onSelect: () => onAction("restore"),
     },
     {
       id: "win-move",
       label: t("window.move"),
       icon: <Move className="h-3.5 w-3.5" />,
-      disabled: isMaximized,
+      disabled: isMaximized || isFullscreen,
       onSelect: () => onAction("move"),
     },
     {

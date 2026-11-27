@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   FolderOpen,
@@ -8,7 +8,7 @@ import {
   Server,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { PopoverMenu } from "@/shared/ui";
+import { PopoverMenu, useTooltipSlot } from "@/shared/ui";
 import { useI18n } from "@/shared/i18n";
 import { getShortcutChord } from "@/shared/utils/shortcuts";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
@@ -51,7 +51,6 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
   const paletteShortcut = getShortcutChord("commandPalette", keybindings);
   const settingsShortcut = getShortcutChord("openSettings", keybindings);
   const [isOpen, setIsOpen] = useState(false);
-  const [showPlusTip, setShowPlusTip] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [menuLeft, setMenuLeft] = useState(120);
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -59,12 +58,10 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
   useEffect(() => {
     if (isModalOpen || isContextMenuOpen) {
       setIsOpen(false);
-      setShowPlusTip(false);
     }
   }, [isModalOpen, isContextMenuOpen]);
 
   const toggleMenu = () => {
-    setShowPlusTip(false);
     setIsOpen((prev) => {
       const next = !prev;
       if (next && anchorRef.current) {
@@ -96,6 +93,33 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
     }
   };
 
+  const plusTipContent = useMemo(
+    () =>
+      defaultShellProfile ? (
+        <div className="whitespace-nowrap">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-100">
+              {t("app.new_tab_tooltip", { name: defaultShellProfile.name })}
+            </span>
+            <span className="text-[10px] font-mono text-slate-400">
+              {newTabShortcut}
+            </span>
+          </div>
+          <div className="text-[10px] italic text-slate-400">{adminHint}</div>
+        </div>
+      ) : (
+        <div className="whitespace-nowrap font-medium text-amber-300">
+          {t("app.no_shell_hint")}
+        </div>
+      ),
+    [defaultShellProfile, newTabShortcut, adminHint, t]
+  );
+
+  const plusTipProps = useTooltipSlot(plusTipContent, {
+    placement: "bottom",
+    disabled: isOpen || isModalOpen || isContextMenuOpen,
+  });
+
   return (
     <div
       ref={anchorRef}
@@ -106,13 +130,10 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
       <div className="flex items-center rounded-md overflow-hidden border border-transparent hover:border-slate-800 bg-transparent hover:bg-slate-900/80 transition-colors">
         <button
           type="button"
-          onMouseEnter={() => {
-            if (!isOpen && !isModalOpen && !isContextMenuOpen) setShowPlusTip(true);
-          }}
-          onMouseLeave={() => setShowPlusTip(false)}
+          tabIndex={-1}
+          {...plusTipProps}
           onClick={(e) => {
             setIsOpen(false);
-            setShowPlusTip(false);
             if (!defaultShellProfile) {
               onOpenSettings("shells");
               return;
@@ -133,35 +154,16 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
         </button>
         <button
           type="button"
+          tabIndex={-1}
           onClick={toggleMenu}
-          title={t("app.new_tab_menu")}
+          data-tooltip={!isOpen && !isModalOpen && !isContextMenuOpen ? t("app.new_tab_menu") : undefined}
+          data-tooltip-placement="bottom"
+          aria-label={t("app.new_tab_menu")}
           className="inline-flex h-7 items-center justify-center px-1 text-slate-400 hover:text-slate-100 hover:bg-slate-800/80 transition-colors border-l border-slate-800/60"
         >
           <ChevronDown className="w-3.5 h-3.5" />
         </button>
       </div>
-
-      {showPlusTip && !isOpen && !isModalOpen && !isContextMenuOpen && (
-        <div className="pointer-events-none absolute left-0 top-full mt-1.5 z-40 whitespace-nowrap rounded-lg border border-slate-700/85 bg-slate-900/95 px-2.5 py-1.5 text-[11px] shadow-[0_10px_28px_rgba(0,0,0,0.65)] backdrop-blur-md">
-          {defaultShellProfile ? (
-            <>
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-medium text-slate-100">
-                  {t("app.new_tab_tooltip", { name: defaultShellProfile.name })}
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">
-                  {newTabShortcut}
-                </span>
-              </div>
-              <div className="text-[10px] italic text-slate-400">{adminHint}</div>
-            </>
-          ) : (
-            <div className="font-medium text-amber-300">
-              {t("app.no_shell_hint")}
-            </div>
-          )}
-        </div>
-      )}
 
       <PopoverMenu
         isOpen={isOpen}
@@ -181,8 +183,10 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
           {onRescan && (
             <button
               type="button"
+              tabIndex={-1}
               disabled={isScanning}
-              title={t("app.rescan")}
+              data-tooltip={t("app.rescan")}
+              aria-label={t("app.rescan")}
               onClick={() => void handleRescan()}
               className="p-1 rounded text-slate-500 hover:text-sky-300 hover:bg-slate-800/80 transition-colors disabled:opacity-50"
             >
@@ -197,6 +201,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
               <div className="text-slate-400">{t("app.no_shells")}</div>
               <button
                 type="button"
+                tabIndex={-1}
                 onClick={() => {
                   setIsOpen(false);
                   onOpenSettings("shells");
@@ -214,7 +219,8 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                 <button
                   key={shell.id}
                   type="button"
-                  title={adminHint}
+                  tabIndex={-1}
+                  data-tooltip={adminHint}
                   onClick={(e) => {
                     setIsOpen(false);
                     onNewTab({ profile: shell, asAdmin: isAppElevated || e.ctrlKey });
@@ -252,6 +258,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
                 <button
                   key={p.id}
                   type="button"
+                  tabIndex={-1}
                   onClick={() => {
                     setIsOpen(false);
                     onConnectProfile(p);
@@ -275,6 +282,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
         <div className="px-1.5 space-y-0.5">
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => {
               setIsOpen(false);
               onCreateNewHost();
@@ -290,6 +298,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
         <div className="px-1.5 space-y-0.5">
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => {
               setIsOpen(false);
               onOpenPalette();
@@ -305,6 +314,7 @@ export const NewTabDropdown: React.FC<NewTabDropdownProps> = ({
 
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => {
               setIsOpen(false);
               onOpenSettings();

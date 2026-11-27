@@ -1,12 +1,21 @@
 import { useEffect, useRef } from "react";
+import {
+  SSH_DEFAULT_RECONNECT_SEC,
+  SSH_MAX_RECONNECT_BACKOFF_SEC,
+  SSH_RECONNECT_MAX,
+  SSH_RECONNECT_MIN,
+} from "@/shared/defaults";
 
-export const MAX_RECONNECT_BACKOFF_SEC = 30;
+export const MAX_RECONNECT_BACKOFF_SEC = SSH_MAX_RECONNECT_BACKOFF_SEC;
 
 export function nextReconnectDelayMs(
   intervalSec: number | undefined,
   attempt: number
 ): number {
-  const baseSec = Math.min(Math.max(Number(intervalSec) || 2, 1), 60);
+  const baseSec = Math.min(
+    Math.max(Number(intervalSec) || SSH_DEFAULT_RECONNECT_SEC, SSH_RECONNECT_MIN),
+    SSH_RECONNECT_MAX
+  );
   const maxSec = Math.max(baseSec, MAX_RECONNECT_BACKOFF_SEC);
   const factor = Math.pow(2, Math.min(Math.max(attempt, 0), 5));
   return Math.min(baseSec * factor, maxSec) * 1000;

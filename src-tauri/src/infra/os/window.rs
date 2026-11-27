@@ -1,7 +1,18 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 static HAS_NATIVE_WINDOW_BORDER: AtomicBool = AtomicBool::new(false);
 static ALLOW_WINDOW_CLOSE: AtomicBool = AtomicBool::new(false);
+
+struct PreFullscreenState {
+    was_maximized: bool,
+    #[cfg(target_os = "windows")]
+    placement: Option<windows_sys::Win32::UI::WindowsAndMessaging::WINDOWPLACEMENT>,
+    fallback_pos: Option<tauri::PhysicalPosition<i32>>,
+    fallback_size: Option<tauri::PhysicalSize<u32>>,
+}
+
+static PRE_FULLSCREEN_STATE: Mutex<Option<PreFullscreenState>> = Mutex::new(None);
 
 pub fn has_native_window_border() -> bool {
     HAS_NATIVE_WINDOW_BORDER.load(Ordering::Relaxed)
@@ -60,21 +71,286 @@ pub fn configure_main_window(window: &tauri::WebviewWindow) {
     }
 }
 
-pub fn dispatch_window_sys_command(window: &tauri::WebviewWindow, action: &str) -> Result<(), String> {
-    let is_maximized = window.is_maximized().unwrap_or(false);
+#[cfg(target_os = "windows")]
+fn set_dwm_transitions_disabled(window: &tauri::WebviewWindow, disabled: bool) {
+    use std::ffi::c_void;
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    let val: i32 = i32::from(disabled);
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd.0 as HWND,
+            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+            (&val as *const i32).cast::<c_void>(),
+            std::mem::size_of::<i32>() as u32,
+        );
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn capture_win32_placement(
+    window: &tauri::WebviewWindow,
+) -> Option<windows_sys::Win32::UI::WindowsAndMessaging::WINDOWPLACEMENT> {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT};
+
+    let hwnd = window.hwnd().ok()?;
+    let raw_hwnd = hwnd.0 as HWND;
+    let mut wp: WINDOWPLACEMENT = unsafe { std::mem::zeroed() };
+    wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+    let ok = unsafe { GetWindowPlacement(raw_hwnd, &mut wp) };
+    if ok != 0 {
+        Some(wp)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn enforce_win32_fullscreen_bounds(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, HWND_TOP, SWP_FRAMECHANGED,
+        SWP_NOOWNERZORDER, SWP_SHOWWINDOW, WS_MAXIMIZE, WS_OVERLAPPEDWINDOW,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    let raw_hwnd = hwnd.0 as HWND;
+    unsafe {
+        // Strip WS_MAXIMIZE and WS_OVERLAPPEDWINDOW in-place without calling SW_RESTORE
+        // so Maximized -> Fullscreen expands directly without shrinking first.
+        let cur_style = GetWindowLongPtrW(raw_hwnd, GWL_STYLE) as u32;
+        let clean_style = cur_style & !(WS_MAXIMIZE | WS_OVERLAPPEDWINDOW);
+        if clean_style != cur_style {
+            SetWindowLongPtrW(raw_hwnd, GWL_STYLE, clean_style as isize);
+        }
+
+        let hmon = MonitorFromWindow(raw_hwnd, MONITOR_DEFAULTTONEAREST);
+        if hmon.is_null() {
+            return;
+        }
+        let mut mi: MONITORINFO = std::mem::zeroed();
+        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+        if GetMonitorInfoW(hmon, &mut mi) != 0 {
+            let r = mi.rcMonitor;
+            let _ = SetWindowPos(
+                raw_hwnd,
+                HWND_TOP,
+                r.left,
+                r.top,
+                r.right - r.left,
+                r.bottom - r.top,
+                SWP_FRAMECHANGED | SWP_NOOWNERZORDER | SWP_SHOWWINDOW,
+            );
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn restore_win32_placement(
+    window: &tauri::WebviewWindow,
+    wp: &windows_sys::Win32::UI::WindowsAndMessaging::WINDOWPLACEMENT,
+    as_maximized: bool,
+) -> bool {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPlacement, SetWindowPos, HWND_TOP, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SWP_NOZORDER, SW_SHOWMAXIMIZED, SW_SHOWNORMAL, WINDOWPLACEMENT,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+    let raw_hwnd = hwnd.0 as HWND;
+    let mut restored = *wp;
+    restored.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+    restored.showCmd = if as_maximized {
+        SW_SHOWMAXIMIZED as u32
+    } else {
+        SW_SHOWNORMAL as u32
+    };
+    unsafe {
+        let ok = SetWindowPlacement(raw_hwnd, &restored) != 0;
+        let _ = SetWindowPos(
+            raw_hwnd,
+            HWND_TOP,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+        ok
+    }
+}
+
+fn apply_fullscreen_on_current_thread(
+    window: &tauri::WebviewWindow,
+    fullscreen: bool,
+    force_exit_maximized: bool,
+) -> (bool, bool) {
+    let currently_fs = window.is_fullscreen().unwrap_or(false);
+    if currently_fs == fullscreen {
+        let is_max = !currently_fs && window.is_maximized().unwrap_or(false);
+        return (currently_fs, is_max);
+    }
+
+    #[cfg(target_os = "windows")]
+    set_dwm_transitions_disabled(window, true);
+
+    let result = if fullscreen {
+        let was_maximized = window.is_maximized().unwrap_or(false);
+        let state = PreFullscreenState {
+            was_maximized,
+            #[cfg(target_os = "windows")]
+            placement: capture_win32_placement(window),
+            fallback_pos: window.outer_position().ok(),
+            fallback_size: window.outer_size().ok(),
+        };
+        if let Ok(mut guard) = PRE_FULLSCREEN_STATE.lock() {
+            *guard = Some(state);
+        }
+
+        let _ = window.set_fullscreen(true);
+        #[cfg(target_os = "windows")]
+        enforce_win32_fullscreen_bounds(window);
+        let _ = window.set_focus();
+        (window.is_fullscreen().unwrap_or(true), false)
+    } else {
+        let saved = PRE_FULLSCREEN_STATE
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
+        let target_maximized =
+            force_exit_maximized || saved.as_ref().is_some_and(|s| s.was_maximized);
+
+        let _ = window.set_fullscreen(false);
+
+        if let Some(saved) = saved {
+            let mut placement_restored = false;
+            #[cfg(target_os = "windows")]
+            if let Some(ref wp) = saved.placement {
+                placement_restored = restore_win32_placement(window, wp, target_maximized);
+            }
+            if !placement_restored && !target_maximized {
+                if let Some(size) = saved.fallback_size {
+                    let _ = window.set_size(tauri::Size::Physical(size));
+                }
+                if let Some(pos) = saved.fallback_pos {
+                    let _ = window.set_position(tauri::Position::Physical(pos));
+                }
+            }
+        }
+
+        if target_maximized && !window.is_maximized().unwrap_or(false) {
+            let _ = window.maximize();
+        }
+
+        let _ = window.set_focus();
+        let is_fs = window.is_fullscreen().unwrap_or(false);
+        (is_fs, !is_fs && window.is_maximized().unwrap_or(false))
+    };
+
+    #[cfg(target_os = "windows")]
+    set_dwm_transitions_disabled(window, false);
+
+    result
+}
+
+pub async fn set_window_fullscreen(
+    window: &tauri::WebviewWindow,
+    fullscreen: bool,
+) -> Result<(bool, bool), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let win_clone = window.clone();
+    window
+        .run_on_main_thread(move || {
+            let state = apply_fullscreen_on_current_thread(&win_clone, fullscreen, false);
+            let _ = tx.send(state);
+        })
+        .map_err(|e| e.to_string())?;
+    rx.await.map_err(|e| e.to_string())
+}
+
+pub async fn toggle_window_fullscreen(
+    window: &tauri::WebviewWindow,
+) -> Result<(bool, bool), String> {
+    let next = !window.is_fullscreen().unwrap_or(false);
+    set_window_fullscreen(window, next).await
+}
+
+pub async fn toggle_window_maximize(
+    window: &tauri::WebviewWindow,
+) -> Result<(bool, bool), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let win_clone = window.clone();
+    window
+        .run_on_main_thread(move || {
+            if win_clone.is_fullscreen().unwrap_or(false) {
+                let state = apply_fullscreen_on_current_thread(&win_clone, false, false);
+                let _ = tx.send(state);
+                return;
+            }
+            if win_clone.is_maximized().unwrap_or(false) {
+                let _ = win_clone.unmaximize();
+            } else {
+                let _ = win_clone.maximize();
+            }
+            let is_fs = win_clone.is_fullscreen().unwrap_or(false);
+            let _ = tx.send((is_fs, !is_fs && win_clone.is_maximized().unwrap_or(false)));
+        })
+        .map_err(|e| e.to_string())?;
+    rx.await.map_err(|e| e.to_string())
+}
+
+pub async fn dispatch_window_sys_command(
+    window: &tauri::WebviewWindow,
+    action: &str,
+) -> Result<(), String> {
     match action {
         "restore" => {
-            if is_maximized {
-                window.unmaximize().map_err(|e| e.to_string())?;
-            }
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let win_clone = window.clone();
+            window
+                .run_on_main_thread(move || {
+                    if win_clone.is_fullscreen().unwrap_or(false) {
+                        let _ = apply_fullscreen_on_current_thread(&win_clone, false, false);
+                    } else if win_clone.is_maximized().unwrap_or(false) {
+                        let _ = win_clone.unmaximize();
+                    }
+                    let _ = tx.send(());
+                })
+                .map_err(|e| e.to_string())?;
+            let _ = rx.await;
         }
         "minimize" => {
             window.minimize().map_err(|e| e.to_string())?;
         }
         "maximize" => {
-            if !is_maximized {
-                window.maximize().map_err(|e| e.to_string())?;
-            }
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let win_clone = window.clone();
+            window
+                .run_on_main_thread(move || {
+                    if win_clone.is_fullscreen().unwrap_or(false) {
+                        let _ = apply_fullscreen_on_current_thread(&win_clone, false, true);
+                    } else if !win_clone.is_maximized().unwrap_or(false) {
+                        let _ = win_clone.maximize();
+                    }
+                    let _ = tx.send(());
+                })
+                .map_err(|e| e.to_string())?;
+            let _ = rx.await;
         }
         "close" => {
             allow_window_close();
@@ -82,7 +358,7 @@ pub fn dispatch_window_sys_command(window: &tauri::WebviewWindow, action: &str) 
         }
         "move" | "size" => {
             // Handled interactively by frontend window manager.
-            if is_maximized {
+            if window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
                 return Ok(());
             }
         }

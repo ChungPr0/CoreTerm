@@ -1,5 +1,10 @@
 import type { IBufferRange, ILink, ILinkHandler, ILinkProvider, Terminal } from "@xterm/xterm";
-import { TERM_PASTE_WARN_BYTES } from "@/shared/defaults";
+import {
+  TERM_PASTE_PREVIEW_MAX_CHARS,
+  TERM_PASTE_PREVIEW_MAX_LINES,
+  TERM_PASTE_WARN_BYTES,
+  TERM_URL_MAX_WRAPPED_SCAN_LINES,
+} from "@/shared/defaults";
 import type { WarnPasteMultilineMode } from "@/modules/settings";
 
 export interface TerminalPastePlan {
@@ -26,9 +31,9 @@ export interface DetectedHttpUrl {
   endIndex: number;
 }
 
-const PASTE_PREVIEW_MAX_LINES = 50;
-const PASTE_PREVIEW_MAX_CHARS = 4096;
-const MAX_WRAPPED_SCAN_LINES = 6;
+const PASTE_PREVIEW_MAX_LINES = TERM_PASTE_PREVIEW_MAX_LINES;
+const PASTE_PREVIEW_MAX_CHARS = TERM_PASTE_PREVIEW_MAX_CHARS;
+const MAX_WRAPPED_SCAN_LINES = TERM_URL_MAX_WRAPPED_SCAN_LINES;
 const HTTP_URL_RE = /https?:\/\/[^\s<>"'`\x00-\x1f\x7f]+/gi;
 const UNSAFE_PASTE_CHARS_RE =
   /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;

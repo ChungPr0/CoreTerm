@@ -7,7 +7,6 @@ import {
   LAUNCH_COLS_MIN,
   LAUNCH_ROWS_MAX,
   LAUNCH_ROWS_MIN,
-  TOAST_COPY_MS,
 } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { Select, Switch, useAlert } from "@/shared/ui";
@@ -70,10 +69,6 @@ export const StartupSettingsSection: React.FC<StartupSettingsSectionProps> = ({
     try {
       const actual = await windowApi.startupSetEnabled(next);
       setStartupEnabled(actual);
-      alert.info(
-        t(actual ? "settings.launch_on_startup_enabled" : "settings.launch_on_startup_disabled"),
-        TOAST_COPY_MS
-      );
     } catch (err) {
       setStartupEnabled(prev);
       alert.error(formatLocalizedError(err, t));

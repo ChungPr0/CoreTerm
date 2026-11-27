@@ -63,6 +63,10 @@ export function useKeyVault({ isOpen, onKeysChanged }: UseKeyVaultArgs) {
   useEffect(() => {
     if (isOpen) {
       void loadKeys();
+      const raf = window.requestAnimationFrame(() => {
+        nameInputRef.current?.focus();
+      });
+      return () => window.cancelAnimationFrame(raf);
     }
   }, [isOpen, loadKeys]);
 

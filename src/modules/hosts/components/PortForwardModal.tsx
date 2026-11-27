@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Info, Network, X } from "lucide-react";
 import type { ForwardType } from "@/shared/types/ipc";
 import { useI18n } from "@/shared/i18n";
-import { Button, Input, ModalShell, Select, useAlert } from "@/shared/ui";
+import { Button, IconButton, Input, ModalShell, Select, useAlert } from "@/shared/ui";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
 import { hostsApi } from "../api/hostsApi";
 import type { PortProbeResultDto } from "../types";
@@ -251,9 +251,12 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
             {initialRule ? t("forward.edit_title") : t("forward.add_title")}
           </h2>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} type="button">
-          <X className="w-4 h-4" />
-        </Button>
+        <IconButton
+          size="md"
+          onClick={onClose}
+          title={t("common.close")}
+          icon={<X className="w-4 h-4" />}
+        />
       </div>
 
       <div className="p-5 space-y-4 text-xs">
@@ -399,7 +402,7 @@ export const PortForwardModal: React.FC<PortForwardModalProps> = ({
                   {forwardType === "REMOTE" && isPrivilegedRemote && (
                     <span
                       className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-                      title={t("forward.port_privileged")}
+                      data-tooltip={t("forward.port_privileged")}
                     >
                       <AlertCircle className="w-3 h-3 shrink-0" />
                       <span>{t("forward.port_warning")}</span>

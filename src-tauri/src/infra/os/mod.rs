@@ -3,6 +3,7 @@ pub mod clipboard;
 pub mod context_menu;
 pub mod elevated_pty;
 pub mod elevation;
+pub mod install_kind;
 pub mod job_object;
 pub mod known_folders;
 pub mod startup;
@@ -14,6 +15,7 @@ pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub use acl::{restrict_private_key_acl, restrict_private_key_dir_acl};
 pub use elevation::is_process_elevated;
+pub use install_kind::{detect_install_kind, InstallKind};
 pub use job_object::JobObjectSupervisor;
 pub use known_folders::{system32_binary, system32_dir};
 pub use window::{

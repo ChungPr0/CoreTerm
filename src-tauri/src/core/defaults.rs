@@ -37,8 +37,24 @@ pub const SQLITE_BUSY_TIMEOUT_MS: u64 = 5000;
 pub const FALLBACK_WINDOW_SHOW_MS: u64 = 1200;
 
 pub const PTY_READ_BUF_BYTES: usize = 16 * 1024;
+pub const PTY_MAX_BATCH_BYTES: usize = 32 * 1024;
+pub const PTY_BATCH_WINDOW_MS: u64 = 10;
+pub const PTY_PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
+
 pub const SFTP_COPY_CHUNK_BYTES: usize = 128 * 1024;
 pub const SFTP_PROGRESS_EMIT_INTERVAL_MS: u128 = 150;
 pub const MAX_CONCURRENT_TRANSFERS: usize = 2;
 pub const SFTP_MAX_WALK_DEPTH: usize = 64;
 pub const SFTP_MAX_WALK_ENTRIES: usize = 50_000;
+pub const MAX_EDITABLE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+pub const UPDATER_GITHUB_LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/ChungPr0/CoreTerm/releases/latest";
+pub const UPDATER_ALLOWED_RELEASE_HTML_PREFIX: &str =
+    "https://github.com/ChungPr0/CoreTerm/releases/";
+pub const UPDATER_ALLOWED_ASSET_DOWNLOAD_PREFIX: &str =
+    "https://github.com/ChungPr0/CoreTerm/releases/download/";
+pub const UPDATER_FALLBACK_RELEASES_PAGE: &str =
+    "https://github.com/ChungPr0/CoreTerm/releases/latest";
+pub const UPDATER_CHECKSUM_ASSET_NAME: &str = "SHA256SUMS.txt";
+pub const UPDATER_MAX_INSTALLER_BYTES: u64 = 250 * 1024 * 1024;

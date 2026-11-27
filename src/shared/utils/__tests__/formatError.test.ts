@@ -226,6 +226,16 @@ describe("formatError utils", () => {
         "Tệp tin hoặc thư mục không tồn tại",
         "File or directory not found",
       ],
+      [
+        "Validation error: Update package checksum verification failed.",
+        "Xác thực toàn vẹn gói cập nhật thất bại",
+        "Update package checksum verification failed",
+      ],
+      [
+        "Validation error: In-app update installation is only supported for installed builds.",
+        "chỉ hỗ trợ cho bản đã cài vào máy",
+        "only supported for installed builds",
+      ],
     ] as const;
 
     for (const [raw, viSubstr, enSubstr] of cases) {

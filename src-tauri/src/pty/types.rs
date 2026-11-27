@@ -10,17 +10,16 @@ use tauri::ipc::Channel;
 use tauri::AppHandle;
 
 use crate::core::defaults::{MIN_PTY_COLS, MIN_PTY_ROWS};
+pub(super) use crate::core::defaults::{
+    PTY_BATCH_WINDOW_MS as BATCH_WINDOW_MS, PTY_MAX_BATCH_BYTES as MAX_BATCH_SIZE,
+    PTY_PREWARM_BUFFER_LIMIT as PREWARM_BUFFER_LIMIT, PTY_READ_BUF_BYTES as READ_BUF_SIZE,
+};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::os::elevated_pty;
 use crate::infra::security::TabSecretKind;
 use zeroize::Zeroizing;
 
 use super::askpass::AskpassServerHandle;
-
-pub(super) const READ_BUF_SIZE: usize = 16 * 1024;
-pub(super) const MAX_BATCH_SIZE: usize = 32 * 1024;
-pub(super) const BATCH_WINDOW_MS: u64 = 10;
-pub(super) const PREWARM_BUFFER_LIMIT: usize = 256 * 1024;
 
 pub(super) struct PendingAskpassSecret {
     pub prompt_type: String,

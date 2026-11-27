@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { KeyRound, Shield } from "lucide-react";
 import {
   clampSshKeepAlive,
@@ -41,10 +41,27 @@ export const SshSettingsSection: React.FC<SshSettingsSectionProps> = ({
   const { t } = useI18n();
   const alert = useAlert();
   const [usernameDraft, setUsernameDraft] = useState(settings.sshDefaultUsername);
+  const usernameFocusedRef = useRef(false);
 
   useEffect(() => {
-    setUsernameDraft(settings.sshDefaultUsername);
+    if (!usernameFocusedRef.current) {
+      setUsernameDraft(settings.sshDefaultUsername);
+    }
   }, [settings.sshDefaultUsername]);
+
+  const handleUsernameChange = (raw: string) => {
+    setUsernameDraft(raw);
+    const trimmed = raw.trim();
+    if (
+      trimmed &&
+      !trimmed.startsWith("-") &&
+      !/\s/.test(trimmed) &&
+      !/[\x00-\x1F\x7F]/.test(trimmed) &&
+      trimmed !== settings.sshDefaultUsername
+    ) {
+      onPatch({ sshDefaultUsername: trimmed });
+    }
+  };
 
   const commitUsername = () => {
     const trimmed = usernameDraft.trim();
@@ -63,6 +80,7 @@ export const SshSettingsSection: React.FC<SshSettingsSectionProps> = ({
       setUsernameDraft(settings.sshDefaultUsername);
       return;
     }
+    setUsernameDraft(trimmed);
     if (trimmed !== settings.sshDefaultUsername) {
       onPatch({ sshDefaultUsername: trimmed });
     }
@@ -158,8 +176,14 @@ export const SshSettingsSection: React.FC<SshSettingsSectionProps> = ({
           <Input
             type="text"
             value={usernameDraft}
-            onChange={(e) => setUsernameDraft(e.target.value)}
-            onBlur={commitUsername}
+            onFocus={() => {
+              usernameFocusedRef.current = true;
+            }}
+            onChange={(e) => handleUsernameChange(e.target.value)}
+            onBlur={() => {
+              usernameFocusedRef.current = false;
+              commitUsername();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

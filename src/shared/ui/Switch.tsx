@@ -56,7 +56,7 @@ export const Switch: React.FC<SwitchProps> = ({
         e.stopPropagation();
         if (!disabled) onChange?.(!checked);
       }}
-      className={`relative inline-flex ${trackSize} shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500/40 focus:ring-offset-1 focus:ring-offset-slate-900 ${
+      className={`relative inline-flex ${trackSize} shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-900 ${
         checked ? toneBg : "bg-slate-700 hover:bg-slate-600"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""} ${className}`}
     >

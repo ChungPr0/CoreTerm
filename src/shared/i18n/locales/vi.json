@@ -98,6 +98,7 @@
   },
   "ssh": {
     "title": "Tham số SSH",
+    "badge": "SSH",
     "keepalive": "KeepAlive (giây)",
     "compression": "Nén dữ liệu (-C)",
     "host_checking": "Kiểm tra Host Key",
@@ -142,7 +143,8 @@
     "port_warning": "Cảnh báo",
     "duplicate_port_warning": "Cổng {{port}} đang trùng với rule '{{name}}'",
     "flow_preview": "Mô phỏng luồng",
-    "check_all": "Kiểm tra tất cả cổng"
+    "check_all": "Kiểm tra tất cả cổng",
+    "badge_count": "PF:{{count}}"
   },
   "hostkey": {
     "title": "Xác nhận Host Key",
@@ -232,6 +234,26 @@
     "group_clipboard_mouse": "Bộ nhớ tạm & Chuột",
     "group_warnings": "Cảnh báo",
     "group_connection": "Kết nối",
+    "group_updates": "Cập nhật",
+    "update_status_title": "Phiên bản ứng dụng",
+    "update_pkg_nsis": "Bản cài đặt NSIS",
+    "update_pkg_msi": "Bản cài đặt MSI",
+    "update_pkg_portable": "Bản Portable",
+    "update_pkg_dev": "Bản phát triển",
+    "update_status_idle": "v{{version}} · {{pkg}}",
+    "update_status_checking": "v{{version}} · Đang kiểm tra bản mới...",
+    "update_status_latest": "v{{version}} · {{pkg}} — Đã là bản mới nhất",
+    "update_status_available": "Đã có phiên bản mới v{{latest}}",
+    "update_status_downloading": "Đang tải bản cập nhật v{{latest}} ({{percent}}%)...",
+    "update_status_ready": "Bản cập nhật v{{latest}} đã sẵn sàng cài đặt",
+    "update_check_btn": "Kiểm tra cập nhật",
+    "update_view_btn": "Xem bản cập nhật",
+    "update_auto_mode": "Tự động cập nhật",
+    "update_auto_mode_desc": "Kiểm tra bản phát hành chính thức và tải trước trong nền",
+    "update_auto_mode_portable_desc": "Thông báo khi có bản phát hành chính thức mới",
+    "update_mode_auto": "Tự động tải bản cập nhật",
+    "update_mode_notify": "Thông báo khi có bản mới",
+    "update_mode_off": "Tắt kiểm tra tự động",
     "lang": "Ngôn ngữ",
     "lang_desc": "Ngôn ngữ hiển thị toàn bộ giao diện ứng dụng",
     "lang_system": "Mặc định hệ thống",
@@ -424,6 +446,22 @@
     "close_other_tabs_title": "Đóng các tab khác?",
     "close_other_tabs_desc": "Đóng {{count}} tab khác đang mở?",
     "close_all_btn": "Đóng tất cả"
+  },
+  "updater": {
+    "badge_available": "Bản mới v{{version}}",
+    "badge_ready": "Khởi động lại để lên v{{version}}",
+    "badge_downloading": "Đang tải bản cập nhật ({{percent}}%)",
+    "modal_title": "Cập nhật ứng dụng",
+    "modal_subtitle": "v{{current}} → v{{latest}}",
+    "release_notes": "Nội dung cập nhật",
+    "no_release_notes": "Phiên bản chính thức v{{version}} đã phát hành.",
+    "portable_hint": "Bản Portable không tự chạy trình cài đặt. Vui lòng tải tệp mới từ trang phát hành.",
+    "msi_hint": "Windows có thể hỏi quyền Administrator khi cài đặt gói MSI.",
+    "downloading_label": "Đang tải gói cập nhật...",
+    "later_btn": "Để sau",
+    "download_release_btn": "Mở trang tải về",
+    "update_now_btn": "Cập nhật & Khởi động lại",
+    "restart_to_update_btn": "Khởi động lại & Cập nhật"
   },
   "terminal": {
     "find_placeholder": "Tìm kiếm...",
@@ -754,6 +792,12 @@
     "local_path_not_found": "Không tìm thấy đường dẫn cục bộ: \"{{path}}\".",
     "local_modify_root": "Không thể chỉnh sửa ổ đĩa hoặc thư mục gốc hệ thống: \"{{path}}\".",
     "local_modify_protected": "Không thể chỉnh sửa đường dẫn hệ thống được bảo vệ: \"{{path}}\".",
-    "local_modify_app_data": "Không thể chỉnh sửa thư mục dữ liệu ứng dụng: \"{{path}}\"."
+    "local_modify_app_data": "Không thể chỉnh sửa thư mục dữ liệu ứng dụng: \"{{path}}\".",
+    "updater_installed_only": "Tính năng tự cài đặt chỉ hỗ trợ cho bản đã cài vào máy.",
+    "updater_no_pending": "Không có bản cập nhật nào đang chờ.",
+    "updater_package_unavailable": "Không tìm thấy gói cài đặt phù hợp trong bản phát hành này.",
+    "updater_already_downloading": "Đang tải bản cập nhật, vui lòng đợi.",
+    "updater_size_exceeded": "Gói cập nhật vượt quá dung lượng tối đa cho phép.",
+    "updater_checksum_failed": "Xác thực toàn vẹn gói cập nhật thất bại."
   }
 }

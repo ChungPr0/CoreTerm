@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FolderPlus } from "lucide-react";
+import { MAX_ENTITY_NAME_LEN } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { scrollAndFocusInput } from "@/shared/utils/editableTarget";
@@ -12,8 +13,6 @@ interface GroupModalProps {
   onClose: () => void;
   onCreateGroup: (name: string) => Promise<void>;
 }
-
-const MAX_GROUP_NAME_LEN = 64;
 
 export const GroupModal: React.FC<GroupModalProps> = ({
   isOpen,
@@ -41,7 +40,7 @@ export const GroupModal: React.FC<GroupModalProps> = ({
       scrollAndFocusInput(inputRef.current);
       return void alert.error(t("group.name_required"));
     }
-    if (trimmed.length > MAX_GROUP_NAME_LEN) {
+    if (trimmed.length > MAX_ENTITY_NAME_LEN) {
       scrollAndFocusInput(inputRef.current);
       return void alert.error(t("group.name_too_long"));
     }
@@ -85,7 +84,7 @@ export const GroupModal: React.FC<GroupModalProps> = ({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("group.name_placeholder")}
-          maxLength={MAX_GROUP_NAME_LEN}
+          maxLength={MAX_ENTITY_NAME_LEN}
           disabled={isSubmitting}
         />
       </div>

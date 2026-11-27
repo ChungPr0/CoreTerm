@@ -151,7 +151,7 @@ export const ShellsSettingsSection: React.FC<ShellsSettingsSectionProps> = ({
                         )}
                       </div>
                       <div
-                        title={detail}
+                        data-tooltip={detail}
                         className="h-4 leading-4 text-[11px] font-mono text-slate-500 truncate"
                       >
                         {detail}

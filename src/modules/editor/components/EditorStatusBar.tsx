@@ -54,7 +54,8 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
         <div className="h-3 w-px shrink-0 bg-[#21262d]" />
 
         <span
-          title={activeLang.label}
+          data-tooltip={activeLang.label}
+          data-tooltip-placement="top"
           className="w-[132px] shrink-0 px-1 text-left truncate cursor-default text-[#8b949e]"
         >
           {activeLang.label}
@@ -68,7 +69,8 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
 
         {effectiveReadonly ? (
           <span
-            title={t("editor.lock_readonly_file")}
+            data-tooltip={t("editor.lock_readonly_file")}
+            data-tooltip-placement="top"
             className="w-[116px] shrink-0 px-1 text-center truncate cursor-default text-slate-400"
           >
             {eol === "CRLF" ? t("editor.eol_crlf") : t("editor.eol_lf")}
@@ -77,6 +79,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <Button
             variant="ghost"
             size="xs"
+            tabIndex={-1}
             disabled={!editorReady}
             onClick={onToggleEol}
             title={t("editor.toggle_eol")}

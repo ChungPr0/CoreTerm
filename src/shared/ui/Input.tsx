@@ -58,7 +58,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       const min = rest.min !== undefined ? Number(rest.min) : -Infinity;
       const max = rest.max !== undefined ? Number(rest.max) : Infinity;
 
-      let nextVal = isNaN(currentVal) ? (min !== -Infinity ? min : 0) : currentVal + direction * step;
+      const stepStr = String(step);
+      const decimals = stepStr.includes(".") ? stepStr.split(".")[1].length : 0;
+      const factor = 10 ** decimals;
+
+      let nextVal = isNaN(currentVal)
+        ? min !== -Infinity
+          ? min
+          : 0
+        : Math.round((currentVal + direction * step) * factor) / factor;
       if (nextVal < min) nextVal = min;
       if (nextVal > max) nextVal = max;
 

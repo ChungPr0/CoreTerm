@@ -177,12 +177,11 @@ export const FileList: React.FC<FileListProps> = ({
 
   return (
     <div
-      tabIndex={0}
       data-sftp-pane={kind}
       onMouseEnter={onActivatePane}
       onFocusCapture={onActivatePane}
       onKeyDown={handleContainerKeyDown}
-      className="relative flex min-h-0 min-w-0 flex-1 select-none flex-col bg-[#0d1117] outline-none"
+      className="relative flex min-h-0 min-w-0 flex-1 select-none flex-col bg-[#0d1117]"
     >
       <FileListHeader
         kind={kind}
@@ -209,8 +208,9 @@ export const FileList: React.FC<FileListProps> = ({
 
       <div
         ref={tableWrapRef}
+        tabIndex={0}
         style={{ scrollbarGutter: "stable" }}
-        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#388bfd]/70"
         onClick={(e) => {
           if (e.target === e.currentTarget && !shouldSuppressRowClick?.()) onSelect([]);
         }}

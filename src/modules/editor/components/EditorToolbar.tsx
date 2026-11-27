@@ -118,11 +118,13 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div
           className="flex min-w-0 max-w-[200px] shrink items-center gap-2 text-xs"
-          title={`${t("editor.title")} — ${hostLabel}`}
+          data-tooltip={`${t("editor.title")} — ${hostLabel}`}
+          data-tooltip-placement="bottom"
         >
           <span
             className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`}
-            title={statusMeta.label || hostLabel}
+            data-tooltip={statusMeta.label || hostLabel}
+            data-tooltip-placement="bottom"
           />
           <span className="truncate font-semibold text-[#e6edf3]">
             {t("editor.title")} — {hostLabel}
@@ -131,7 +133,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
         <div
           ref={crumbsRef}
-          title={path}
+          data-tooltip={path}
+          data-tooltip-placement="bottom"
           className="no-scrollbar flex h-6 min-w-0 flex-1 cursor-default items-center gap-0.5 overflow-x-auto rounded border border-[#21262d] bg-[#0d1117] px-2 font-mono text-[11px] text-[#c9d1d9]"
         >
           {crumbs.map((c, idx) => (
@@ -185,13 +188,14 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           icon={<WrapText className="h-3.5 w-3.5" />}
         />
         <div
-          title={
+          data-tooltip={
             fileReadonly
               ? t("editor.lock_readonly_file")
               : effectiveReadonly
                 ? t("editor.unlock_edit")
                 : t("editor.lock_readonly")
           }
+          data-tooltip-placement="bottom"
           className="inline-flex items-center"
         >
           <IconButton

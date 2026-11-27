@@ -4,9 +4,8 @@ use dashmap::DashMap;
 use keyring::Entry;
 use zeroize::Zeroizing;
 
+use crate::core::defaults::KEYRING_SERVICE_NAME as KEYRING_SERVICE;
 use crate::core::error::{CoreError, CoreResult};
-
-const KEYRING_SERVICE: &str = "coreterm";
 
 trait KeyringBackend: Send + Sync {
     fn set_password(&self, service: &str, user: &str, secret: &str) -> Result<(), keyring::Error>;

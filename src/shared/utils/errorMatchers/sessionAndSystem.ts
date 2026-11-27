@@ -103,4 +103,28 @@ export const SESSION_AND_SYSTEM_ERROR_MATCHERS: ErrorMatcher[] = [
     pattern: /^Windows startup registration is only supported on Windows$/i,
     key: "errors.startup_windows_only",
   },
+  {
+    pattern: /^In-app update (?:download|installation) is only supported for installed builds\.?$/i,
+    key: "errors.updater_installed_only",
+  },
+  {
+    pattern: /^No (?:pending update available to download|staged update installer found)\.?$/i,
+    key: "errors.updater_no_pending",
+  },
+  {
+    pattern: /^Update installer package or checksum is unavailable for this release\.?$/i,
+    key: "errors.updater_package_unavailable",
+  },
+  {
+    pattern: /^Update download is already in progress\.?$/i,
+    key: "errors.updater_already_downloading",
+  },
+  {
+    pattern: /^Update installer exceeds maximum allowed size\.?$/i,
+    key: "errors.updater_size_exceeded",
+  },
+  {
+    pattern: /^Update package checksum verification failed\.?$/i,
+    key: "errors.updater_checksum_failed",
+  },
 ];

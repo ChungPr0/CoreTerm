@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Save, Server, X } from "lucide-react";
 import type { HostFullConfigDto } from "../types";
 import { useI18n } from "@/shared/i18n";
-import { Button, ConfirmDeleteModal, Input, ModalShell } from "@/shared/ui";
+import { Button, ConfirmDeleteModal, IconButton, Input, ModalShell } from "@/shared/ui";
 import { useHostForm } from "../hooks/useHostForm";
 import { GroupComboBox } from "./GroupComboBox";
 import { HostAuthSection } from "./HostAuthSection";
@@ -64,9 +64,12 @@ export const HostModal: React.FC<HostModalProps> = ({
               {editingHost ? t("host.edit") : t("host.create")}
             </h2>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-4 h-4" />
-          </Button>
+          <IconButton
+            size="md"
+            onClick={onClose}
+            title={t("common.close")}
+            icon={<X className="w-4 h-4" />}
+          />
         </div>
 
         <form noValidate onSubmit={form.handleSubmit} className="py-5 pl-5 pr-[15px] space-y-4 overflow-y-auto text-xs">

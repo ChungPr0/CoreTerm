@@ -190,7 +190,29 @@ export function commitNumberDraft(
   };
 }
 
-/** Numeric input that lets the user type intermediate digits cleanly before clamping on blur/Enter. */
+/**
+ * Commits immediately when the typed or stepped draft is a complete finite number
+ * within `[min, max]`, while leaving empty or intermediate out-of-range digits
+ * untouched until blur/Enter.
+ */
+export function liveCommitNumberDraft(
+  draft: string,
+  currentValue: number,
+  min: number,
+  max: number,
+  clamp: (raw: unknown) => number
+): number | undefined {
+  const trimmed = draft.trim();
+  if (!trimmed || trimmed.endsWith(".")) return undefined;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return undefined;
+  }
+  const clamped = clamp(trimmed);
+  return clamped !== currentValue ? clamped : undefined;
+}
+
+/** Numeric input that commits valid in-range numbers immediately and clamps out-of-range drafts on blur/Enter. */
 export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
   value,
   min,
@@ -205,12 +227,26 @@ export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
 }) => {
   const [draft, setDraft] = useState(String(value));
   const focusedRef = useRef(false);
+  const initialValueRef = useRef(value);
+  const latestRef = useRef({ draft, value, clamp, onCommit });
+  latestRef.current = { draft, value, clamp, onCommit };
 
   useEffect(() => {
     if (!focusedRef.current) {
       setDraft(String(value));
     }
   }, [value]);
+
+  useEffect(() => {
+    return () => {
+      if (!focusedRef.current) return;
+      const cur = latestRef.current;
+      const res = commitNumberDraft(cur.draft, cur.value, cur.clamp);
+      if (res.committed !== undefined) {
+        cur.onCommit(res.committed);
+      }
+    };
+  }, []);
 
   const commitDraft = () => {
     const res = commitNumberDraft(draft, value, clamp);
@@ -231,8 +267,10 @@ export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
       value={draft}
       onFocus={() => {
         focusedRef.current = true;
+        initialValueRef.current = value;
       }}
       onBlur={() => {
+        if (!focusedRef.current) return;
         focusedRef.current = false;
         commitDraft();
       }}
@@ -243,12 +281,22 @@ export const SettingsNumberInput: React.FC<SettingsNumberInputProps> = ({
         } else if (e.key === "Escape") {
           e.preventDefault();
           e.stopPropagation();
-          setDraft(String(value));
+          focusedRef.current = false;
+          const orig = initialValueRef.current;
+          setDraft(String(orig));
+          if (orig !== value) {
+            onCommit(orig);
+          }
           e.currentTarget.blur();
         }
       }}
       onChange={(e) => {
-        setDraft(e.target.value);
+        const nextRaw = e.target.value;
+        setDraft(nextRaw);
+        const immediate = liveCommitNumberDraft(nextRaw, value, min, max, clamp);
+        if (immediate !== undefined) {
+          onCommit(immediate);
+        }
       }}
       className={`font-mono ${className}`}
       containerClassName={containerClassName}

@@ -4,7 +4,7 @@ import { useI18n } from "@/shared/i18n";
 import { useWindowMouseDrag } from "@/shared/hooks/useWindowMouseDrag";
 import {
   COL_PAIRS,
-  DEFAULT_COLS,
+  computeDefaultCols,
   fitColumns,
   type ColEdge,
   type ColWidths,
@@ -52,16 +52,7 @@ export function useTableColumns(
         wrapWidth
       );
     }
-    const targetRight =
-      DEFAULT_COLS.size + DEFAULT_COLS.mtime + (showPerms ? DEFAULT_COLS.perms : 0);
-    const minName = Math.round(wrapWidth * 0.38);
-    const scale =
-      targetRight > 0 ? Math.min(1, Math.max(0, wrapWidth - minName) / targetRight) : 1;
-    const size = Math.round(DEFAULT_COLS.size * scale);
-    const mtime = Math.round(DEFAULT_COLS.mtime * scale);
-    const perms = showPerms ? Math.round(DEFAULT_COLS.perms * scale) : 0;
-    const name = Math.max(minName, wrapWidth - size - mtime - perms);
-    return fitColumns({ name, size, mtime, perms }, wrapWidth);
+    return computeDefaultCols(wrapWidth, showPerms);
   }, [wrapWidth, colRatios, showPerms]);
 
   const startColDrag = (edge: ColEdge, e: React.MouseEvent) => {
@@ -74,14 +65,16 @@ export function useTableColumns(
     const start = { ...widths };
     const total = wrapWidth;
     const pair = COL_PAIRS[edge];
+    const effMinLeft = Math.min(pair.minLeft, start[pair.left]);
+    const effMinRight = Math.min(pair.minRight, start[pair.right]);
 
     startMouseDrag({
       cursor: "col-resize",
       onMove: (ev) => {
         const dx = ev.clientX - startX;
         const clamped = Math.max(
-          pair.minLeft - start[pair.left],
-          Math.min(start[pair.right] - pair.minRight, dx)
+          effMinLeft - start[pair.left],
+          Math.min(start[pair.right] - effMinRight, dx)
         );
         const next: ColWidths = {
           ...start,
@@ -152,9 +145,9 @@ export const FileColGroup: React.FC<{ widths: ColWidths | null; showPerms: boole
   showPerms,
 }) => (
   <colgroup>
-    <col style={{ width: widths ? `${widths.name}px` : showPerms ? "42%" : "52%" }} />
-    <col style={{ width: widths ? `${widths.size}px` : "16%" }} />
-    <col style={{ width: widths ? `${widths.mtime}px` : showPerms ? "22%" : "32%" }} />
+    <col style={{ width: widths ? `${widths.name}px` : showPerms ? "36%" : "48%" }} />
+    <col style={{ width: widths ? `${widths.size}px` : showPerms ? "22%" : "24%" }} />
+    <col style={{ width: widths ? `${widths.mtime}px` : showPerms ? "22%" : "28%" }} />
     {showPerms && <col style={{ width: widths ? `${widths.perms}px` : "20%" }} />}
   </colgroup>
 );
@@ -208,8 +201,8 @@ export const FileTableHeader: React.FC<FileTableHeaderProps> = ({
                 col.align === "right" ? "justify-end" : "justify-start"
               }`}
             >
-              <span className="inline-flex min-w-0 items-center gap-1 truncate">
-                {col.label}
+              <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
+                <span className="truncate">{col.label}</span>
                 {sortKey === col.key &&
                   (sortDir === "asc" ? (
                     <ArrowUp className="h-3 w-3 shrink-0" />
@@ -230,7 +223,7 @@ export const FileTableHeader: React.FC<FileTableHeaderProps> = ({
         ))}
         {showPerms && (
           <th className="border-b border-[#21262d] p-0 select-none">
-            <div className="truncate px-2.5 py-1.5">{t("sftp.col_perms")}</div>
+            <div className="truncate whitespace-nowrap px-2.5 py-1.5">{t("sftp.col_perms")}</div>
           </th>
         )}
       </tr>

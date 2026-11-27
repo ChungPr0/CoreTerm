@@ -1,3 +1,8 @@
+import {
+  DEFAULT_SHELL_ID,
+  LOCAL_HOST_ID,
+  SSH_DEFAULT_RECONNECT_SEC,
+} from "@/shared/defaults";
 import type {
   SessionState,
   SftpConflictPolicy,
@@ -7,8 +12,8 @@ import type {
 } from "@/shared/types/ipc";
 
 export const DEFAULT_LOCAL_SHELL: ShellProfile = {
-  id: "powershell",
-  kind: "powershell",
+  id: DEFAULT_SHELL_ID,
+  kind: DEFAULT_SHELL_ID,
   name: "PowerShell",
   executable: "powershell.exe",
   args: ["-NoLogo"],
@@ -48,7 +53,7 @@ export function createLocalTab(
 ): TerminalTabItem {
   return {
     tabId: crypto.randomUUID(),
-    hostId: "local",
+    hostId: LOCAL_HOST_ID,
     title: profile?.name ?? "Terminal",
     hostSubtitle: "Local",
     shellProfile: profile ?? undefined,
@@ -56,7 +61,7 @@ export function createLocalTab(
     errorMessage: null,
     reconnectToken: 0,
     autoReconnect: false,
-    reconnectIntervalSec: 2,
+    reconnectIntervalSec: SSH_DEFAULT_RECONNECT_SEC,
     isAdmin,
   };
 }

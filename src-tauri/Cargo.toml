@@ -1,6 +1,6 @@
 [package]
 name = "coreterm"
-version = "0.5.4"
+version = "0.5.5"
 description = "CoreTerm - Multi-Tab Terminal & SSH Client"
 authors = ["ChungPr0"]
 edition = "2021"
@@ -35,6 +35,9 @@ russh-sftp = "3.0.1"
 tokio-util = { version = "0.7", features = ["rt"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "stream"] }
+semver = "1"
+futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

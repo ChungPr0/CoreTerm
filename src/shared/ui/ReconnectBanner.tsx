@@ -45,6 +45,7 @@ export const ReconnectBanner: React.FC<ReconnectBannerProps> = ({
           {!isAutoReconnect && (
             <button
               type="button"
+              tabIndex={-1}
               onClick={onReconnect}
               className="h-full px-3 font-medium flex items-center gap-1.5 transition-all duration-200 whitespace-nowrap bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border-l border-rose-500/30 active:brightness-95 cursor-pointer"
             >

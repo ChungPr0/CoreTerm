@@ -98,6 +98,7 @@
   },
   "ssh": {
     "title": "SSH Options",
+    "badge": "SSH",
     "keepalive": "KeepAlive (sec)",
     "compression": "Compression (-C)",
     "host_checking": "Host Checking",
@@ -142,7 +143,8 @@
     "port_warning": "Warning",
     "duplicate_port_warning": "Port {{port}} conflicts with rule '{{name}}'",
     "flow_preview": "Traffic Flow Preview",
-    "check_all": "Check All Ports"
+    "check_all": "Check All Ports",
+    "badge_count": "PF:{{count}}"
   },
   "hostkey": {
     "title": "Verify Host Key",
@@ -232,6 +234,26 @@
     "group_clipboard_mouse": "Clipboard & Mouse",
     "group_warnings": "Warnings",
     "group_connection": "Connection",
+    "group_updates": "Updates",
+    "update_status_title": "Application Version",
+    "update_pkg_nsis": "NSIS Installer",
+    "update_pkg_msi": "MSI Installer",
+    "update_pkg_portable": "Portable",
+    "update_pkg_dev": "Development",
+    "update_status_idle": "v{{version}} · {{pkg}}",
+    "update_status_checking": "v{{version}} · Checking for updates...",
+    "update_status_latest": "v{{version}} · {{pkg}} — Up to date",
+    "update_status_available": "New version v{{latest}} is available",
+    "update_status_downloading": "Downloading update v{{latest}} ({{percent}}%)...",
+    "update_status_ready": "Update v{{latest}} is ready to install",
+    "update_check_btn": "Check for Updates",
+    "update_view_btn": "View Update",
+    "update_auto_mode": "Automatic Updates",
+    "update_auto_mode_desc": "Check official releases and prepare updates in the background",
+    "update_auto_mode_portable_desc": "Notify when a new official release is published",
+    "update_mode_auto": "Automatically download updates",
+    "update_mode_notify": "Notify when an update is available",
+    "update_mode_off": "Turn off automatic checks",
     "lang": "Language",
     "lang_desc": "Display language for the entire application",
     "lang_system": "System Default",
@@ -424,6 +446,22 @@
     "close_other_tabs_title": "Close Other Tabs?",
     "close_other_tabs_desc": "Close {{count}} other open tabs?",
     "close_all_btn": "Close All"
+  },
+  "updater": {
+    "badge_available": "Update v{{version}}",
+    "badge_ready": "Restart to update v{{version}}",
+    "badge_downloading": "Downloading update ({{percent}}%)",
+    "modal_title": "Software Update",
+    "modal_subtitle": "v{{current}} → v{{latest}}",
+    "release_notes": "Release Notes",
+    "no_release_notes": "Official release v{{version}} is available.",
+    "portable_hint": "Portable builds do not run an installer automatically. Download the new portable executable from the release page.",
+    "msi_hint": "Windows may ask for Administrator permission to install the MSI package.",
+    "downloading_label": "Downloading update package...",
+    "later_btn": "Later",
+    "download_release_btn": "Open Download Page",
+    "update_now_btn": "Update & Restart",
+    "restart_to_update_btn": "Restart & Update"
   },
   "terminal": {
     "find_placeholder": "Find...",
@@ -754,6 +792,12 @@
     "local_path_not_found": "Local path not found: \"{{path}}\".",
     "local_modify_root": "Modifying drive or filesystem root is strictly prohibited: \"{{path}}\".",
     "local_modify_protected": "Modifying protected system path is prohibited: \"{{path}}\".",
-    "local_modify_app_data": "Modifying application data directory is prohibited: \"{{path}}\"."
+    "local_modify_app_data": "Modifying application data directory is prohibited: \"{{path}}\".",
+    "updater_installed_only": "In-app update installation is only supported for installed builds.",
+    "updater_no_pending": "No pending update available.",
+    "updater_package_unavailable": "Update installer package is unavailable for this release.",
+    "updater_already_downloading": "Update download is already in progress.",
+    "updater_size_exceeded": "Update installer exceeds maximum allowed size.",
+    "updater_checksum_failed": "Update package checksum verification failed."
   }
 }

@@ -115,7 +115,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+        if (e.key === "Escape") onClose();
+      else if (e.key === "Tab") {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
     const onBlur = () => onClose();
 
@@ -157,6 +161,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       <button
         key={entry.id}
         type="button"
+        tabIndex={-1}
         disabled={entry.disabled}
         onMouseEnter={(e) => {
           if (!isRoot) return;

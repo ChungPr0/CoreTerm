@@ -20,6 +20,25 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
 }) => {
   const { t } = useI18n();
   const comboRef = useRef<HTMLDivElement>(null);
+  const optionElsRef = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const stepGroup = (delta: 1 | -1) => {
+    if (existingGroups.length === 0) return;
+    if (!isOpen) onOpenChange(true);
+    const curIdx = existingGroups.findIndex(
+      (g) => g.trim().toLowerCase() === value.trim().toLowerCase()
+    );
+    const nextIdx =
+      curIdx < 0
+        ? delta > 0
+          ? 0
+          : existingGroups.length - 1
+        : Math.max(0, Math.min(existingGroups.length - 1, curIdx + delta));
+    onChange(existingGroups[nextIdx]);
+    window.requestAnimationFrame(() => {
+      optionElsRef.current[nextIdx]?.scrollIntoView({ block: "nearest" });
+    });
+  };
 
   return (
     <div ref={comboRef} className="relative">
@@ -39,8 +58,16 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
           if (e.key === "Enter" && isOpen) {
             e.preventDefault();
             onOpenChange(false);
+          } else if (e.key === "Escape" && isOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            onOpenChange(false);
           } else if (e.key === "ArrowDown") {
-            onOpenChange(true);
+            e.preventDefault();
+            stepGroup(1);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            stepGroup(-1);
           } else if (e.key === "Tab") {
             onOpenChange(false);
           }
@@ -72,12 +99,16 @@ export const GroupComboBox: React.FC<GroupComboBoxProps> = ({
         maxHeightPx={192}
         className="z-[90] rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 overflow-y-auto select-none"
       >
-        {existingGroups.map((g) => {
+        {existingGroups.map((g, idx) => {
           const isSelected = g.trim().toLowerCase() === value.trim().toLowerCase();
           return (
             <button
               key={g}
+              ref={(el) => {
+                optionElsRef.current[idx] = el;
+              }}
               type="button"
+              tabIndex={-1}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onChange(g);

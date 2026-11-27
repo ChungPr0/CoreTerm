@@ -1,9 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, Plus, Search, Server, Settings, Tag } from "lucide-react";
 import type { HostProfileSummaryDto } from "../types";
 import { useI18n } from "@/shared/i18n";
 import { IconButton, Input } from "@/shared/ui";
+import { getShortcutChord } from "@/shared/utils/shortcuts";
+import { useSettingsStore } from "@/modules/settings/useSettingsStore";
 import { getEditableInput } from "@/shared/utils/editableTarget";
+import { setElementInert, trapTabWithin } from "@/shared/utils/focusTrap";
 import { useHostDrag } from "../hooks/useHostDrag";
 import { useGroupDrag } from "../hooks/useGroupDrag";
 import { groupAndSortProfiles } from "../utils/hostGrouping";
@@ -12,6 +15,7 @@ import { HostGroupList } from "./HostGroupList";
 
 interface HostSidebarProps {
   isOpen: boolean;
+  isModalOpen?: boolean;
   onClose: () => void;
   profiles: HostProfileSummaryDto[];
   groups: string[];
@@ -38,6 +42,7 @@ interface HostSidebarProps {
 
 export const HostSidebar: React.FC<HostSidebarProps> = ({
   isOpen,
+  isModalOpen = false,
   onClose,
   profiles,
   groups,
@@ -62,10 +67,38 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
   onContextMenuSidebar,
 }) => {
   const { t } = useI18n();
+  const keybindings = useSettingsStore((s) => s.settings.keybindings);
+  const settingsShortcut = getShortcutChord("openSettings", keybindings);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const asideRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const groupElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevGroupCountsRef = useRef<Map<string, number>>(new Map());
+
+  useLayoutEffect(() => {
+    setElementInert(asideRef.current, !isOpen || isModalOpen);
+  }, [isOpen, isModalOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      if (document.querySelector('[data-modal-panel="true"]')) return;
+      searchInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || isModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      if (document.querySelector('[data-modal-panel="true"]')) return;
+      trapTabWithin(asideRef.current, e);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [isOpen, isModalOpen]);
 
   const groupedProfiles = useMemo(
     () => groupAndSortProfiles(profiles, groups, isFiltering),
@@ -162,6 +195,8 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
       )}
 
       <aside
+        ref={asideRef}
+        aria-hidden={!isOpen}
         onContextMenu={(e) => {
           if (getEditableInput(e.target) || !onContextMenuSidebar) return;
           e.preventDefault();
@@ -187,6 +222,7 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
 
           <div className="flex items-center gap-1.5">
             <IconButton
+              tabIndex={0}
               onClick={onCreateNew}
               title={t("host.create")}
               tone="sky"
@@ -195,6 +231,7 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
               icon={<Plus className="w-3.5 h-3.5 stroke-[2.5]" />}
             />
             <IconButton
+              tabIndex={0}
               onClick={onOpenVault}
               title={t("vault.title")}
               tone="emerald"
@@ -203,8 +240,9 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
               icon={<KeyRound className="w-3.5 h-3.5" />}
             />
             <IconButton
+              tabIndex={0}
               onClick={onOpenSettings}
-              title={`${t("settings.title")} (Ctrl+,)`}
+              title={`${t("settings.title")} (${settingsShortcut})`}
               tone="default"
               size="sm"
               bordered
@@ -215,6 +253,7 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
 
         <div className="p-2.5 border-b border-slate-800/80 space-y-2">
           <Input
+            ref={searchInputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -224,12 +263,33 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
           />
 
           {allTags.length > 0 && (
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5">
+            <div
+              role="toolbar"
+              aria-label={t("host.tags")}
+              onKeyDown={(e) => {
+                if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+                const btns = Array.from(
+                  e.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-tag-pill]")
+                );
+                const curIdx = btns.indexOf(e.target as HTMLButtonElement);
+                if (curIdx < 0 || btns.length === 0) return;
+                e.preventDefault();
+                const nextIdx =
+                  e.key === "ArrowRight"
+                    ? (curIdx + 1) % btns.length
+                    : (curIdx - 1 + btns.length) % btns.length;
+                btns[nextIdx]?.focus();
+                btns[nextIdx]?.click();
+              }}
+              className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5"
+            >
               <Tag className="w-3 h-3 text-slate-500 shrink-0 mr-0.5" />
               <button
                 type="button"
+                data-tag-pill="all"
+                tabIndex={selectedTag === null || !allTags.includes(selectedTag) ? 0 : -1}
                 onClick={() => onSelectTag(null)}
-                className={`px-2 py-0.5 rounded text-[10px] font-medium shrink-0 transition-colors ${
+                className={`px-2 py-0.5 rounded text-[10px] font-medium shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 ${
                   selectedTag === null
                     ? "bg-sky-500/20 text-sky-300 border border-sky-500/40"
                     : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"
@@ -241,8 +301,10 @@ export const HostSidebar: React.FC<HostSidebarProps> = ({
                 <button
                   key={tag}
                   type="button"
+                  data-tag-pill={tag}
+                  tabIndex={selectedTag === tag ? 0 : -1}
                   onClick={() => onSelectTag(selectedTag === tag ? null : tag)}
-                  className={`px-2 py-0.5 rounded text-[10px] font-medium shrink-0 transition-colors ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 ${
                     selectedTag === tag
                       ? "bg-sky-500/20 text-sky-300 border border-sky-500/40"
                       : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200"

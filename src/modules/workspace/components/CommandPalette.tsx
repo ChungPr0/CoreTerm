@@ -185,7 +185,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 return (
                   <div
                     key={item.key}
-                    title={shellAdminHint}
+                    data-tooltip={shellAdminHint}
                     onMouseEnter={() => setSelectedIndex(idx)}
                     onClick={(e) => activateItem(item, e.ctrlKey)}
                     className={rowClass}
@@ -298,6 +298,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       <Button
                         size="xs"
                         variant="outline"
+                        tabIndex={-1}
                         onClick={(e) => {
                           e.stopPropagation();
                           onOpenSftp(host);

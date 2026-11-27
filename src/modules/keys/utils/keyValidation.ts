@@ -1,4 +1,6 @@
-export const MAX_KEY_NAME_LEN = 64;
+import { MAX_ENTITY_NAME_LEN } from "@/shared/defaults";
+
+export const MAX_KEY_NAME_LEN = MAX_ENTITY_NAME_LEN;
 
 export function normalizePathInput(raw: string): string {
   const trimmed = raw.trim();

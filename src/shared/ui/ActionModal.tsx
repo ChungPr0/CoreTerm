@@ -17,6 +17,7 @@ export interface ActionModalProps {
   icon?: React.ReactNode;
   iconTone?: ActionModalTone;
   size?: ActionModalSize;
+  zIndexClass?: string;
   panelClassName?: string;
   contentClassName?: string;
   closeOnBackdrop?: boolean;
@@ -59,6 +60,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   icon,
   iconTone = "primary",
   size = "md",
+  zIndexClass = "z-[75]",
   panelClassName = "",
   contentClassName = "",
   closeOnBackdrop = true,
@@ -184,6 +186,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
       closeOnBackdrop={closeOnBackdrop}
       closeOnEscape={closeOnEscape}
       positionClassName="fixed inset-0"
+      zIndexClass={zIndexClass}
       backdropClassName="bg-black/75"
       containerClassName="select-none items-center justify-center p-4"
       panelClassName={`w-full ${SIZE_CLASSES[size]} rounded-lg border border-[#30363d] bg-[#0d1117] text-[#c9d1d9] shadow-2xl overflow-hidden flex flex-col ${panelClassName}`}

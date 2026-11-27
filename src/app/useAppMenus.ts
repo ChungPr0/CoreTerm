@@ -40,6 +40,7 @@ interface UseAppMenusOpts {
   onDismissSidebar: () => void;
   onRequestCloseWindow?: () => void;
   onExitFullscreen?: () => void;
+  onWindowStateChange?: () => void;
 }
 
 export type { MenuState, TerminalContextActions };
@@ -84,6 +85,7 @@ export function useAppMenus(opts: UseAppMenusOpts) {
     onCloseTab: opts.onCloseTab,
     onCloseOtherTabs: opts.onCloseOtherTabs,
     onRequestCloseWindow: opts.onRequestCloseWindow,
+    onWindowStateChange: opts.onWindowStateChange,
   });
 
   const hostMenus = useHostMenus({

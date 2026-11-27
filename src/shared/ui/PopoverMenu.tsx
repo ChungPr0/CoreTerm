@@ -116,6 +116,7 @@ export const PopoverMenu: React.FC<PopoverMenuProps> = ({
   const content = (
     <div
       ref={menuRef}
+      data-popover-menu="true"
       style={portal ? { ...portalStyle, ...style } : style}
       onContextMenu={onContextMenu}
       className={className}

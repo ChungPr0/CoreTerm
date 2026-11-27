@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  clampTermFontSize,
+  clampTermLineHeight,
   clampTermScrollback,
+  TERM_FONT_SIZE_MAX,
+  TERM_FONT_SIZE_MIN,
+  TERM_LINE_HEIGHT_MAX,
+  TERM_LINE_HEIGHT_MIN,
   TERM_SCROLLBACK_MAX,
   TERM_SCROLLBACK_MIN,
 } from "@/shared/defaults";
 import {
   commitNumberDraft,
+  liveCommitNumberDraft,
   matchesSettingsQuery,
 } from "../components/SettingsPrimitives";
 
@@ -41,5 +48,47 @@ describe("SettingsPrimitives helpers", () => {
       nextDraft: "20000",
       committed: 20000,
     });
+  });
+
+  it("liveCommitNumberDraft commits valid in-range numbers immediately without breaking intermediate edits", () => {
+    // Empty or intermediate out-of-bounds digits wait for blur/Enter
+    expect(
+      liveCommitNumberDraft("", 16, TERM_FONT_SIZE_MIN, TERM_FONT_SIZE_MAX, clampTermFontSize)
+    ).toBeUndefined();
+    expect(
+      liveCommitNumberDraft("1", 16, TERM_FONT_SIZE_MIN, TERM_FONT_SIZE_MAX, clampTermFontSize)
+    ).toBeUndefined();
+    expect(
+      liveCommitNumberDraft("99", 16, TERM_FONT_SIZE_MIN, TERM_FONT_SIZE_MAX, clampTermFontSize)
+    ).toBeUndefined();
+
+    // Valid in-range integer commits immediately
+    expect(
+      liveCommitNumberDraft("18", 16, TERM_FONT_SIZE_MIN, TERM_FONT_SIZE_MAX, clampTermFontSize)
+    ).toBe(18);
+    // Unchanged value skips redundant commit
+    expect(
+      liveCommitNumberDraft("16", 16, TERM_FONT_SIZE_MIN, TERM_FONT_SIZE_MAX, clampTermFontSize)
+    ).toBeUndefined();
+
+    // Trailing decimal point waits for fraction digits, then commits immediately
+    expect(
+      liveCommitNumberDraft(
+        "1.",
+        1.0,
+        TERM_LINE_HEIGHT_MIN,
+        TERM_LINE_HEIGHT_MAX,
+        clampTermLineHeight
+      )
+    ).toBeUndefined();
+    expect(
+      liveCommitNumberDraft(
+        "1.25",
+        1.0,
+        TERM_LINE_HEIGHT_MIN,
+        TERM_LINE_HEIGHT_MAX,
+        clampTermLineHeight
+      )
+    ).toBe(1.25);
   });
 });

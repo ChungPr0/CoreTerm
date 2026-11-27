@@ -67,6 +67,7 @@ export const KeyCardList: React.FC<KeyCardListProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <IconButton
                     size="md"
+                    tabIndex={0}
                     bordered
                     tone="emerald"
                     title={t("vault.set_default")}

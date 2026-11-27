@@ -33,7 +33,7 @@ export const PortForwardStatusBadge: React.FC<PortForwardStatusBadgeProps> = ({
     return (
       <span
         className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-        title={tooltipText}
+        data-tooltip={tooltipText}
       >
         <AlertCircle className="w-3 h-3 shrink-0" />
         <span>{t("forward.port_busy")}</span>
@@ -45,7 +45,7 @@ export const PortForwardStatusBadge: React.FC<PortForwardStatusBadgeProps> = ({
     return (
       <span
         className="text-[11px] text-sky-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-        title={t("forward.port_active_tab", { port: portLocal })}
+        data-tooltip={t("forward.port_active_tab", { port: portLocal })}
       >
         <Info className="w-3 h-3 shrink-0" />
         <span>{t("forward.port_in_use_tab")}</span>
@@ -57,7 +57,7 @@ export const PortForwardStatusBadge: React.FC<PortForwardStatusBadgeProps> = ({
     return (
       <span
         className="text-[11px] text-amber-400 font-medium flex items-center gap-1 font-sans whitespace-nowrap shrink-0"
-        title={t("forward.port_privileged")}
+        data-tooltip={t("forward.port_privileged")}
       >
         <AlertCircle className="w-3 h-3 shrink-0" />
         <span>{t("forward.port_warning")}</span>

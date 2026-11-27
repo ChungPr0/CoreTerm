@@ -47,7 +47,16 @@ export const HostCard: React.FC<HostCardProps> = ({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onPointerDown={(e) => onPointerDown(e, host, groupName)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onConnect(host);
+        }
+      }}
       onDoubleClick={(e) => {
         if ((e.target as HTMLElement).closest("button") || shouldSuppressDblClick()) return;
         onConnect(host);
@@ -58,7 +67,7 @@ export const HostCard: React.FC<HostCardProps> = ({
         e.stopPropagation();
         onContextMenu(e, host);
       }}
-      className={`group p-2 rounded-md border transition-all cursor-pointer ${
+      className={`group p-2 rounded-md border transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:border-sky-500/60 ${
         isDragging
           ? "opacity-45 bg-slate-900/60 border-dashed border-sky-500/60"
           : "bg-slate-950/60 hover:bg-slate-800/80 border-slate-800/70 hover:border-slate-700"
@@ -155,7 +164,7 @@ export const HostCard: React.FC<HostCardProps> = ({
         </span>
         {host.active_port_forwards_count > 0 && (
           <span className="text-[9px] px-1 rounded bg-sky-500/15 text-sky-300 shrink-0">
-            PF:{host.active_port_forwards_count}
+            {t("forward.badge_count", { count: host.active_port_forwards_count })}
           </span>
         )}
       </div>

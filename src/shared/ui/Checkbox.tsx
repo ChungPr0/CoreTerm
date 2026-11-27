@@ -52,7 +52,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
 
     const visualBox = (
       <div
-        className={`relative ${boxSize} rounded border flex items-center justify-center transition-all duration-150 shrink-0 ${
+        className={`relative ${boxSize} rounded border flex items-center justify-center transition-all duration-150 shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-500/50 peer-focus-visible:border-sky-500 ${
           checked
             ? toneClasses
             : "bg-slate-950 border-slate-700 hover:border-slate-500 group-hover:border-slate-500"
@@ -74,7 +74,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
         checked={checked}
         disabled={disabled}
         onChange={handleChange}
-        className="sr-only"
+        className="peer sr-only"
         {...rest}
       />
     );

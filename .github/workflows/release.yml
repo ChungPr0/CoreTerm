@@ -64,6 +64,11 @@ jobs:
           Copy-Item "src-tauri/target/release/coreterm.exe" "release-assets/CoreTerm_x64_portable.exe"
           Copy-Item "src-tauri/target/release/bundle/nsis/*.exe" "release-assets/"
           Copy-Item "src-tauri/target/release/bundle/msi/*.msi" "release-assets/"
+          $sumLines = Get-ChildItem -Path release-assets -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $sumLines | Set-Content -Path "release-assets/SHA256SUMS.txt" -Encoding utf8
           Get-ChildItem release-assets
 
       - name: Determine release metadata
@@ -74,7 +79,7 @@ jobs:
           $isTag = "$env:GITHUB_REF".StartsWith("refs/tags/")
           if ($isTag) {
             $tagName = $env:GITHUB_REF_NAME
-            $isPre = $tagName.StartsWith("v0.") -or $tagName.Contains("-")
+            $isPre = $tagName.Contains("-")
             "tag=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             "name=CoreTerm $tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             if ($isPre) {
@@ -130,6 +135,7 @@ jobs:
           files: |
             release-assets/*.exe
             release-assets/*.msi
+            release-assets/SHA256SUMS.txt
           body: |
             ### Downloads (Windows x64)
             - **Portable**: `CoreTerm_x64_portable.exe` (single-file executable, no installation required)

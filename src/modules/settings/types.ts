@@ -9,6 +9,7 @@ import type { KeybindingOverrides } from "@/shared/utils/shortcuts";
 export type { KeybindingOverrides, SettingsCategoryId };
 
 export type CloseLastTabBehavior = "exit" | "new_local";
+export type UpdateMode = "auto" | "notify" | "off";
 export type DefaultImeMode = "default" | "alphanumeric";
 export type StartupBehavior = "default_profile" | "restore_session";
 export type NewInstanceBehavior = "attach" | "new_window";
@@ -23,6 +24,7 @@ export type EditorTabSize = 2 | 4 | 8;
 export interface AppSettingsValues {
   // General
   closeLastTabBehavior: CloseLastTabBehavior;
+  updateMode: UpdateMode;
 
   // Startup
   launchCols: number;

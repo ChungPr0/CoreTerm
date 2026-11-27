@@ -15,3 +15,21 @@ export { SegmentedControl, type SegmentedControlProps, type SegmentOption } from
 export { Select, type SelectProps, type SelectOption } from "./Select";
 export { ShellIcon, type ShellIconProps } from "./ShellIcon";
 export { Switch, type SwitchProps } from "./Switch";
+export {
+  Tooltip,
+  TooltipProvider,
+  computeTooltipPosition,
+  createTooltipRegistry,
+  isTooltipAnchorAllowed,
+  sanitizeTooltipText,
+  useTooltipSlot,
+  type ComputedTooltipPosition,
+  type RectLike,
+  type TooltipPlacement,
+  type TooltipProps,
+  type TooltipRegistry,
+  type TooltipSide,
+  type TooltipSlotEntry,
+  type TooltipVariant,
+  type UseTooltipSlotOptions,
+} from "./Tooltip";

@@ -1,10 +1,15 @@
-import { LOCAL_HOST_ID, SFTP_SPLIT_RATIO_DEFAULT } from "@/shared/defaults";
+import {
+  LOCAL_HOST_ID,
+  SESSION_MAX_RESTORE_TABS,
+  SFTP_SPLIT_RATIO_DEFAULT,
+  STORAGE_KEY_SESSION_SNAPSHOT,
+} from "@/shared/defaults";
 import type { EditorTabMeta, ShellProfile, TerminalTabItem } from "@/shared/types/ipc";
 import { buildNewEditorTab } from "../hooks/tabsStoreHelpers";
 import { createLocalTab } from "./tabHelpers";
 
-const SESSION_STORAGE_KEY = "coreterm_session_snapshot";
-const MAX_RESTORE_TABS = 24;
+const SESSION_STORAGE_KEY = STORAGE_KEY_SESSION_SNAPSHOT;
+const MAX_RESTORE_TABS = SESSION_MAX_RESTORE_TABS;
 
 export type SavedTabEntry =
   | {

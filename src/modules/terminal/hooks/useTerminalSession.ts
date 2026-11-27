@@ -5,7 +5,11 @@ import { SearchAddon } from "@xterm/addon-search";
 import type { TerminalTabItem } from "@/shared/types/ipc";
 import type { SessionConnectAckDto } from "../types";
 import { sessionApi } from "../api/sessionApi";
-import { clampTermFontSize, DEFAULT_CONFLICT_STRATEGY } from "@/shared/defaults";
+import {
+  clampTermFontSize,
+  DEFAULT_CONFLICT_STRATEGY,
+  TERM_RESIZE_DEBOUNCE_MS,
+} from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { copyText, readText } from "@/shared/utils/clipboard";
 import { extractRawErrorMessage, formatLocalizedError } from "@/shared/utils/formatError";
@@ -47,7 +51,7 @@ export interface LaunchWinSize {
   height: number;
 }
 
-const RESIZE_DEBOUNCE_MS = 60;
+const RESIZE_DEBOUNCE_MS = TERM_RESIZE_DEBOUNCE_MS;
 
 interface UseTerminalSessionOpts {
   tab: TerminalTabItem;

@@ -226,7 +226,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                       )}
                     </div>
                     <div
-                      title={detail}
+                      data-tooltip={detail}
                       className="h-4 leading-4 text-[11px] font-mono text-slate-500 truncate"
                     >
                       {detail}
@@ -245,6 +245,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                   )}
                   <IconButton
                     size="sm"
+                    tabIndex={0}
                     tone="sky"
                     title={t("common.edit")}
                     onClick={() => openEdit(shell)}
@@ -252,6 +253,7 @@ export const CustomShellsSection: React.FC<CustomShellsSectionProps> = ({
                   />
                   <IconButton
                     size="sm"
+                    tabIndex={0}
                     tone="rose"
                     title={t("common.delete")}
                     onClick={() => {

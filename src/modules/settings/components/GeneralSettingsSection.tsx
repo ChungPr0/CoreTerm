@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { Sliders } from "lucide-react";
-import { TOAST_COPY_MS } from "@/shared/defaults";
+import { ArrowUpCircle, RefreshCw, Sliders } from "lucide-react";
 import { type LocalePreference, useI18n } from "@/shared/i18n";
-import { Select, Switch, useAlert } from "@/shared/ui";
+import { Button, Select, Switch, useAlert } from "@/shared/ui";
 import { formatLocalizedError } from "@/shared/utils/formatError";
 import { sessionApi } from "@/modules/terminal/api/sessionApi";
-import type { AppSettingsValues, CloseLastTabBehavior } from "../types";
+import { useUpdaterStore } from "@/modules/updater";
+import type {
+  AppSettingsValues,
+  CloseLastTabBehavior,
+  UpdateMode,
+} from "../types";
 import {
   matchesSettingsQuery,
   SettingsCard,
@@ -36,6 +40,13 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
   const [contextMenuEnabled, setContextMenuEnabled] = useState(false);
   const [contextMenuBusy, setContextMenuBusy] = useState(false);
 
+  const updateEnv = useUpdaterStore((s) => s.env);
+  const updatePhase = useUpdaterStore((s) => s.phase);
+  const latestUpdate = useUpdaterStore((s) => s.latest);
+  const updateProgress = useUpdaterStore((s) => s.progress);
+  const checkForUpdate = useUpdaterStore((s) => s.checkForUpdate);
+  const openUpdateModal = useUpdaterStore((s) => s.openModal);
+
   useEffect(() => {
     let active = true;
     sessionApi
@@ -55,11 +66,8 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
     setContextMenuEnabled(next);
     setContextMenuBusy(true);
     try {
-      await sessionApi.contextMenuSetEnabled(next);
-      alert.info(
-        t(next ? "settings.context_menu_enabled" : "settings.context_menu_disabled"),
-        TOAST_COPY_MS
-      );
+      const actual = await sessionApi.contextMenuSetEnabled(next);
+      setContextMenuEnabled(actual);
     } catch (err) {
       setContextMenuEnabled(prev);
       alert.error(formatLocalizedError(err, t));
@@ -67,6 +75,61 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
       setContextMenuBusy(false);
     }
   };
+
+  const handleManualUpdateCheck = async () => {
+    try {
+      await checkForUpdate({
+        updateMode: settings.updateMode,
+        silent: false,
+      });
+    } catch (err) {
+      alert.error(formatLocalizedError(err, t));
+    }
+  };
+
+  const pkgLabel =
+    updateEnv.install_kind === "nsis"
+      ? t("settings.update_pkg_nsis")
+      : updateEnv.install_kind === "msi"
+        ? t("settings.update_pkg_msi")
+        : updateEnv.install_kind === "dev"
+          ? t("settings.update_pkg_dev")
+          : t("settings.update_pkg_portable");
+
+  const updateStatusText =
+    updatePhase === "checking"
+      ? t("settings.update_status_checking", {
+          version: updateEnv.current_version,
+        })
+      : updatePhase === "downloading"
+        ? t("settings.update_status_downloading", {
+            latest: latestUpdate?.version ?? "",
+            percent: updateProgress?.percent ?? 0,
+          })
+        : updatePhase === "ready" && latestUpdate?.version
+          ? t("settings.update_status_ready", { latest: latestUpdate.version })
+          : updatePhase === "available" && latestUpdate?.version
+            ? t("settings.update_status_available", {
+                latest: latestUpdate.version,
+              })
+            : updatePhase === "up_to_date"
+              ? t("settings.update_status_latest", {
+                  version: updateEnv.current_version,
+                  pkg: pkgLabel,
+                })
+              : t("settings.update_status_idle", {
+                  version: updateEnv.current_version,
+                  pkg: pkgLabel,
+                });
+
+  const supportsAutoDownload = updateEnv.supports_silent_auto_download;
+  const effectiveSelectMode: UpdateMode =
+    !supportsAutoDownload && settings.updateMode === "auto"
+      ? "notify"
+      : settings.updateMode;
+  const hasActionableUpdate =
+    (updatePhase === "available" || updatePhase === "ready") &&
+    Boolean(latestUpdate?.available && latestUpdate?.version);
 
   const showLang = matchesSettingsQuery(
     query,
@@ -93,6 +156,27 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
     t("settings.context_menu_desc"),
     "explorer"
   );
+  const showUpdateStatus = matchesSettingsQuery(
+    query,
+    t("settings.cat_general"),
+    t("settings.group_updates"),
+    t("settings.update_status_title"),
+    t("settings.update_check_btn"),
+    pkgLabel,
+    updateEnv.current_version,
+    "update version release"
+  );
+  const showUpdateMode = matchesSettingsQuery(
+    query,
+    t("settings.cat_general"),
+    t("settings.group_updates"),
+    t("settings.update_auto_mode"),
+    t("settings.update_auto_mode_desc"),
+    t("settings.update_mode_auto"),
+    t("settings.update_mode_notify"),
+    t("settings.update_mode_off"),
+    "auto update release"
+  );
   const showResetFooter =
     !query.trim() ||
     matchesSettingsQuery(
@@ -106,6 +190,8 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
     !showLang &&
     !showCloseLastTab &&
     !showContextMenu &&
+    !showUpdateStatus &&
+    !showUpdateMode &&
     !showResetFooter
   ) {
     return null;
@@ -164,6 +250,57 @@ export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
             onChange={(next) => void handleToggleContextMenu(next)}
             aria-label={t("settings.context_menu_title")}
           />
+        </SettingsRow>
+      </SettingsCard>
+
+      <SettingsCard title={t("settings.group_updates")}>
+        <SettingsRow
+          visible={showUpdateStatus}
+          title={t("settings.update_status_title")}
+          description={updateStatusText}
+        >
+          {hasActionableUpdate ? (
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<ArrowUpCircle className="w-3.5 h-3.5" />}
+              onClick={openUpdateModal}
+            >
+              {t("settings.update_view_btn")}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={updatePhase === "checking" || updatePhase === "downloading"}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+              onClick={() => void handleManualUpdateCheck()}
+            >
+              {t("settings.update_check_btn")}
+            </Button>
+          )}
+        </SettingsRow>
+
+        <SettingsRow
+          visible={showUpdateMode}
+          title={t("settings.update_auto_mode")}
+          description={
+            supportsAutoDownload
+              ? t("settings.update_auto_mode_desc")
+              : t("settings.update_auto_mode_portable_desc")
+          }
+        >
+          <Select
+            value={effectiveSelectMode}
+            onChange={(e) => onPatch({ updateMode: e.target.value as UpdateMode })}
+            containerClassName="w-60"
+          >
+            {supportsAutoDownload && (
+              <option value="auto">{t("settings.update_mode_auto")}</option>
+            )}
+            <option value="notify">{t("settings.update_mode_notify")}</option>
+            <option value="off">{t("settings.update_mode_off")}</option>
+          </Select>
         </SettingsRow>
       </SettingsCard>
 

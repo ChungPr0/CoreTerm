@@ -2,8 +2,11 @@ import { windowApi } from "../api/windowApi";
 
 export async function startInteractiveWindowMove(): Promise<void> {
   try {
-    const isMax = await windowApi.windowIsMaximized();
-    if (isMax) return;
+    const [isMax, isFs] = await Promise.all([
+      windowApi.windowIsMaximized(),
+      windowApi.windowIsFullscreen(),
+    ]);
+    if (isMax || isFs) return;
 
     const [startWinX, startWinY] = await windowApi.windowGetPosition();
 

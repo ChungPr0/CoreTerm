@@ -254,6 +254,7 @@ export function buildTabContextItems({
 export interface BuildTabBarContextItemsOpts {
   t: (key: string, params?: Record<string, string | number>) => string;
   isMaximized: boolean;
+  isFullscreen?: boolean;
   isAppElevated: boolean;
   shellProfiles: ShellProfile[];
   defaultShellProfile: ShellProfile | null;
@@ -265,6 +266,7 @@ export interface BuildTabBarContextItemsOpts {
 export function buildTabBarContextItems({
   t,
   isMaximized,
+  isFullscreen = false,
   isAppElevated,
   shellProfiles,
   defaultShellProfile,
@@ -296,7 +298,7 @@ export function buildTabBarContextItems({
   if (items.length > 0) {
     items.push({ type: "separator", id: "sep-tabbar-win" });
   }
-  items.push(...buildTabBarWindowMenu(t, isMaximized, onWindowAction));
+  items.push(...buildTabBarWindowMenu(t, isMaximized, onWindowAction, isFullscreen));
   return items;
 }
 
@@ -320,6 +322,7 @@ interface UseTabMenusOpts {
   onCloseTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
   onRequestCloseWindow?: () => void;
+  onWindowStateChange?: () => void;
 }
 
 export function useTabMenus(opts: UseTabMenusOpts) {
@@ -343,6 +346,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
     onCloseTab,
     onCloseOtherTabs,
     onRequestCloseWindow,
+    onWindowStateChange,
   } = opts;
 
   const openTabMenu = useCallback(
@@ -398,35 +402,39 @@ export function useTabMenus(opts: UseTabMenusOpts) {
     (e: React.MouseEvent) => {
       const x = e.clientX;
       const y = e.clientY;
-      void windowApi
-        .windowIsMaximized()
-        .catch(() => false)
-        .then((isMaximized) => {
-          setContextMenu({
-            x,
-            y,
-            items: buildTabBarContextItems({
-              t,
-              isMaximized,
-              isAppElevated,
-              shellProfiles,
-              defaultShellProfile,
-              onNewLocalTab,
-              onOpenSettings,
-              onWindowAction: (action) => {
-                if (action === "move") {
-                  void startInteractiveWindowMove();
-                  return;
-                }
-                if (action === "close" && onRequestCloseWindow) {
-                  onRequestCloseWindow();
-                  return;
-                }
-                void windowApi.windowSysCommand(action).catch(() => {});
-              },
-            }),
-          });
+      void Promise.all([
+        windowApi.windowIsMaximized().catch(() => false),
+        windowApi.windowIsFullscreen().catch(() => false),
+      ]).then(([isMaximized, isFullscreen]) => {
+        setContextMenu({
+          x,
+          y,
+          items: buildTabBarContextItems({
+            t,
+            isMaximized: !isFullscreen && isMaximized,
+            isFullscreen,
+            isAppElevated,
+            shellProfiles,
+            defaultShellProfile,
+            onNewLocalTab,
+            onOpenSettings,
+            onWindowAction: (action) => {
+              if (action === "move") {
+                void startInteractiveWindowMove();
+                return;
+              }
+              if (action === "close" && onRequestCloseWindow) {
+                onRequestCloseWindow();
+                return;
+              }
+              void windowApi
+                .windowSysCommand(action)
+                .then(() => onWindowStateChange?.())
+                .catch(() => {});
+            },
+          }),
         });
+      });
     },
     [
       defaultShellProfile,
@@ -434,6 +442,7 @@ export function useTabMenus(opts: UseTabMenusOpts) {
       onNewLocalTab,
       onOpenSettings,
       onRequestCloseWindow,
+      onWindowStateChange,
       setContextMenu,
       shellProfiles,
       t,

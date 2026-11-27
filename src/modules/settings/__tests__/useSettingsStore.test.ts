@@ -253,6 +253,7 @@ describe("useSettingsStore", () => {
       editorFontSize: 3,
       editorTabSize: 7,
       closeLastTabBehavior: "bad",
+      updateMode: "invalid_mode",
       defaultImeMode: "unknown",
       startupBehavior: "unknown",
       newInstanceBehavior: "unknown",
@@ -285,6 +286,7 @@ describe("useSettingsStore", () => {
     expect(clamped.editorFontSize).toBe(10);
     expect(clamped.editorTabSize).toBe(2);
     expect(clamped.closeLastTabBehavior).toBe("exit");
+    expect(clamped.updateMode).toBe("auto");
     expect(clamped.defaultImeMode).toBe("default");
     expect(clamped.startupBehavior).toBe("default_profile");
     expect(clamped.newInstanceBehavior).toBe("attach");
@@ -295,7 +297,7 @@ describe("useSettingsStore", () => {
     expect(clamped.showAdminShield).toBe(true);
     expect(clamped.newTabPosition).toBe("end");
     expect(clamped.tabWidthMode).toBe("equal");
-    expect(clamped.showTabsInFullscreen).toBe(true);
+    expect(clamped.showTabsInFullscreen).toBe(false);
     expect(clamped.keybindings).toEqual({ closeTab: "Ctrl+W" });
     expect(clamped.terminalTrimPasteWhitespace).toBe(true);
     expect(clamped.terminalCtrlScrollZoom).toBe(true);
@@ -308,6 +310,7 @@ describe("useSettingsStore", () => {
     // patchSettings persists incremental updates immediately
     useSettingsStore.getState().patchSettings({
       closeLastTabBehavior: "new_local",
+      updateMode: "notify",
       launchCols: 140,
       defaultImeMode: "alphanumeric",
       startupBehavior: "restore_session",
@@ -319,7 +322,7 @@ describe("useSettingsStore", () => {
       showAdminShield: false,
       newTabPosition: "after_current",
       tabWidthMode: "compact",
-      showTabsInFullscreen: false,
+      showTabsInFullscreen: true,
       keybindings: { closeTab: "Ctrl+W" },
       terminalFontSize: 18,
       terminalCopyOnSelect: true,
@@ -355,6 +358,7 @@ describe("useSettingsStore", () => {
     // resetCategorySettings resets only the target section
     useSettingsStore.getState().resetCategorySettings("general");
     expect(useSettingsStore.getState().settings.closeLastTabBehavior).toBe("exit");
+    expect(useSettingsStore.getState().settings.updateMode).toBe("auto");
     expect(useSettingsStore.getState().settings.launchCols).toBe(140);
     expect(useSettingsStore.getState().settings.defaultImeMode).toBe("alphanumeric");
 
@@ -375,7 +379,7 @@ describe("useSettingsStore", () => {
     expect(useSettingsStore.getState().settings.showAdminShield).toBe(true);
     expect(useSettingsStore.getState().settings.newTabPosition).toBe("end");
     expect(useSettingsStore.getState().settings.tabWidthMode).toBe("equal");
-    expect(useSettingsStore.getState().settings.showTabsInFullscreen).toBe(true);
+    expect(useSettingsStore.getState().settings.showTabsInFullscreen).toBe(false);
 
     useSettingsStore.getState().resetCategorySettings("actions");
     expect(useSettingsStore.getState().settings.keybindings).toEqual({});

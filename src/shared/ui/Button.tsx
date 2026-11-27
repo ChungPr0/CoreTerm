@@ -34,6 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled = false,
       className = "",
       type = "button",
+      title,
       ...rest
     },
     ref
@@ -70,6 +71,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={isDisabled}
+        data-tooltip={title || undefined}
         className={`inline-flex items-center justify-center select-none whitespace-nowrap transition-all duration-150 active:scale-[0.97] focus:outline-none cursor-pointer border box-border disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${variantClasses} ${sizeClasses} ${className}`}
         {...rest}
       >

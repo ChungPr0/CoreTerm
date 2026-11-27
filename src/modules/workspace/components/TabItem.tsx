@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FileText,
   FolderSync,
@@ -7,11 +7,19 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import type { SessionState, TerminalTabItem } from "@/shared/types/ipc";
+import { LOCAL_HOST_ID } from "@/shared/defaults";
+import type { TerminalTabItem } from "@/shared/types/ipc";
 import type { TabWidthMode } from "@/modules/settings";
 import { useI18n } from "@/shared/i18n";
-import { IconButton } from "@/shared/ui";
+import { IconButton, useTooltipSlot } from "@/shared/ui";
+import { DEFAULT_KEYBINDINGS } from "@/shared/utils/shortcuts";
+import { isTabConnecting, isTabOffline } from "../utils/tabHelpers";
 import { ShellIcon } from "./ShellIcon";
+import {
+  TabHostTooltipCard,
+  formatTabTooltipTitle,
+  getTabStatusIndicator,
+} from "./TabHostTooltipCard";
 
 interface TabItemProps {
   tab: TerminalTabItem;
@@ -20,6 +28,7 @@ interface TabItemProps {
   isCompact: boolean;
   tabWidthMode?: TabWidthMode;
   isRenaming?: boolean;
+  suppressTooltip?: boolean;
   closeShortcut?: string;
   sftpShortcut?: string;
   elRef: (el: HTMLDivElement | null) => void;
@@ -33,46 +42,6 @@ interface TabItemProps {
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-function getStatusIndicator(
-  state: SessionState,
-  t: (key: string) => string
-): { dotClass: string; label: string } {
-  switch (state) {
-    case "CONNECTING":
-    case "HANDSHAKING":
-      return {
-        dotClass:
-          "bg-sky-400 animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.75)]",
-        label: t("status.connecting"),
-      };
-    case "ONLINE":
-      return {
-        dotClass: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.75)]",
-        label: t("status.online"),
-      };
-    case "AUTH_FAILED":
-      return {
-        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.75)]",
-        label: t("status.auth_failed"),
-      };
-    case "PORT_CONFLICT":
-      return {
-        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.75)]",
-        label: t("status.port_conflict"),
-      };
-    case "DISCONNECTED":
-    case "ERROR":
-    default:
-      return {
-        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.75)]",
-        label:
-          state === "DISCONNECTED"
-            ? t("status.disconnected")
-            : t("status.error"),
-      };
-  }
-}
-
 export const TabItem: React.FC<TabItemProps> = ({
   tab,
   isActive,
@@ -80,8 +49,9 @@ export const TabItem: React.FC<TabItemProps> = ({
   isCompact,
   tabWidthMode = "equal",
   isRenaming = false,
-  closeShortcut = "Ctrl+Shift+W",
-  sftpShortcut = "Ctrl+Shift+E",
+  suppressTooltip = false,
+  closeShortcut = DEFAULT_KEYBINDINGS.closeTab,
+  sftpShortcut = DEFAULT_KEYBINDINGS.toggleSftpPanel,
   elRef,
   onPointerDown,
   onSelect,
@@ -96,7 +66,7 @@ export const TabItem: React.FC<TabItemProps> = ({
   const isEditor = tab.tabKind === "editor";
   const isSettings = tab.tabKind === "settings";
   const isRemoteEditor = isEditor && tab.editorFile?.kind === "remote";
-  const isLocal = !isEditor && !isSettings && tab.hostId === "local";
+  const isLocal = !isEditor && !isSettings && tab.hostId === LOCAL_HOST_ID;
   const displayTitle = isSettings ? t("settings.title") : tab.title;
   const [renameDraft, setRenameDraft] = useState(tab.title);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -116,27 +86,46 @@ export const TabItem: React.FC<TabItemProps> = ({
     return () => window.cancelAnimationFrame(raf);
   }, [isRenaming, tab.title]);
 
-  const status = getStatusIndicator(tab.state, t);
-  const isConnecting =
-    tab.state === "CONNECTING" || tab.state === "HANDSHAKING";
-  const isOffline =
-    tab.state === "DISCONNECTED" ||
-    tab.state === "ERROR" ||
-    tab.state === "AUTH_FAILED";
+  const status = getTabStatusIndicator(tab.state, t);
+  const isConnecting = isTabConnecting(tab);
+  const isOffline = isTabOffline(tab);
+  const titleText = formatTabTooltipTitle(tab, status.label, t);
 
-  const titleText = isSettings
-    ? t("settings.title")
-    : isEditor
-      ? isRemoteEditor
-        ? `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title} — ${status.label}`
-        : `${tab.editorFile?.hostLabel ?? ""} — ${tab.editorFile?.path ?? tab.title}`
-      : isLocal
-        ? tab.isAdmin
-          ? `${tab.title} (${t("app.admin_badge")})`
-          : tab.title
-        : tab.tabKind === "sftp"
-          ? `SFTP: ${tab.title} (${tab.hostSubtitle}) — ${status.label}`
-          : `${tab.title} (${tab.hostSubtitle}) — ${status.label}`;
+  const isRemoteHostTab = !isEditor && !isSettings && !isLocal;
+  const disableTip = isDragged || isRenaming || suppressTooltip;
+  const forwardCount = tab.activeForwards?.length ?? 0;
+
+  const remoteHostCard = useMemo(() => {
+    if (!isRemoteHostTab) return null;
+    return (
+      <TabHostTooltipCard
+        title={displayTitle}
+        hostSubtitle={tab.hostSubtitle}
+        isSftpTab={tab.tabKind === "sftp"}
+        sftpSplitOpen={Boolean(tab.sftpOpen)}
+        forwardCount={forwardCount}
+        status={status}
+        t={t}
+      />
+    );
+  }, [
+    isRemoteHostTab,
+    displayTitle,
+    tab.hostSubtitle,
+    tab.tabKind,
+    tab.sftpOpen,
+    forwardCount,
+    status.dotClass,
+    status.textClass,
+    status.label,
+    t,
+  ]);
+
+  const cardSlotProps = useTooltipSlot(remoteHostCard, {
+    placement: "bottom",
+    variant: "card",
+    disabled: !isRemoteHostTab || disableTip,
+  });
 
   const isIconOnly =
     tabWidthMode === "compact" && !isActive && !isDragged && !isRenaming;
@@ -168,7 +157,9 @@ export const TabItem: React.FC<TabItemProps> = ({
         e.stopPropagation();
         onContextMenu(e);
       }}
-      title={titleText}
+      {...cardSlotProps}
+      data-tooltip={!isRemoteHostTab && !disableTip ? titleText : undefined}
+      data-tooltip-placement="bottom"
       className={`group relative flex items-center gap-1.5 h-8 rounded-t-md text-xs font-medium cursor-pointer touch-none select-none border-t border-x ${widthClasses} ${
         isDragged
           ? "z-30 bg-[#0d1424] text-white border-sky-500/60 shadow-[0_8px_22px_rgba(0,0,0,0.75)]"
@@ -205,7 +196,8 @@ export const TabItem: React.FC<TabItemProps> = ({
         )}
         {((!isLocal && !isEditor && !isSettings) || isRemoteEditor) && (
           <span
-            title={status.label}
+            data-tooltip={isRemoteEditor ? status.label : undefined}
+            data-tooltip-placement="bottom"
             className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-[1.5px] ${
               isActive || isDragged ? "ring-[#090d16]" : "ring-slate-900"
             } ${status.dotClass}`}
@@ -213,7 +205,8 @@ export const TabItem: React.FC<TabItemProps> = ({
         )}
         {isIconOnly && isEditor && tab.editorFile?.dirty && !isRemoteEditor && (
           <span
-            title={t("editor.unsaved")}
+            data-tooltip={t("editor.unsaved")}
+            data-tooltip-placement="bottom"
             className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-slate-300"
           />
         )}
@@ -255,7 +248,8 @@ export const TabItem: React.FC<TabItemProps> = ({
 
           {isEditor && tab.editorFile?.dirty && (
             <span
-              title={t("editor.unsaved")}
+              data-tooltip={t("editor.unsaved")}
+              data-tooltip-placement="bottom"
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
             />
           )}
@@ -284,6 +278,7 @@ export const TabItem: React.FC<TabItemProps> = ({
               title={`${t("ctx.sftp_panel")}: ${
                 tab.sftpOpen ? t("ctx.state_on") : t("ctx.state_off")
               } (${sftpShortcut})`}
+              data-tooltip-placement="bottom"
               icon={<FolderSync className="w-3 h-3" />}
             />
           )}
@@ -295,6 +290,7 @@ export const TabItem: React.FC<TabItemProps> = ({
               disabled={isConnecting}
               onClick={onReconnect}
               title={isConnecting ? t("status.connecting") : t("common.reconnect")}
+              data-tooltip-placement="bottom"
               icon={<RotateCw className={`w-3 h-3 ${isConnecting ? "animate-spin" : ""}`} />}
             />
           )}
@@ -304,6 +300,7 @@ export const TabItem: React.FC<TabItemProps> = ({
             tone="rose"
             onClick={onClose}
             title={`${t("common.close")} (${closeShortcut})`}
+            data-tooltip-placement="bottom"
             icon={<X className="w-3.5 h-3.5" />}
           />
         </>

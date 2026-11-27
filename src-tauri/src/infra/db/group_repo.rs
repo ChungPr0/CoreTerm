@@ -1,10 +1,9 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::core::defaults::{DEFAULT_HOST_GROUP, MAX_GROUP_NAME_LEN};
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::db::SqliteDb;
 use crate::ipc::dto::DeleteResultDto;
-
-const MAX_GROUP_NAME_LEN: usize = 64;
 
 fn next_sort_order(conn: &Connection) -> CoreResult<i64> {
     let max_order: i64 =
@@ -15,8 +14,8 @@ fn next_sort_order(conn: &Connection) -> CoreResult<i64> {
 /// Reuses existing canonical casing and persists custom groups when referenced by a host.
 pub fn resolve_canonical(conn: &Connection, raw_group: &str) -> CoreResult<String> {
     let trimmed = raw_group.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("default") {
-        return Ok("Default".to_string());
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(DEFAULT_HOST_GROUP) {
+        return Ok(DEFAULT_HOST_GROUP.to_string());
     }
     let validated = SqliteDb::validate_entity_name(trimmed, "Group name", MAX_GROUP_NAME_LEN)?;
     let existing: Option<String> = conn

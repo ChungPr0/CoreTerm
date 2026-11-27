@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { STORAGE_KEY_LOCALE } from "@/shared/defaults";
 import vi from "./locales/vi.json";
 import en from "./locales/en.json";
 
@@ -43,7 +44,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [localePreference, setLocalePreferenceState] = useState<LocalePreference>(() => {
-    const saved = localStorage.getItem("coreterm_locale");
+    const saved = localStorage.getItem(STORAGE_KEY_LOCALE);
     return saved === "system" || saved === "en" || saved === "vi" ? saved : "vi";
   });
   const [systemLocale, setSystemLocale] = useState<Locale>(() => resolveSystemLocale());
@@ -51,7 +52,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const onLangChange = () => setSystemLocale(resolveSystemLocale());
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "coreterm_locale") {
+      if (e.key === STORAGE_KEY_LOCALE) {
         const next = e.newValue;
         setLocalePreferenceState(
           next === "system" || next === "en" || next === "vi" ? next : "vi"
@@ -71,11 +72,11 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const setLocalePreference = (pref: LocalePreference) => {
     setLocalePreferenceState(pref);
-    localStorage.setItem("coreterm_locale", pref);
+    localStorage.setItem(STORAGE_KEY_LOCALE, pref);
   };
 
   const resetLocalePreference = () => {
-    localStorage.removeItem("coreterm_locale");
+    localStorage.removeItem(STORAGE_KEY_LOCALE);
     setLocalePreferenceState("vi");
   };
 

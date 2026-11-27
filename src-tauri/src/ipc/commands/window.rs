@@ -175,8 +175,7 @@ pub async fn window_present(
             if !window.is_visible().unwrap_or(false) {
                 let _ = window.show();
             }
-            let _ = window.set_fullscreen(true);
-            let _ = window.set_focus();
+            let _ = os::window::set_window_fullscreen(&window, true).await;
         }
         _ => {
             if !window.is_visible().unwrap_or(false) {
@@ -196,15 +195,9 @@ pub async fn window_minimize(window: tauri::WebviewWindow) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn window_toggle_maximize(window: tauri::WebviewWindow) -> AppResult<()> {
-    if window.is_fullscreen().unwrap_or(false) {
-        let _ = window.set_fullscreen(false);
-        return Ok(());
-    }
-    if window.is_maximized().unwrap_or(false) {
-        let _ = window.unmaximize();
-    } else {
-        let _ = window.maximize();
-    }
+    let _ = os::window::toggle_window_maximize(&window)
+        .await
+        .map_err(AppError::Os)?;
     Ok(())
 }
 
@@ -219,9 +212,10 @@ pub async fn window_set_always_on_top(
 
 #[tauri::command]
 pub async fn window_toggle_fullscreen(window: tauri::WebviewWindow) -> AppResult<bool> {
-    let next = !window.is_fullscreen().unwrap_or(false);
-    let _ = window.set_fullscreen(next);
-    Ok(next)
+    let (fs, _) = os::window::toggle_window_fullscreen(&window)
+        .await
+        .map_err(AppError::Os)?;
+    Ok(fs)
 }
 
 #[tauri::command]
@@ -272,7 +266,7 @@ pub async fn window_open_url(url: String) -> AppResult<()> {
 
 #[tauri::command]
 pub async fn window_is_maximized(window: tauri::WebviewWindow) -> AppResult<bool> {
-    Ok(window.is_maximized().unwrap_or(false))
+    Ok(!window.is_fullscreen().unwrap_or(false) && window.is_maximized().unwrap_or(false))
 }
 
 #[tauri::command]
@@ -308,7 +302,9 @@ pub async fn window_sys_command(
     window: tauri::WebviewWindow,
     action: String,
 ) -> AppResult<()> {
-    os::window::dispatch_window_sys_command(&window, &action).map_err(AppError::Os)
+    os::window::dispatch_window_sys_command(&window, &action)
+        .await
+        .map_err(AppError::Os)
 }
 
 #[cfg(test)]

@@ -164,6 +164,7 @@ export const ActionsSettingsSection: React.FC<ActionsSettingsSectionProps> = ({
           {isCustomized && (
             <IconButton
               size="xs"
+              tabIndex={0}
               onClick={() => resetSingleShortcut(def)}
               title={t("settings.shortcut_reset_one", { shortcut: def.defaultChord })}
               icon={<RotateCcw className="h-3 w-3" />}
@@ -180,6 +181,7 @@ export const ActionsSettingsSection: React.FC<ActionsSettingsSectionProps> = ({
           </kbd>
           <IconButton
             size="xs"
+            tabIndex={0}
             onClick={() => openEditor(def)}
             title={t("common.edit")}
             icon={<Pencil className="h-3 w-3" />}

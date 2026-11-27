@@ -18,6 +18,8 @@ import {
   SSH_DEFAULT_PORT,
   SSH_DEFAULT_RECONNECT_SEC,
   SSH_DEFAULT_USERNAME,
+  STORAGE_KEY_FULLSCREEN_TABS_MIGRATION,
+  STORAGE_KEY_SETTINGS,
   TERMINAL_FONT_PRESETS,
   TERM_FONT_FAMILY_DEFAULT,
   TERM_FONT_SIZE_DEFAULT,
@@ -42,15 +44,18 @@ import type {
   StartupBehavior,
   TabWidthMode,
   TerminalCursorStyle,
+  UpdateMode,
   WarnPasteMultilineMode,
 } from "./types";
 
-const SETTINGS_STORAGE_KEY = "coreterm_settings";
+const SETTINGS_STORAGE_KEY = STORAGE_KEY_SETTINGS;
+const FULLSCREEN_TABS_MIGRATION_KEY = STORAGE_KEY_FULLSCREEN_TABS_MIGRATION;
 
 export const DEFAULT_SETTINGS: AppSettingsValues = {
   launchCols: LAUNCH_COLS_DEFAULT,
   launchRows: LAUNCH_ROWS_DEFAULT,
   closeLastTabBehavior: "exit",
+  updateMode: "auto",
   defaultImeMode: "default",
   startupBehavior: "default_profile",
   newInstanceBehavior: "attach",
@@ -62,7 +67,7 @@ export const DEFAULT_SETTINGS: AppSettingsValues = {
   showAdminShield: true,
   newTabPosition: "end",
   tabWidthMode: "equal",
-  showTabsInFullscreen: true,
+  showTabsInFullscreen: false,
 
   terminalCopyOnSelect: false,
   terminalRightClickPaste: false,
@@ -171,6 +176,10 @@ function parseCloseLastTab(value: unknown): CloseLastTabBehavior {
   return value === "new_local" ? "new_local" : "exit";
 }
 
+function parseUpdateMode(value: unknown): UpdateMode {
+  return value === "notify" || value === "off" || value === "auto" ? value : "auto";
+}
+
 function parseImeMode(value: unknown): DefaultImeMode {
   return value === "alphanumeric" ? "alphanumeric" : "default";
 }
@@ -253,6 +262,7 @@ export function sanitizeSettings(raw: unknown): AppSettingsValues {
     launchCols: clampLaunchCols(parsed.launchCols),
     launchRows: clampLaunchRows(parsed.launchRows),
     closeLastTabBehavior: parseCloseLastTab(parsed.closeLastTabBehavior),
+    updateMode: parseUpdateMode(parsed.updateMode),
     defaultImeMode: parseImeMode(parsed.defaultImeMode),
     startupBehavior: parseStartupBehavior(parsed.startupBehavior),
     newInstanceBehavior: parseNewInstanceBehavior(parsed.newInstanceBehavior),
@@ -264,7 +274,7 @@ export function sanitizeSettings(raw: unknown): AppSettingsValues {
     showAdminShield: parseBool(parsed.showAdminShield, true),
     newTabPosition: parseNewTabPosition(parsed.newTabPosition),
     tabWidthMode: parseTabWidthMode(parsed.tabWidthMode),
-    showTabsInFullscreen: parseBool(parsed.showTabsInFullscreen, true),
+    showTabsInFullscreen: parseBool(parsed.showTabsInFullscreen, false),
 
     terminalCopyOnSelect: parseBool(parsed.terminalCopyOnSelect, false),
     terminalRightClickPaste: parseBool(parsed.terminalRightClickPaste, false),
@@ -321,7 +331,22 @@ export function loadSettings(): AppSettingsValues {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (raw) {
-      return sanitizeSettings(JSON.parse(raw));
+      const sanitized = sanitizeSettings(JSON.parse(raw));
+      try {
+        if (localStorage.getItem(FULLSCREEN_TABS_MIGRATION_KEY) !== "1") {
+          localStorage.setItem(FULLSCREEN_TABS_MIGRATION_KEY, "1");
+          sanitized.showTabsInFullscreen = false;
+          saveSettings(sanitized);
+        }
+      } catch {
+        // Ignore read-only storage mocks
+      }
+      return sanitized;
+    }
+    try {
+      localStorage.setItem(FULLSCREEN_TABS_MIGRATION_KEY, "1");
+    } catch {
+      // Ignore read-only storage mocks
     }
   } catch {
     // Fallback to defaults

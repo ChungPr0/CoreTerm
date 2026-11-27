@@ -47,7 +47,7 @@ export const PortConflictModal: React.FC<PortConflictModalProps> = ({
                   {c.bind_address}:{c.bind_port}
                 </span>
               </div>
-              <div className="text-[#c9d1d9] truncate min-w-0" title={processLabel}>
+              <div className="text-[#c9d1d9] truncate min-w-0" data-tooltip={processLabel}>
                 {processLabel}
               </div>
             </div>

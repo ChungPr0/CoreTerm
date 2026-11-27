@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Menu, Shield } from "lucide-react";
+import { ArrowUpCircle, Menu, RefreshCw, Shield } from "lucide-react";
 import type {
   SettingsCategoryId,
   ShellProfile,
@@ -7,6 +7,7 @@ import type {
 } from "@/shared/types/ipc";
 import type { HostProfileSummaryDto } from "@/modules/hosts";
 import type { KeybindingOverrides, TabWidthMode } from "@/modules/settings";
+import { useUpdaterStore } from "@/modules/updater";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "@/shared/ui";
 import { getEditableInput } from "@/shared/utils/editableTarget";
@@ -21,6 +22,8 @@ interface TabBarProps {
   activeTabId: string | null;
   renamingTabId?: string | null;
   isAppElevated: boolean;
+  isFullscreen?: boolean;
+  isMaximized?: boolean;
   showAdminShield?: boolean;
   tabWidthMode?: TabWidthMode;
   keybindings?: KeybindingOverrides;
@@ -44,6 +47,8 @@ interface TabBarProps {
   onCreateNewHost: () => void;
   onOpenPalette: () => void;
   onOpenSettings: (section?: SettingsCategoryId) => void;
+  onToggleMaximize?: () => void;
+  onExitFullscreen?: () => void;
   onCloseWindow?: () => void;
   onContextMenuTab: (e: React.MouseEvent, tab: TerminalTabItem) => void;
   onContextMenuTabBar?: (e: React.MouseEvent) => void;
@@ -54,6 +59,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   activeTabId,
   renamingTabId = null,
   isAppElevated,
+  isFullscreen = false,
+  isMaximized = false,
   showAdminShield = true,
   tabWidthMode = "equal",
   keybindings,
@@ -77,6 +84,8 @@ export const TabBar: React.FC<TabBarProps> = ({
   onCreateNewHost,
   onOpenPalette,
   onOpenSettings,
+  onToggleMaximize,
+  onExitFullscreen,
   onCloseWindow,
   onContextMenuTab,
   onContextMenuTabBar,
@@ -84,6 +93,10 @@ export const TabBar: React.FC<TabBarProps> = ({
   const { t } = useI18n();
   const [middleWidth, setMiddleWidth] = useState<number>(900);
   const middleRef = useRef<HTMLDivElement | null>(null);
+  const updatePhase = useUpdaterStore((s) => s.phase);
+  const latestUpdate = useUpdaterStore((s) => s.latest);
+  const updateProgress = useUpdaterStore((s) => s.progress);
+  const openUpdateModal = useUpdaterStore((s) => s.openModal);
 
   const {
     draggingTabId,
@@ -120,7 +133,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div
-      data-tauri-drag-region={isModalOpen ? "deep" : undefined}
+      data-tauri-drag-region={!isFullscreen && isModalOpen ? "deep" : undefined}
       onContextMenu={(e) => {
         if (getEditableInput(e.target)) return;
         if (isModalOpen) {
@@ -140,6 +153,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         disabled={isModalOpen}
         onClick={onToggleSidebar}
         title={`${t("app.menu")} (${sidebarShortcut})`}
+        data-tooltip-placement="bottom"
         icon={<Menu className="w-4 h-4" />}
         className="ml-1.5 mr-1 shrink-0"
       />
@@ -170,6 +184,7 @@ export const TabBar: React.FC<TabBarProps> = ({
               isCompact={isCompactTabs}
               tabWidthMode={tabWidthMode}
               isRenaming={tab.tabId === renamingTabId}
+              suppressTooltip={isModalOpen || isContextMenuOpen}
               closeShortcut={closeShortcut}
               sftpShortcut={sftpShortcut}
               elRef={(el) => {
@@ -212,7 +227,7 @@ export const TabBar: React.FC<TabBarProps> = ({
         />
 
         <div
-          data-tauri-drag-region
+          data-tauri-drag-region={!isFullscreen ? true : undefined}
           onClick={() => {
             if (!isModalOpen) onBlankSpaceClick?.();
           }}
@@ -220,9 +235,50 @@ export const TabBar: React.FC<TabBarProps> = ({
         />
       </div>
 
+      {(updatePhase === "available" ||
+        updatePhase === "downloading" ||
+        updatePhase === "ready") &&
+        latestUpdate?.version && (
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={isModalOpen}
+            onClick={openUpdateModal}
+            data-tooltip={
+              updatePhase === "downloading"
+                ? t("updater.badge_downloading", {
+                    percent: updateProgress?.percent ?? 0,
+                  })
+                : updatePhase === "ready"
+                  ? t("updater.badge_ready", { version: latestUpdate.version })
+                  : t("updater.badge_available", {
+                      version: latestUpdate.version,
+                    })
+            }
+            data-tooltip-placement="bottom"
+            className={`mr-2 px-2 py-0.5 rounded-md border flex items-center gap-1 text-[10px] font-semibold shrink-0 transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none ${
+              updatePhase === "ready"
+                ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25"
+                : "bg-sky-500/15 border-sky-500/35 text-sky-300 hover:bg-sky-500/25"
+            }`}
+          >
+            {updatePhase === "downloading" ? (
+              <>
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>{`${updateProgress?.percent ?? 0}%`}</span>
+              </>
+            ) : (
+              <>
+                <ArrowUpCircle className="w-3 h-3" />
+                <span>{`v${latestUpdate.version}`}</span>
+              </>
+            )}
+          </button>
+        )}
+
       {isAppElevated && showAdminShield && (
         <div
-          data-tauri-drag-region="deep"
+          data-tauri-drag-region={!isFullscreen ? "deep" : undefined}
           className="mr-2 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/35 flex items-center gap-1 text-[10px] font-semibold text-amber-300 shrink-0"
         >
           <Shield className="w-3 h-3" />
@@ -230,7 +286,13 @@ export const TabBar: React.FC<TabBarProps> = ({
         </div>
       )}
 
-      <WindowCaptionControls onCloseWindow={onCloseWindow} />
+      <WindowCaptionControls
+        isFullscreen={isFullscreen}
+        isMaximized={isMaximized}
+        onToggleMaximize={onToggleMaximize}
+        onExitFullscreen={onExitFullscreen}
+        onCloseWindow={onCloseWindow}
+      />
     </div>
   );
 };

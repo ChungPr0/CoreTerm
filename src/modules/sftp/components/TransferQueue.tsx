@@ -77,6 +77,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
           <Button
             variant="ghost"
             size="xs"
+            tabIndex={-1}
             onClick={(e) => {
               e.stopPropagation();
               onClearFinished();
@@ -136,7 +137,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate font-medium text-[#e6edf3]" title={`${job.source_path} -> ${job.dest_path}`}>
+                        <span className="truncate font-medium text-[#e6edf3]" data-tooltip={`${job.source_path} -> ${job.dest_path}`}>
                           {job.file_name}
                         </span>
                         <div className="flex shrink-0 items-center gap-2 text-[11px] text-[#8b949e] whitespace-nowrap">
@@ -162,7 +163,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
                     <span
                       className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}
-                      title={errHint}
+                      data-tooltip={errHint || undefined}
                     >
                       {t(meta.key)}
                     </span>

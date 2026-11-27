@@ -9,7 +9,7 @@ import {
 import type { AppSettingsValues } from "./types";
 
 const CATEGORY_KEYS: Record<SettingsCategoryId, Array<keyof AppSettingsValues>> = {
-  general: ["closeLastTabBehavior"],
+  general: ["closeLastTabBehavior", "updateMode"],
   startup: [
     "launchCols",
     "launchRows",

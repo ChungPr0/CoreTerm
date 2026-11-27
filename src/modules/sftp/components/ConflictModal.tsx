@@ -74,7 +74,7 @@ export const ConflictModal: React.FC<ConflictModalProps> = ({ conflict, onResolv
               <div className="font-semibold text-[#58a6ff]">{t("sftp.conflict_source")}</div>
               <div
                 className="mt-1 truncate font-mono text-[11px] text-[#8b949e]"
-                title={conflict.source_path}
+                data-tooltip={conflict.source_path}
               >
                 {conflict.source_path}
               </div>
@@ -88,7 +88,7 @@ export const ConflictModal: React.FC<ConflictModalProps> = ({ conflict, onResolv
               <div className="font-semibold text-amber-400">{t("sftp.conflict_dest")}</div>
               <div
                 className="mt-1 truncate font-mono text-[11px] text-[#8b949e]"
-                title={conflict.dest_path}
+                data-tooltip={conflict.dest_path}
               >
                 {conflict.dest_path}
               </div>

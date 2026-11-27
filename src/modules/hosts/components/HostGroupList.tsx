@@ -114,7 +114,7 @@ export const HostGroupList: React.FC<HostGroupListProps> = ({
                   if (suppressGroupClickRef.current) return;
                   onToggleGroup(groupName, isCollapsed);
                 }}
-                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 ${
                   isDropTarget
                     ? "text-sky-200 bg-sky-500/15"
                     : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"

@@ -22,6 +22,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       bordered = false,
       active = false,
       type = "button",
+      tabIndex = -1,
       className = "",
       disabled = false,
       title,
@@ -73,10 +74,11 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       <button
         ref={ref}
         type={type}
+        tabIndex={tabIndex}
         disabled={disabled}
-        title={title}
+        data-tooltip={title || undefined}
         aria-label={ariaLabel || title}
-        className={`inline-flex items-center justify-center shrink-0 select-none transition-colors duration-150 focus:outline-none cursor-pointer border box-border disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none ${borderClasses} ${toneClasses} ${sizeClasses} ${className}`}
+        className={`inline-flex items-center justify-center shrink-0 select-none transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 cursor-pointer border box-border disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none ${borderClasses} ${toneClasses} ${sizeClasses} ${className}`}
         {...rest}
       >
         {icon || children}

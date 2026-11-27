@@ -1,4 +1,6 @@
-export const MAX_OCTAL_MODE = 0o7777;
+import { SFTP_MAX_OCTAL_MODE } from "@/shared/defaults";
+
+export const MAX_OCTAL_MODE = SFTP_MAX_OCTAL_MODE;
 
 export function cleanOctalInput(raw: string): string {
   return raw.replace(/[^0-7]/g, "").slice(0, 4);

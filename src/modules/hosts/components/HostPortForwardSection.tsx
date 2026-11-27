@@ -64,16 +64,20 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
 
         <div className="flex items-center gap-2 shrink-0">
           {forwards.length > 0 && (
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               type="button"
               onClick={handleProbeAll}
               disabled={isProbingAll}
-              className="flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 transition-colors px-2 py-1 rounded hover:bg-slate-800/60 disabled:opacity-50 whitespace-nowrap shrink-0"
               title={t("forward.check_all")}
+              leftIcon={
+                <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isProbingAll ? "animate-spin" : ""}`} />
+              }
+              className="text-sky-400 hover:text-sky-300"
             >
-              <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isProbingAll ? "animate-spin" : ""}`} />
-              <span>{t("forward.check_all")}</span>
-            </button>
+              {t("forward.check_all")}
+            </Button>
           )}
 
           <Button
@@ -145,7 +149,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
                     {probeInfo && pf.forward_type !== "REMOTE" && (
                       <span
                         className="flex items-center gap-1 text-[11px] mr-1.5"
-                        title={
+                        data-tooltip={
                           probeInfo.status === "AVAILABLE"
                             ? t("forward.port_available", { port: pf.bind_port })
                             : probeInfo.status === "SHARED_WITH_ACTIVE_TAB"
@@ -173,6 +177,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
 
                     <IconButton
                       size="sm"
+                      tabIndex={0}
                       title={t("forward.edit")}
                       onClick={() => onOpenEditRule(idx)}
                       icon={<Pencil className="w-3.5 h-3.5" />}
@@ -180,6 +185,7 @@ export const HostPortForwardSection: React.FC<HostPortForwardSectionProps> = ({
 
                     <IconButton
                       size="sm"
+                      tabIndex={0}
                       tone="rose"
                       title={t("common.delete")}
                       onClick={() => onRequestDeleteRule(idx)}

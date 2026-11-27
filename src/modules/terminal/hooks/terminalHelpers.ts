@@ -4,10 +4,18 @@ import { Channel } from "@/shared/api/tauriClient";
 import {
   clampLaunchCols,
   clampLaunchRows,
+  TERM_DEFAULT_CELL_H,
+  TERM_DEFAULT_CELL_W,
+  TERM_DEFAULT_CHROME_H,
+  TERM_DEFAULT_CHROME_W,
   TERM_FONT_FAMILY_DEFAULT,
   TERM_FONT_SIZE_DEFAULT,
+  TERM_LAUNCH_PAD_PX,
   TERM_LINE_HEIGHT_DEFAULT,
+  TERM_MIN_COLS,
+  TERM_MIN_ROWS,
   TERM_SCROLLBACK_DEFAULT,
+  TERM_SCROLLBAR_PX,
   THEME_SELECTION_BG,
 } from "@/shared/defaults";
 import { copyText, readText } from "@/shared/utils/clipboard";
@@ -42,14 +50,12 @@ export const XTERM_THEME = {
   brightWhite: "#ffffff",
 };
 
-export const TERM_SCROLLBAR_PX = 5;
-export const TERM_MIN_COLS = 20;
-export const TERM_MIN_ROWS = 5;
-const LAUNCH_PAD_PX = 2;
-const DEFAULT_CELL_W = 9.4;
-const DEFAULT_CELL_H = 19.2;
-const DEFAULT_CHROME_W = 12;
-const DEFAULT_CHROME_H = 48;
+export { TERM_MIN_COLS, TERM_MIN_ROWS, TERM_SCROLLBAR_PX };
+const LAUNCH_PAD_PX = TERM_LAUNCH_PAD_PX;
+const DEFAULT_CELL_W = TERM_DEFAULT_CELL_W;
+const DEFAULT_CELL_H = TERM_DEFAULT_CELL_H;
+const DEFAULT_CHROME_W = TERM_DEFAULT_CHROME_W;
+const DEFAULT_CHROME_H = TERM_DEFAULT_CHROME_H;
 
 export interface TermMetrics {
   cellW: number;

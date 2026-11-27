@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { ALERT_DEFAULT_DURATION_MS, ALERT_MAX_VISIBLE } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { IconButton } from "./IconButton";
 
@@ -29,8 +30,8 @@ interface AlertApi {
   success: (message: string, durationMs?: number) => void;
 }
 
-const DEFAULT_DURATION_MS = 5000;
-const MAX_ALERTS = 4;
+const DEFAULT_DURATION_MS = ALERT_DEFAULT_DURATION_MS;
+const MAX_ALERTS = ALERT_MAX_VISIBLE;
 
 const AlertContext = createContext<AlertApi | null>(null);
 

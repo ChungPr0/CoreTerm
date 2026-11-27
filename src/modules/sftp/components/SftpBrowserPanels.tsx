@@ -234,6 +234,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 <Button
                   variant="outline"
                   size="xs"
+                  tabIndex={-1}
                   disabled={local.selected.length === 0 || !connected}
                   onClick={() => onRequestUpload(local.selected)}
                   className="border-sky-500/50 bg-sky-500/20 text-sky-300 hover:bg-sky-500/30"
@@ -287,6 +288,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
               <Button
                 variant="outline"
                 size="xs"
+                tabIndex={-1}
                 disabled={remote.selected.length === 0 || !connected}
                 onClick={() => onRequestDownload(remote.selected)}
                 className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
@@ -299,6 +301,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 <Button
                   variant="outline"
                   size="xs"
+                  tabIndex={-1}
                   disabled={!connected}
                   onClick={() => onUploadDialog(false)}
                   title={t("sftp.upload_files")}
@@ -309,6 +312,7 @@ export const SftpBrowserPanels: React.FC<SftpBrowserPanelsProps> = ({
                 <Button
                   variant="outline"
                   size="xs"
+                  tabIndex={-1}
                   disabled={!connected}
                   onClick={() => onUploadDialog(true)}
                   title={t("sftp.upload_folder")}

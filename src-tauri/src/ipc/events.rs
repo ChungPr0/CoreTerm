@@ -15,3 +15,4 @@ pub const EVENT_OPEN_DIRECTORY: &str = "open-directory";
 pub const EVENT_OPEN_FILE: &str = "open-file";
 pub const EVENT_OPEN_NEW_TAB: &str = "open-new-tab";
 pub const EVENT_WINDOW_CLOSE_REQUESTED: &str = "window:close_requested";
+pub const EVENT_UPDATER_PROGRESS: &str = "updater:progress";

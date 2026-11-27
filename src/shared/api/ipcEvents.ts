@@ -13,3 +13,4 @@ export const EVENT_OPEN_DIRECTORY = "open-directory";
 export const EVENT_OPEN_FILE = "open-file";
 export const EVENT_OPEN_NEW_TAB = "open-new-tab";
 export const EVENT_WINDOW_CLOSE_REQUESTED = "window:close_requested";
+export const EVENT_UPDATER_PROGRESS = "updater:progress";

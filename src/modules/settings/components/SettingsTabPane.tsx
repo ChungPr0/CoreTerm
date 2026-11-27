@@ -174,9 +174,16 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
         t("settings.context_menu_desc"),
         t("settings.close_last_tab"),
         t("settings.close_last_tab_desc"),
+        t("settings.group_updates"),
+        t("settings.update_status_title"),
+        t("settings.update_check_btn"),
+        t("settings.update_auto_mode"),
+        t("settings.update_mode_auto"),
+        t("settings.update_mode_notify"),
+        t("settings.update_mode_off"),
         t("settings.reset_section"),
         t("settings.reset_all_btn"),
-        "explorer reset language"
+        "explorer reset language update version release"
       )
     ) {
       matched.add("general");
@@ -457,12 +464,36 @@ export const SettingsTabPane: React.FC<SettingsTabPaneProps> = ({
                   const isSelected = !isSearching && activeCategory === cat.id;
                   const isMatchedInSearch =
                     isSearching && matchingCategoryIds.has(cat.id);
+                  const focusStopCatId = !isSearching
+                    ? activeCategory
+                    : (CATEGORIES.find((c) => matchingCategoryIds.has(c.id))?.id ??
+                      CATEGORIES[0].id);
                   return (
                     <button
                       key={cat.id}
                       type="button"
+                      data-settings-cat={cat.id}
+                      tabIndex={cat.id === focusStopCatId ? 0 : -1}
                       onClick={() => selectCategory(cat.id)}
-                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer ${
+                      onKeyDown={(e) => {
+                        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+                        e.preventDefault();
+                        const curIdx = CATEGORIES.findIndex((c) => c.id === cat.id);
+                        if (curIdx < 0) return;
+                        const nextIdx =
+                          e.key === "ArrowDown"
+                            ? (curIdx + 1) % CATEGORIES.length
+                            : (curIdx - 1 + CATEGORIES.length) % CATEGORIES.length;
+                        const nextCat = CATEGORIES[nextIdx];
+                        selectCategory(nextCat.id);
+                        e.currentTarget
+                          .closest("nav")
+                          ?.querySelector<HTMLButtonElement>(
+                            `button[data-settings-cat="${nextCat.id}"]`
+                          )
+                          ?.focus();
+                      }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left text-xs font-medium border transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 ${
                         isSelected
                           ? "bg-sky-500/15 text-sky-300 border-sky-500/30"
                           : isMatchedInSearch

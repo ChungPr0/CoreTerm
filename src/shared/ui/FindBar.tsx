@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -67,7 +67,10 @@ export const FindBar: React.FC<FindBarProps> = ({
   onReplaceAll,
 }) => {
   const { t } = useI18n();
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   if (!isOpen) return null;
+
+  const canTabToReplace = Boolean(allowReplace && showReplace && !replaceReadonly);
 
   const isRegexErr = Boolean(query && invalidRegex);
   const statusText = !query
@@ -120,6 +123,13 @@ export const FindBar: React.FC<FindBarProps> = ({
               e.preventDefault();
               e.stopPropagation();
               onFindPrev();
+            } else if (e.key === "Tab") {
+              e.preventDefault();
+              e.stopPropagation();
+              if (canTabToReplace) {
+                replaceInputRef.current?.focus();
+                replaceInputRef.current?.select();
+              }
             } else if (e.key === "Enter" || e.keyCode === 13) {
               e.preventDefault();
               e.stopPropagation();
@@ -134,7 +144,7 @@ export const FindBar: React.FC<FindBarProps> = ({
         />
 
         <span
-          title={statusText || undefined}
+          data-tooltip={statusText || undefined}
           className={`max-w-[116px] min-w-[44px] shrink-0 text-right text-[11px] tabular-nums truncate ${
             isRegexErr ? "text-rose-400 font-sans" : "text-slate-400 font-mono"
           }`}
@@ -201,6 +211,7 @@ export const FindBar: React.FC<FindBarProps> = ({
         <div className="mt-1.5 flex items-center gap-1 border-t border-slate-800/80 pt-1.5 pl-7">
           <Replace className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <input
+            ref={replaceInputRef}
             type="text"
             value={replaceQuery}
             disabled={replaceReadonly}
@@ -210,6 +221,11 @@ export const FindBar: React.FC<FindBarProps> = ({
                 e.preventDefault();
                 e.stopPropagation();
                 onClose();
+              } else if (e.key === "Tab") {
+                e.preventDefault();
+                e.stopPropagation();
+                inputRef.current?.focus();
+                inputRef.current?.select();
               } else if (e.key === "ArrowDown" || e.key === "Enter" || e.keyCode === 13) {
                 e.preventDefault();
                 e.stopPropagation();

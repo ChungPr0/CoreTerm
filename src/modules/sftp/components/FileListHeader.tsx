@@ -129,6 +129,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
               <button
                 ref={driveBtnRef}
                 type="button"
+                tabIndex={-1}
                 onClick={() => {
                   onRefreshDrives?.();
                   setDriveMenuOpen((v) => !v);
@@ -152,6 +153,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
                     <button
                       key={d.path}
                       type="button"
+                      tabIndex={-1}
                       onClick={() => {
                         setDriveMenuOpen(false);
                         onNavigate(d.path);
@@ -260,6 +262,7 @@ export const FileListHeader: React.FC<FileListHeaderProps> = ({
                 {idx > 0 && <ChevronRight className="h-3 w-3 shrink-0 text-[#484f58]" />}
                 <button
                   type="button"
+                  tabIndex={-1}
                   onClick={() => onNavigate(c.path)}
                   className="inline-flex h-5 shrink-0 items-center rounded px-1 hover:bg-[#21262d] hover:text-white"
                 >

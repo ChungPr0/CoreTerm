@@ -41,11 +41,11 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
     >
       <div
         className="flex min-w-0 flex-1 items-center gap-2 text-xs"
-        title={`${t("sftp.title")} — ${hostLabel}`}
+        data-tooltip={`${t("sftp.title")} — ${hostLabel}`}
       >
         <span
           className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`}
-          title={statusMeta.label}
+          data-tooltip={statusMeta.label}
         />
         <span className="truncate font-semibold text-[#e6edf3]">
           {t("sftp.title")} — {hostLabel}
@@ -57,6 +57,7 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
           <Button
             variant="outline"
             size="xs"
+            tabIndex={-1}
             onClick={() => onOpenInTerminal(remoteCwd)}
             title={t("sftp.open_in_terminal_tooltip")}
             leftIcon={<Terminal className="h-3.5 w-3.5 text-emerald-400" />}
@@ -68,6 +69,7 @@ export const SftpToolbar: React.FC<SftpToolbarProps> = ({
         <Button
           variant="outline"
           size="xs"
+          tabIndex={-1}
           active={showLocal}
           onClick={onToggleLocalPane}
           leftIcon={<Columns2 className="h-3.5 w-3.5" />}

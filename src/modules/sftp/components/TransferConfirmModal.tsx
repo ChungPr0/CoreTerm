@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowRight, Download, Folder, Upload } from "lucide-react";
+import { SFTP_TRANSFER_PREVIEW_LIMIT } from "@/shared/defaults";
 import { useI18n } from "@/shared/i18n";
 import { ActionModal } from "@/shared/ui";
 
@@ -16,8 +17,6 @@ interface TransferConfirmModalProps {
   onConfirm: () => Promise<void>;
 }
 
-const PREVIEW_LIMIT = 4;
-
 function pathBaseName(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, "");
   return trimmed.split(/[\\/]/).pop() || p;
@@ -33,7 +32,9 @@ export const TransferConfirmModal: React.FC<TransferConfirmModalProps> = ({
 
   const isUpload = transfer?.direction === "upload";
   const count = transfer?.paths.length ?? 0;
-  const previewNames = (transfer?.paths ?? []).slice(0, PREVIEW_LIMIT).map(pathBaseName);
+  const previewNames = (transfer?.paths ?? [])
+    .slice(0, SFTP_TRANSFER_PREVIEW_LIMIT)
+    .map(pathBaseName);
   const remaining = count - previewNames.length;
 
   return (

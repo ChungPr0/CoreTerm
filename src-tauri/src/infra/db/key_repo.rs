@@ -2,11 +2,10 @@ use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
 
+pub use crate::core::defaults::MAX_KEY_NAME_LEN;
 use crate::core::error::{CoreError, CoreResult};
 use crate::infra::db::SqliteDb;
 use crate::ipc::dto::{SshKeyDto, UpdateDefaultKeyResultDto};
-
-pub const MAX_KEY_NAME_LEN: usize = 64;
 
 pub struct NewKeyRecord<'a> {
     pub id: &'a str,

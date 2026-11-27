@@ -1,7 +1,5 @@
+pub use crate::core::defaults::MAX_EDITABLE_FILE_BYTES;
 use crate::core::error::{CoreError, CoreResult};
-
-/// Maximum file size (2 MiB) allowed in the built-in quick text editor.
-pub const MAX_EDITABLE_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 pub fn validate_editable_size(size: u64) -> CoreResult<()> {
     if size > MAX_EDITABLE_FILE_BYTES {

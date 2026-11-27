@@ -7,6 +7,7 @@ pub mod keys;
 pub mod pty;
 pub mod sftp;
 pub mod ssh;
+pub mod updater;
 
 pub use bootstrap::{
     maybe_run_cli_helpers, parse_clean_launch_dir, parse_clean_launch_target,
@@ -38,7 +39,8 @@ use crate::ipc::commands::{
     sftp_create_dir, sftp_create_file, sftp_delete, sftp_disconnect, sftp_download, sftp_list_dir,
     sftp_list_transfers, sftp_pause_transfer, sftp_read_file, sftp_rename, sftp_resolve_conflict,
     sftp_resume_transfer, sftp_submit_host_key, sftp_submit_secret, sftp_upload, sftp_write_file,
-    startup_get_status, startup_set_enabled, startup_sync_prefs, window_apply_ime_mode,
+    startup_get_status, startup_set_enabled, startup_sync_prefs, updater_check, updater_download,
+    updater_get_info, updater_install, window_apply_ime_mode,
     window_close, window_get_position, window_get_size, window_is_fullscreen, window_is_maximized,
     window_minimize, window_open_url, window_present, window_restore_focus,
     window_set_always_on_top, window_set_launch_size, window_set_position, window_set_size,
@@ -51,6 +53,7 @@ use crate::ipc::events::{
 use crate::keys::KeyService;
 use crate::pty::PtySessionManager;
 use crate::sftp::SftpSessionManager;
+use crate::updater::UpdaterService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -153,6 +156,7 @@ pub fn run() {
                 let _ = shell_scan_manager.detect_available_shells(false).await;
             });
             let sftp_manager = SftpSessionManager::new(tab_secrets.clone());
+            let updater = UpdaterService::new(&app_data_dir);
 
             if let Some(main_win) = app.get_webview_window("main") {
                 crate::infra::os::configure_main_window(&main_win);
@@ -206,6 +210,7 @@ pub fn run() {
                 tab_secrets,
                 pty_manager,
                 sftp_manager,
+                updater,
                 launch_dir,
                 launch_files,
                 is_secondary_window: force_new_window,
@@ -281,6 +286,10 @@ pub fn run() {
             startup_get_status,
             startup_set_enabled,
             startup_sync_prefs,
+            updater_get_info,
+            updater_check,
+            updater_download,
+            updater_install,
             clipboard_read_text,
             clipboard_write_text,
             window_set_launch_size,

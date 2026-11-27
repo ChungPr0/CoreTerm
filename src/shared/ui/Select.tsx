@@ -56,6 +56,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
   ) => {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const optionElsRef = useRef<Array<HTMLButtonElement | null>>([]);
 
     const parsedOptions: SelectOption[] = useMemo(() => {
       if (options && options.length > 0) return options;
@@ -84,8 +85,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       return parsedOptions[0];
     }, [parsedOptions, value]);
 
-    const handleSelect = (val: string | number) => {
-      setIsOpen(false);
+    const commitValue = (val: string | number) => {
       onValueChange?.(val);
       if (onChange) {
         const fakeEvent = {
@@ -98,6 +98,35 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
       }
     };
 
+    const handleSelect = (val: string | number) => {
+      setIsOpen(false);
+      commitValue(val);
+    };
+
+    const stepOption = (delta: 1 | -1) => {
+      if (parsedOptions.length === 0) return;
+      const currentIndex = parsedOptions.findIndex(
+        (opt) => String(opt.value) === String(value)
+      );
+      let idx =
+        currentIndex >= 0
+          ? currentIndex + delta
+          : delta > 0
+            ? 0
+            : parsedOptions.length - 1;
+      while (idx >= 0 && idx < parsedOptions.length) {
+        if (!parsedOptions[idx].disabled) {
+          const targetIdx = idx;
+          commitValue(parsedOptions[targetIdx].value);
+          window.requestAnimationFrame(() => {
+            optionElsRef.current[targetIdx]?.scrollIntoView({ block: "nearest" });
+          });
+          return;
+        }
+        idx += delta;
+      }
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (disabled) return;
       if (e.key === "Enter" || e.key === " ") {
@@ -105,33 +134,16 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
         setIsOpen((prev) => !prev);
       } else if (e.key === "Escape" && isOpen) {
         e.preventDefault();
+        e.stopPropagation();
         setIsOpen(false);
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        if (!isOpen) {
-          setIsOpen(true);
-        } else {
-          const currentIndex = parsedOptions.findIndex(
-            (opt) => String(opt.value) === String(value)
-          );
-          const nextIndex = Math.min(currentIndex + 1, parsedOptions.length - 1);
-          if (nextIndex >= 0 && !parsedOptions[nextIndex].disabled) {
-            handleSelect(parsedOptions[nextIndex].value);
-          }
-        }
+        if (!isOpen) setIsOpen(true);
+        stepOption(1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        if (!isOpen) {
-          setIsOpen(true);
-        } else {
-          const currentIndex = parsedOptions.findIndex(
-            (opt) => String(opt.value) === String(value)
-          );
-          const prevIndex = Math.max(currentIndex - 1, 0);
-          if (prevIndex >= 0 && !parsedOptions[prevIndex].disabled) {
-            handleSelect(parsedOptions[prevIndex].value);
-          }
-        }
+        if (!isOpen) setIsOpen(true);
+        stepOption(-1);
       } else if (e.key === "Tab") {
         if (isOpen) setIsOpen(false);
       }
@@ -146,10 +158,10 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
         : "bg-slate-950 border-slate-800";
 
     const errorClasses = error
-      ? "border-rose-500/80 focus:border-rose-500 focus:ring-1 focus:ring-rose-500/30"
+      ? "border-rose-500/80 focus:border-rose-500 focus:ring-1 focus:ring-rose-500/30 focus-visible:border-rose-500 focus-visible:ring-2 focus-visible:ring-rose-500/40"
       : isOpen
       ? "border-sky-500/80 ring-1 ring-sky-500/30"
-      : "focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30";
+      : "focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30 focus-visible:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-500/40";
 
     const widthClass = /\bw-/.test(containerClassName) ? "" : "w-full";
 
@@ -188,12 +200,16 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(
           maxHeightPx={224}
           className="z-[90] rounded-lg bg-slate-900 border border-slate-700/90 shadow-2xl py-1 overflow-y-auto select-none"
         >
-          {parsedOptions.map((opt) => {
+          {parsedOptions.map((opt, idx) => {
             const isSelected = String(opt.value) === String(value);
             return (
               <button
                 key={String(opt.value)}
+                ref={(el) => {
+                  optionElsRef.current[idx] = el;
+                }}
                 type="button"
+                tabIndex={-1}
                 disabled={opt.disabled}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(opt.value)}

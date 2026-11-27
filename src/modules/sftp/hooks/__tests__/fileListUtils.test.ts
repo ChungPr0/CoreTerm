@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { FileItem } from "../../types";
 import {
+  computeDefaultCols,
   EMPTY_HISTORY,
   fitColumns,
+  MIN_COLS,
   normalizePath,
   pushDirHistory,
   resolveItemInCwd,
@@ -83,6 +85,27 @@ describe("fileListUtils", () => {
     expect(fitted.name + fitted.size + fitted.mtime + fitted.perms).toBe(800);
     expect(fitted.perms).toBe(0);
     expect(fitted.name).toBe(400);
+  });
+
+  it("preserves minimum header widths so Vietnamese labels (e.g. KÍCH THƯỚC) are not clipped", () => {
+    const localCols = computeDefaultCols(420, false);
+    expect(localCols.name + localCols.size + localCols.mtime + localCols.perms).toBe(420);
+    expect(localCols.name).toBeGreaterThanOrEqual(MIN_COLS.name);
+    expect(localCols.size).toBeGreaterThanOrEqual(MIN_COLS.size);
+    expect(localCols.mtime).toBeGreaterThanOrEqual(MIN_COLS.mtime);
+    expect(localCols.perms).toBe(0);
+
+    const remoteCols = computeDefaultCols(420, true);
+    expect(remoteCols.name + remoteCols.size + remoteCols.mtime + remoteCols.perms).toBe(420);
+    expect(remoteCols.name).toBeGreaterThanOrEqual(MIN_COLS.name);
+    expect(remoteCols.size).toBeGreaterThanOrEqual(MIN_COLS.size);
+    expect(remoteCols.mtime).toBeGreaterThanOrEqual(MIN_COLS.mtime);
+    expect(remoteCols.perms).toBeGreaterThanOrEqual(MIN_COLS.perms);
+
+    // Guards against NaN / Infinity container widths
+    const raw = { name: 200, size: 116, mtime: 132, perms: 0 };
+    expect(fitColumns(raw, Number.NaN)).toEqual(raw);
+    expect(fitColumns(raw, Number.POSITIVE_INFINITY)).toEqual(raw);
   });
 
   it("handles empty lists, special query characters and mtime sorting", () => {
